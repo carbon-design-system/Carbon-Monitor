@@ -114,10 +114,10 @@ function filterUnverifiedCarbonFindings(findings) {
       return true;
     }
 
-    // carbon-mcp is the only valid verification source for Carbon findings.
     const isMcpVerified = finding.carbonVerified === true && finding.verificationSource === 'carbon-mcp';
+    const isSkillVerified = finding.carbonVerified === true && finding.verificationSource === 'carbon-builder-skill';
 
-    if (!isMcpVerified && !looksCarbonSpecific(finding)) {
+    if (!isMcpVerified && !isSkillVerified && !looksCarbonSpecific(finding)) {
       return true; // Not Carbon-specific, pass through
     }
 
@@ -135,6 +135,24 @@ function filterUnverifiedCarbonFindings(findings) {
         filteredCount++;
         console.log(`❌ FILTERED hallucinated verification for: "${finding.title}"`);
         console.log(`   mcpEvidence is absent or non-specific — omitting finding`);
+        return false;
+      }
+
+      carbonVerifiedCount++;
+      return true;
+    }
+
+    // HALLUCINATION CHECK: carbon-builder-skill findings must include a real quote
+    // from the skill response. Vague phrases or empty strings are rejected.
+    if (isSkillVerified) {
+      const evidence = (finding.skillEvidence || '').trim();
+      const isVague = !evidence ||
+        /^(verified|confirmed|carbon builder skill (confirm|verif)|skill (confirm|verif)|checked with)/i.test(evidence);
+
+      if (isVague) {
+        filteredCount++;
+        console.log(`❌ FILTERED hallucinated skill verification for: "${finding.title}"`);
+        console.log(`   skillEvidence is absent or non-specific — omitting finding`);
         return false;
       }
 

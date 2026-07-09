@@ -233,7 +233,8 @@ async function reviewPRs() {
             commitSha: pr.head.sha,
             inlineFindings,
             summaryFindings,
-            tokenUsage
+            tokenUsage,
+            carbonVerification: review.carbonVerification || null
           });
           
           await client.postSummaryComment({

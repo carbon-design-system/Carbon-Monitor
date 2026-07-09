@@ -4,10 +4,14 @@
  */
 
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
 const os = require('os');
 const { MAX_DIFF_CHARS } = require('./constants');
 const { buildReviewPrompt } = require('./reviewPrompt');
+
+// Absolute path to the Carbon Builder Skill reference files shipped with this project
+const SKILL_REFERENCES_SRC = path.join(__dirname, '..', '.bob', 'skills', 'carbon-builder', 'references');
 
 /**
  * Strip single-line and multi-line comments from JSON string
@@ -87,6 +91,25 @@ async function copyDirectory(src, dest) {
 }
 
 /**
+ * Copy Carbon Builder Skill reference files into the bundle directory.
+ * This makes them available at a predictable local path regardless of where
+ * the agent process runs, so the agent can always read them as regular files.
+ *
+ * @param {string} bundleDir - Root of the temp bundle directory
+ * @returns {Promise<string|null>} Destination directory path, or null if source not found
+ */
+async function copySkillReferences(bundleDir) {
+  if (!fsSync.existsSync(SKILL_REFERENCES_SRC)) {
+    console.warn(`⚠️  Carbon Builder Skill references not found at: ${SKILL_REFERENCES_SRC}`);
+    return null;
+  }
+
+  const dest = path.join(bundleDir, '.bob', 'skills', 'carbon-builder', 'references');
+  await copyDirectory(SKILL_REFERENCES_SRC, dest);
+  return dest;
+}
+
+/**
  * Build a review bundle for agent execution
  * @param {Object} options - { owner, repo, pr, diff, files }
  * @returns {Promise<Object>} Bundle object with dir, prompt, and cleanup function
@@ -109,9 +132,16 @@ async function buildReviewBundle({ owner, repo, pr, diff, files }) {
       envContent
     );
 
-    // 2. Create .bob directory for rules (carbon-mcp is configured globally via streamable HTTP)
+    // 2. Create .bob directory structure
     const bobDir = path.join(tempDir, '.bob');
     await fs.mkdir(bobDir, { recursive: true });
+
+    // Copy Carbon Builder Skill reference files into the bundle so the agent can
+    // read them at a stable local path even when MCP is unavailable.
+    const skillRefDest = await copySkillReferences(tempDir);
+    if (skillRefDest) {
+      console.log(`✅ Skill references copied to bundle: ${skillRefDest}`);
+    }
 
     // 3. Write PR metadata
     await fs.writeFile(
@@ -204,8 +234,9 @@ Mandatory:
     // Note: carbon-mcp is configured globally via streamable HTTP in ~/.bob/settings.json
     // No local MCP config is needed in the bundle directory
 
-    // 6. Create review prompt using the detailed prompt builder
-    const prompt = buildReviewPrompt({ owner, repo });
+    // Build the review prompt, telling it the exact local path to skill reference files
+    const skillRefsAvailable = !!skillRefDest;
+    const prompt = buildReviewPrompt({ owner, repo, skillRefsAvailable });
 
     // Return bundle object (no settingsPath needed - using global config)
     return {
