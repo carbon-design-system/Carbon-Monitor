@@ -213,9 +213,10 @@ See diff.patch for the full changes.
 You are reviewing a pull request in ${owner}/${repo}.
 
 Mandatory:
-- Use Carbon MCP tools (docs_search, code_search, get_charts) for ALL Carbon Design System verification
-- Verify components, props, tokens, icons, patterns, and accessibility claims using MCP tools
-- Set verificationSource to "carbon-mcp" for all Carbon-verified findings
+- For Carbon-specific (Category 1) findings: read the Carbon Builder Skill reference files at .bob/skills/carbon-builder/references/ FIRST
+- Use Carbon MCP tools (docs_search, code_search, get_charts) SECOND — for API-level precision or when skill files lack evidence
+- Set verificationSource to "carbon-builder-skill" when skill reference files provide the supporting evidence
+- Set verificationSource to "carbon-mcp" when Carbon MCP tools provide more specific evidence
 - Set verificationSource to "not-carbon-specific" for generic code review findings
 - Prefer specific actionable findings over general advice
 - Do not edit files
