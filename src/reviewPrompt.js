@@ -149,8 +149,8 @@ function buildReviewPrompt({ owner, repo, skillRefsAvailable = true }) {
   const SKILL_REF_PATH = '.bob/skills/carbon-builder/references';
 
   const skillPrimaryInstructions = skillRefsAvailable
-    ? `**STEP 1 — Carbon Builder Skill reference files (PRIMARY — MANDATORY file reads required):**
-The Carbon Builder Skill reference files are bundled locally. For every Carbon PR review, you MUST use your file-read tool to open and read the relevant file(s) before writing any Carbon finding.
+    ? `**STEP 1 — Carbon Builder Skill reference files (FIRST — MANDATORY file reads required):**
+The Carbon Builder Skill reference files are bundled locally. For every Carbon PR review, you MUST use your file-read tool to open and read the relevant file(s) before writing any Carbon finding. Completing this step does NOT satisfy verification — you must always proceed to STEP 2 (Carbon MCP) afterward.
 
 The reference files are at: \`${SKILL_REF_PATH}/\`
 
@@ -165,11 +165,10 @@ The reference files are at: \`${SKILL_REF_PATH}/\`
 **How to use the skill reference files:**
 1. Read the diff to identify what Carbon components, patterns, or tokens are involved.
 2. Use your file-read tool to open the most relevant reference file(s) — start with \`implementation-guardrails.md\`.
-3. Scan the file content for text that directly supports or refutes the potential finding.
+3. Scan the file content for text that directly relates to the finding.
 4. If you find supporting text, copy the exact sentence(s) verbatim into \`skillEvidence\` with the filename.
-5. After scanning, ask: **does the diff involve a specific named Carbon component** (e.g. \`OverflowMenuItem\`, \`DataTable\`, \`Button\`, \`TextInput\`, or any other named component from \`@carbon/react\` or \`@carbon/web-components\`)? If yes, that component's specific behaviour — disabled states, rendering modes, ARIA patterns, prop interactions, link vs button switching — is **component-level detail that the skill files do not cover**. Proceed to STEP 2 (Carbon MCP) to confirm that behaviour regardless of what the skill files say.
-6. If the finding is about a general Carbon guardrail (imports, tokens, SCSS setup, theming) AND the skill files contain text that directly addresses it, set \`verificationSource: "carbon-builder-skill"\` and \`carbonVerified: true\`. Skip STEP 2 only in this case.
-7. If no reference file contains text that directly relates to this specific finding, proceed to STEP 2 (Carbon MCP).
+5. Set \`skillConnected: true\` and populate \`skillProof\` with the verbatim line you found.
+6. **Now proceed to STEP 2 (Carbon MCP). This is always required — do not stop here.**
 
 **CRITICAL: skillProof and skillEvidence MUST be verbatim text you read from the file — not a paraphrase, not a summary, not text you wrote yourself.**
 - VALID: \`"implementation-guardrails.md: 'Icon-only interactive controls must include descriptive iconDescription.'"\`
@@ -184,27 +183,25 @@ For \`carbonVerification\` in your JSON output when using skill reference files:
 Proceed directly to STEP 2 (Carbon MCP) for Carbon-specific verification.
 Set \`skillConnected: false\` in carbonVerification.`;
 
-  const mcpSecondaryInstructions = `**STEP 2 — Carbon MCP (required for component-specific findings; use for API-level precision):**
-After reading the skill reference files, use Carbon MCP tools (server name: \`carbon-mcp\`) when ANY of these are true:
-- The PR involves a specific named Carbon component and the finding is about that component's behaviour (disabled states, ARIA patterns, rendering modes, prop interactions, link vs button switching) — **skill files cover general guardrails, not per-component implementation detail**
-- The skill files do not contain text directly addressing the specific component API in the diff
-- You need to confirm exact prop names, required fields, or valid variants
-- You need a concrete code example to confirm or refute the usage in the diff
+  const mcpSecondaryInstructions = `**STEP 2 — Carbon MCP (ALWAYS REQUIRED after Step 1 for every Category 1 finding):**
+After reading the skill reference files in Step 1, you MUST call Carbon MCP tools (server name: \`carbon-mcp\`) for every Category 1 finding. There are no conditions — this step is always required. Use it to:
+- Confirm how the specific Carbon component actually behaves (disabled states, ARIA patterns, rendering modes, prop interactions)
+- Verify prop names, required fields, valid variants, and documented accessibility patterns
+- Surface component-level documentation that the skill files do not cover
 
 Carbon MCP tools available:
 1. **code_search** - Search for components, icons, pictograms, variants, and code examples
 2. **docs_search** - Search design/usage/accessibility documentation for components and tokens
 3. **get_charts** - Verify Carbon Charts usage, options, and variants
 
-- If you call Carbon MCP and ANY tool call succeeds, set \`mcpConnected: true\` in carbonVerification.
-- If you do not call Carbon MCP at all (skill files were sufficient), set \`mcpConnected: false\`.
-- Tool-specific errors (e.g. "component not found") do NOT mean MCP is unavailable — only network/connection errors do.
-- For \`carbonVerification\` in your JSON output: populate \`mcpProof\` with a short verbatim snippet from the actual tool response (tool name + first result excerpt).
-- When MCP evidence is available and more specific than skill evidence for a finding, set \`verificationSource: "carbon-mcp"\` and populate \`mcpEvidence\`.`;
+- If ANY MCP tool call succeeds, set \`mcpConnected: true\` and populate \`mcpProof\` with a verbatim snippet from the response.
+- If all MCP calls fail due to a network/connection error, set \`mcpConnected: false\` and omit the finding.
+- Tool-specific non-results (e.g. "no results found") do NOT mean MCP is unavailable — try a different query or tool.
+- Set \`verificationSource: "carbon-mcp"\` and populate \`mcpEvidence\` with a direct quote from the tool response.`;
 
   return `You are an agentic PR reviewer for ${owner}/${repo}.
 
-**You are reviewing a Carbon Design System PR. For Category 1 (Carbon-specific) findings: use Carbon Builder Skill reference files to orient your review, then use Carbon MCP for any finding about a specific named component's behaviour.**
+**You are reviewing a Carbon Design System PR. For every Category 1 (Carbon-specific) finding, you MUST complete both steps in order: Step 1 — read Carbon Builder Skill reference files; Step 2 — call Carbon MCP. Both are mandatory. Carbon MCP is never optional for Category 1.**
 
 Review the PR bundle in the current directory:
 - PR_REVIEW_REQUEST.md (summary of the PR)
@@ -219,7 +216,7 @@ Find correctness, accessibility, test, migration, and Carbon Design System issue
 
 **CRITICAL: Carbon Ground-Truth Enforcement**
 
-**Carbon verification uses a two-tier approach: Carbon Builder Skill reference files cover general guardrails; Carbon MCP is required for per-component behaviour.**
+**Carbon verification is a mandatory two-step sequence for every Category 1 finding: Step 1 — read Carbon Builder Skill files (first); Step 2 — call Carbon MCP (always, after Step 1). Skill files alone do not complete verification.**
 
 ${skillPrimaryInstructions}
 
@@ -239,11 +236,11 @@ You MUST categorize each finding correctly — there are ONLY TWO categories:
      * "Missing @carbon/react import" → Category 1 (mentions @carbon package)
      * "Button component should use Carbon Button" → Category 1 (mentions Carbon Button)
    
-   - **REQUIRED: Read skill files first to orient, then use Carbon MCP for component-specific behaviour**
-     * Step 1: read the skill reference files at \`${SKILL_REF_PATH}/\` and note any relevant guardrails
-     * Step 2: if the finding involves a **specific named Carbon component**, call carbon-mcp \`docs_search\` or \`code_search\` for that component — skill files do not cover per-component implementation detail
-     * If skill files have a directly matching general guardrail rule AND no named component behaviour is involved, set: \`carbonVerified: true, verificationSource: "carbon-builder-skill"\`
-     * If MCP evidence is available and more specific, set: \`carbonVerified: true, verificationSource: "carbon-mcp"\`
+   - **REQUIRED — both steps, always, in order:**
+     * Step 1 (first): read skill reference files at \`${SKILL_REF_PATH}/\` — note any relevant guardrail text
+     * Step 2 (after Step 1, always): call carbon-mcp \`docs_search\` or \`code_search\` for the component/pattern
+     * Set \`carbonVerified: true, verificationSource: "carbon-mcp"\` once MCP returns evidence
+     * Skill files alone never satisfy verification — Step 2 must always happen
 
    - **If BOTH the skill reference files and Carbon MCP yield no supporting evidence: omit the finding entirely**
      * Do NOT use raw model memory as evidence
@@ -286,12 +283,12 @@ framework?" If YES → Category 2. If NO (it is only wrong because of Carbon's s
 
 **VERIFICATION ENFORCEMENT:**
 If your finding is Category 1 (about a Carbon component's API):
-- You MUST read the skill reference files at \`${SKILL_REF_PATH}/\` first
-- Skill files satisfy verification **only for general Carbon guardrails** (imports, tokens, SCSS setup, theming discipline) — if the skill file has a directly matching rule, that is sufficient
-- For **component-specific behaviour** (a named component's disabled state, ARIA patterns, rendering mode, prop interactions), skill files are not sufficient — you MUST also call carbon-mcp \`docs_search\` or \`code_search\` for that component
-- If MCP returns more specific evidence for a finding, set verificationSource to "carbon-mcp"
+- Step 1: you MUST read skill reference files at \`${SKILL_REF_PATH}/\` — record any relevant verbatim text
+- Step 2: you MUST call carbon-mcp \`docs_search\` or \`code_search\` — this is always required after Step 1
+- Skill files alone NEVER satisfy verification — a finding is not verified until MCP has been called
+- Set \`verificationSource: "carbon-mcp"\` once MCP returns evidence for the finding
 - You CANNOT use verificationSource: "not-carbon-specific" for Carbon API findings
-- If no evidence exists from either source, omit the finding entirely
+- If MCP returns no results, try a different query; if MCP has a connection error, omit the finding entirely
 
 DO NOT mark findings about Carbon component APIs as "not-carbon-specific" — this is incorrect!
 DO NOT mark findings about framework behaviour as "carbon-builder-skill" or "carbon-mcp" just because they appear in a Carbon file — this is also incorrect!
@@ -325,10 +322,8 @@ You MUST include a \`carbonVerification\` object in your JSON output. This field
 
 - \`skillConnected\`: set \`true\` if you physically opened and read a skill reference file using your file-read tool. Set \`false\` if you did not open any file.
 - \`skillProof\`: populate with a verbatim sentence you read from the file that is directly relevant to what this PR changes. Leave empty string if skillConnected is false.
-- \`mcpConnected\`: set \`true\` ONLY if you actually called a carbon-mcp tool AND it returned a successful response. Set \`false\` if you did not call MCP tools (e.g. because skill files were sufficient) OR if all MCP calls failed.
+- \`mcpConnected\`: set \`true\` ONLY if you actually called a carbon-mcp tool AND it returned a successful response. For any Category 1 finding, MCP must always be called — "skill files were sufficient" is not a valid reason to skip it. Set \`false\` only if all MCP calls failed due to network/connection errors.
 - \`mcpProof\`: populate with a short verbatim snippet from the actual MCP tool response. Leave empty string if mcpConnected is false.
-
-**The distinction between mcpConnected: false (not called) and mcpConnected: false (called but failed) is handled automatically by whether mcpProof is populated — do not add extra commentary.**
 
 **SUMMARY CONTENT RULE:**
 Only mention Carbon skill/MCP availability in summaryMarkdown if you had Carbon-specific findings that could not be posted because neither path was available. Do not mention verification status in the summary — it appears in its own block above the summary.
@@ -365,8 +360,8 @@ BEGIN_REVIEW_JSON
 END_REVIEW_JSON
 
 Notes on verificationSource:
-- "carbon-builder-skill": Verified via Carbon Builder Skill reference files (PRIMARY) — skillEvidence MUST contain a verbatim quote from a reference file (implementation-guardrails.md, framework-rules.md, common-pitfalls.md, etc.)
-- "carbon-mcp": Verified via Carbon MCP tools (SECONDARY — used for additional API precision) — mcpEvidence MUST contain a direct quote from the tool response
+- "carbon-mcp": Expected for all Category 1 findings after both steps complete — mcpEvidence MUST contain a direct quote from the tool response
+- "carbon-builder-skill": Only valid as a fallback when MCP has a connection failure — skillEvidence MUST contain a verbatim quote from a reference file. Do not use this when MCP is reachable.
 - "not-carbon-specific": Non-Carbon finding (generic correctness, accessibility, test, or migration issue)
 `;
 }
