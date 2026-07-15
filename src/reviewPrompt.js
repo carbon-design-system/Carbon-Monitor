@@ -30,6 +30,46 @@ function estimateTokenUsage({ prompt, diff, agentOutput }) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Severity guidance shown to PR authors inline and in summary
+// ---------------------------------------------------------------------------
+
+const SEVERITY_GUIDANCE = {
+  blocking: 'Should be resolved before this ships.',
+  major: 'Worth addressing before merge.',
+  minor: 'Consider addressing — not a hard blocker.',
+  nit: 'Optional — provided for completeness.'
+};
+
+// ---------------------------------------------------------------------------
+// formatInlineComment
+// ---------------------------------------------------------------------------
+
+/**
+ * Format inline review comment for a specific finding
+ *
+ * @param {Object} finding - Finding object
+ * @returns {string} - Formatted inline comment
+ */
+function formatInlineComment(finding) {
+  const guidance = SEVERITY_GUIDANCE[finding.severity] || '';
+  let comment = `**${finding.title}**\n\n`;
+  comment += `> **[${finding.severity}]** ${guidance}\n\n`;
+  comment += finding.body + '\n\n';
+
+  if (finding.carbonVerified && finding.verificationSource === 'carbon-mcp') {
+    comment += `*✓ Verified with Carbon MCP*\n`;
+  } else if (finding.carbonVerified && finding.verificationSource === 'carbon-builder-skill') {
+    comment += `*✓ Verified with Carbon Builder Skill*\n`;
+  }
+
+  return comment;
+}
+
+// ---------------------------------------------------------------------------
+// formatSummaryComment
+// ---------------------------------------------------------------------------
+
 /**
  * Format summary comment with spec-compliant template
  *
@@ -70,21 +110,21 @@ function formatSummaryComment({ agent, summaryMarkdown, prNumber, commitSha, inl
     comment += `The following findings could not be mapped to specific lines in the diff:\n\n`;
     
     summaryFindings.forEach((finding, index) => {
+      const guidance = SEVERITY_GUIDANCE[finding.severity] || '';
       comment += `### ${index + 1}. ${finding.title}\n\n`;
       comment += `**File:** \`${finding.file}\``;
       if (finding.line) {
         comment += ` (Line ${finding.line})`;
       }
-      comment += `\n**Severity:** ${finding.severity}\n\n`;
+      comment += `\n**Severity:** ${finding.severity} — ${guidance}\n\n`;
       comment += finding.body + '\n\n';
-      
-      // Show verification badge based on source
+
       if (finding.carbonVerified && finding.verificationSource === 'carbon-mcp') {
         comment += `*✓ Verified with Carbon MCP*\n\n`;
       } else if (finding.carbonVerified && finding.verificationSource === 'carbon-builder-skill') {
         comment += `*✓ Verified with Carbon Builder Skill*\n\n`;
       }
-      
+
       comment += '---\n\n';
     });
   }
@@ -110,27 +150,6 @@ function formatSummaryComment({ agent, summaryMarkdown, prNumber, commitSha, inl
     comment += `- Output tokens: ~${tokenUsage.output.toLocaleString()}\n`;
     comment += `- Total tokens: ~${tokenUsage.total.toLocaleString()}\n`;
     comment += `\n*Note: Token estimates are approximate and based on character count (1 token ≈ 4 characters).*\n`;
-  }
-  
-  return comment;
-}
-
-/**
- * Format inline review comment for a specific finding
- * 
- * @param {Object} finding - Finding object
- * @returns {string} - Formatted inline comment
- */
-function formatInlineComment(finding) {
-  let comment = `**${finding.title}**\n\n`;
-  comment += `Severity: ${finding.severity}\n\n`;
-  comment += finding.body + '\n\n';
-  
-  // Show verification badge based on source
-  if (finding.carbonVerified && finding.verificationSource === 'carbon-mcp') {
-    comment += `*✓ Verified with Carbon MCP*\n`;
-  } else if (finding.carbonVerified && finding.verificationSource === 'carbon-builder-skill') {
-    comment += `*✓ Verified with Carbon Builder Skill*\n`;
   }
   
   return comment;
@@ -347,12 +366,21 @@ BEGIN_REVIEW_JSON
       "severity": "blocking|major|minor|nit",
       "file": "repo-relative path",
       "line": 123,
-      "title": "short title",
+      "title": "short title — plain text, no pipes or newlines",
       "body": "specific actionable comment",
       "carbonVerified": true,
       "verificationSource": "carbon-builder-skill|carbon-mcp|not-carbon-specific",
       "skillEvidence": "direct quote from skill reference file (required when verificationSource is carbon-builder-skill, omit otherwise)",
       "mcpEvidence": "direct quote from MCP tool response (required when verificationSource is carbon-mcp, omit otherwise)"
+    }
+  ],
+  "findingsTable": [
+    {
+      "area": "Carbon API|General",
+      "category": "Cat 1|Cat 2",
+      "severity": "blocking|major|minor|nit",
+      "title": "short title — plain text only, no pipes or newlines",
+      "file": "repo-relative path — plain text only, no pipes"
     }
   ],
   "shouldPostInlineComments": true
