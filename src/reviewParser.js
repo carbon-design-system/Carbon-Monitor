@@ -106,6 +106,12 @@ function filterUnverifiedCarbonFindings(findings) {
   let carbonSpecificCount = 0;
   let carbonVerifiedCount = 0;
   let filteredCount = 0;
+  let dualVerifiedCount = 0;
+
+  const isVagueEvidence = (text, label) => {
+    const t = (text || '').trim();
+    return !t || /^(verified|confirmed|carbon (mcp|builder skill) (confirm|verif)|mcp tools? (confirm|verif)|skill (confirm|verif)|checked with)/i.test(t);
+  };
 
   const filtered = findings.filter((finding) => {
     // Non-Carbon findings pass through unconditionally — no auto-correction.
@@ -114,7 +120,7 @@ function filterUnverifiedCarbonFindings(findings) {
       return true;
     }
 
-    const isMcpVerified = finding.carbonVerified === true && finding.verificationSource === 'carbon-mcp';
+    const isMcpVerified   = finding.carbonVerified === true && finding.verificationSource === 'carbon-mcp';
     const isSkillVerified = finding.carbonVerified === true && finding.verificationSource === 'carbon-builder-skill';
 
     if (!isMcpVerified && !isSkillVerified && !looksCarbonSpecific(finding)) {
@@ -123,39 +129,46 @@ function filterUnverifiedCarbonFindings(findings) {
 
     carbonSpecificCount++;
 
-    // HALLUCINATION CHECK: carbon-mcp findings must include a real quote from the
-    // tool response as evidence. Vague phrases or empty strings are treated as
-    // hallucinated verification and the finding is filtered out.
+    // GOLD STANDARD: Category 1 finding has both skillEvidence (Step 1) and mcpEvidence (Step 2).
+    // Accept it if neither evidence field is vague.
     if (isMcpVerified) {
-      const evidence = (finding.mcpEvidence || '').trim();
-      const isVague = !evidence ||
-        /^(verified|confirmed|carbon mcp (confirm|verif)|mcp tools? (confirm|verif)|checked with)/i.test(evidence);
+      const mcpEvidence   = (finding.mcpEvidence   || '').trim();
+      const skillEvidence = (finding.skillEvidence  || '').trim();
 
-      if (isVague) {
+      const mcpVague   = isVagueEvidence(mcpEvidence);
+      const skillVague = isVagueEvidence(skillEvidence);
+
+      if (mcpVague) {
         filteredCount++;
-        console.log(`❌ FILTERED hallucinated verification for: "${finding.title}"`);
+        console.log(`❌ FILTERED hallucinated MCP verification for: "${finding.title}"`);
         console.log(`   mcpEvidence is absent or non-specific — omitting finding`);
         return false;
+      }
+
+      // Log whether the finding also carries skill evidence (dual-verified)
+      if (!skillVague) {
+        dualVerifiedCount++;
+        console.log(`✅ DUAL-VERIFIED (Skill + MCP): "${finding.title}"`);
+      } else {
+        console.log(`✅ MCP-VERIFIED (MCP only, no skill evidence): "${finding.title}"`);
       }
 
       carbonVerifiedCount++;
       return true;
     }
 
-    // HALLUCINATION CHECK: carbon-builder-skill findings must include a real quote
-    // from the skill response. Vague phrases or empty strings are rejected.
+    // FALLBACK: carbon-builder-skill only (MCP connection failed).
+    // Accept if skillEvidence is real; log that MCP was not called.
     if (isSkillVerified) {
-      const evidence = (finding.skillEvidence || '').trim();
-      const isVague = !evidence ||
-        /^(verified|confirmed|carbon builder skill (confirm|verif)|skill (confirm|verif)|checked with)/i.test(evidence);
-
-      if (isVague) {
+      const skillEvidence = (finding.skillEvidence || '').trim();
+      if (isVagueEvidence(skillEvidence)) {
         filteredCount++;
         console.log(`❌ FILTERED hallucinated skill verification for: "${finding.title}"`);
         console.log(`   skillEvidence is absent or non-specific — omitting finding`);
         return false;
       }
 
+      console.log(`⚠️  SKILL-ONLY verified (MCP not called): "${finding.title}"`);
       carbonVerifiedCount++;
       return true;
     }
@@ -172,12 +185,13 @@ function filterUnverifiedCarbonFindings(findings) {
     console.log(`\n📊 Carbon Verification Summary:`);
     console.log(`   Total findings: ${findings.length}`);
     console.log(`   Carbon-specific: ${carbonSpecificCount}`);
-    console.log(`   MCP-verified: ${carbonVerifiedCount}`);
+    console.log(`   Dual-verified (Skill + MCP): ${dualVerifiedCount}`);
+    console.log(`   Total verified: ${carbonVerifiedCount}`);
     console.log(`   Filtered (unverified): ${filteredCount}`);
 
     if (filteredCount > 0) {
-      console.log(`\n❌ ${filteredCount} Carbon finding(s) filtered — missing or hallucinated MCP verification`);
-      console.log(`   To fix: Ensure agent uses Carbon MCP tools and quotes tool response in mcpEvidence`);
+      console.log(`\n❌ ${filteredCount} Carbon finding(s) filtered — missing or hallucinated verification`);
+      console.log(`   To fix: Ensure agent reads skill reference files (skillEvidence) AND calls Carbon MCP (mcpEvidence)`);
     }
   }
 
@@ -186,6 +200,7 @@ function filterUnverifiedCarbonFindings(findings) {
     stats: {
       total: findings.length,
       carbonSpecific: carbonSpecificCount,
+      dualVerified: dualVerifiedCount,
       carbonVerified: carbonVerifiedCount,
       filtered: filteredCount
     }

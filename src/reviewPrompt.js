@@ -5,40 +5,47 @@
 /**
  * Estimate token usage for a PR review
  *
- * @param {Object} options - Token estimation options
+ * @param {Object} options
  * @param {string} options.prompt - Review prompt text
  * @param {string} options.diff - PR diff content
  * @param {string} options.agentOutput - Agent's output
- * @returns {Object} - Token usage estimate { input: number, output: number, total: number }
+ * @returns {Object} - { input: number, output: number, total: number }
  */
 function estimateTokenUsage({ prompt, diff, agentOutput }) {
-  // Rough estimation: 1 token ≈ 4 characters for English text
-  // This is a conservative estimate; actual tokenization varies by model
   const CHARS_PER_TOKEN = 4;
-  
-  const inputChars = (prompt?.length || 0) + (diff?.length || 0);
+  const inputChars  = (prompt?.length || 0) + (diff?.length || 0);
   const outputChars = agentOutput?.length || 0;
-  
-  const inputTokens = Math.ceil(inputChars / CHARS_PER_TOKEN);
+  const inputTokens  = Math.ceil(inputChars  / CHARS_PER_TOKEN);
   const outputTokens = Math.ceil(outputChars / CHARS_PER_TOKEN);
-  const totalTokens = inputTokens + outputTokens;
-  
-  return {
-    input: inputTokens,
-    output: outputTokens,
-    total: totalTokens
-  };
+  return { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens };
 }
 
 // ---------------------------------------------------------------------------
-// Severity guidance shown to PR authors inline and in summary
+// Recommendation labels and submitter-facing advice copy
 // ---------------------------------------------------------------------------
+
+const RECOMMENDATION_LABELS = {
+  'consider-revising':     'Consider Revising',
+  'suggested-improvements':'Suggested Improvements',
+  'looks-good':            'Looks Good'
+};
+
+const RECOMMENDATION_ADVICE = {
+  'consider-revising':
+    'There are issues in this PR that should be addressed before merging. ' +
+    'Please review the findings below — the blocking and major items include specific suggestions on what to change.',
+  'suggested-improvements':
+    'This PR is on the right track. The findings below are suggestions worth considering before or shortly after merging — ' +
+    'none are hard blockers, but addressing them would improve correctness or maintainability.',
+  'looks-good':
+    'No blocking or major issues were found. Any nit-level notes below are entirely optional and provided for completeness.'
+};
 
 const SEVERITY_GUIDANCE = {
   blocking: 'Should be resolved before this ships.',
-  major: 'Worth addressing before merge.',
-  minor: 'Consider addressing — not a hard blocker.',
-  nit: 'Optional — provided for completeness.'
+  major:    'Worth addressing before merge.',
+  minor:    'Consider addressing — not a hard blocker.',
+  nit:      'Optional — provided for completeness.'
 };
 
 // ---------------------------------------------------------------------------
@@ -46,23 +53,18 @@ const SEVERITY_GUIDANCE = {
 // ---------------------------------------------------------------------------
 
 /**
- * Format inline review comment for a specific finding
+ * Format inline review comment for a specific finding.
+ * Verification evidence is intentionally omitted — the header line in the
+ * summary comment communicates connection status for the whole review.
  *
- * @param {Object} finding - Finding object
- * @returns {string} - Formatted inline comment
+ * @param {Object} finding
+ * @returns {string}
  */
 function formatInlineComment(finding) {
   const guidance = SEVERITY_GUIDANCE[finding.severity] || '';
   let comment = `**${finding.title}**\n\n`;
   comment += `> **[${finding.severity}]** ${guidance}\n\n`;
-  comment += finding.body + '\n\n';
-
-  if (finding.carbonVerified && finding.verificationSource === 'carbon-mcp') {
-    comment += `*✓ Verified with Carbon MCP*\n`;
-  } else if (finding.carbonVerified && finding.verificationSource === 'carbon-builder-skill') {
-    comment += `*✓ Verified with Carbon Builder Skill*\n`;
-  }
-
+  comment += finding.body + '\n';
   return comment;
 }
 
@@ -71,78 +73,96 @@ function formatInlineComment(finding) {
 // ---------------------------------------------------------------------------
 
 /**
- * Format summary comment with spec-compliant template
+ * Format summary comment with spec-compliant template.
  *
- * @param {Object} options - Formatting options
- * @param {string} options.agent - Agent name (bob, claude, codex)
- * @param {string} options.summaryMarkdown - Agent's summary markdown
- * @param {number} options.prNumber - PR number
- * @param {string} options.commitSha - Head commit SHA
- * @param {Array} [options.inlineFindings] - Findings posted as inline comments
- * @param {Array} [options.summaryFindings] - Findings included in summary
- * @param {Object} [options.tokenUsage] - Token usage estimate { input, output, total }
- * @returns {string} - Formatted summary comment
+ * @param {Object}  options
+ * @param {string}  options.agent
+ * @param {string}  options.summaryMarkdown
+ * @param {number}  options.prNumber
+ * @param {string}  options.commitSha
+ * @param {Array}   [options.inlineFindings]
+ * @param {Array}   [options.summaryFindings]
+ * @param {Object}  [options.tokenUsage]
+ * @param {Object}  [options.carbonVerification]   - { skillConnected, mcpConnected }
+ * @param {string}  [options.recommendation]
+ * @param {string}  [options.recommendationRationale]
+ * @param {Array}   [options.findingsTable]
+ * @returns {string}
  */
-function formatSummaryComment({ agent, summaryMarkdown, prNumber, commitSha, inlineFindings = [], summaryFindings = [], tokenUsage = null, carbonVerification = null }) {
-  let comment = `[AI agent review — Carbon grounded]\n\n`;
-  comment += `Reviewed by: ${agent}\n`;
-
-  // Single-line Carbon verification status
+function formatSummaryComment({
+  agent,
+  summaryMarkdown,
+  prNumber,
+  commitSha,
+  inlineFindings       = [],
+  summaryFindings      = [],
+  tokenUsage           = null,
+  carbonVerification   = null,
+  recommendation       = 'looks-good',
+  recommendationRationale = '',
+  findingsTable        = []
+}) {
+  const recLabel  = RECOMMENDATION_LABELS[recommendation] || recommendation;
+  const recAdvice = RECOMMENDATION_ADVICE[recommendation] || '';
   const cv = carbonVerification || {};
-  let verificationLine;
-  if (cv.skillConnected && cv.mcpConnected) {
-    verificationLine = `Carbon verification: Carbon Builder Skill active, Carbon MCP active`;
-  } else if (cv.skillConnected) {
-    verificationLine = `Carbon verification: Carbon Builder Skill active`;
-  } else if (cv.mcpConnected) {
-    verificationLine = `Carbon verification: Carbon MCP active (skill files unavailable)`;
-  } else {
-    verificationLine = `Carbon verification: unavailable — Carbon-specific findings omitted`;
-  }
-  comment += `${verificationLine}\n\n`;
 
-  // Add agent's summary
+  // ── Header ─────────────────────────────────────────────────────────────
+  let comment = `[AI agent review — Carbon grounded] · **${recLabel}**\n\n`;
+  comment += `Reviewed by: ${agent} · Commit: ${commitSha.substring(0, 7)}\n`;
+
+  // Single-line verification status — connected/disconnected per source
+  const skillStatus = cv.skillConnected ? 'Carbon Builder Skill connected' : 'Carbon Builder Skill disconnected';
+  const mcpStatus   = cv.mcpConnected   ? 'Carbon MCP connected'           : 'Carbon MCP disconnected';
+  comment += `Carbon verification: ${skillStatus} · ${mcpStatus}.\n\n`;
+
+  // ── Recommendation section ─────────────────────────────────────────────
+  comment += `## Recommendation\n\n`;
+  if (recommendationRationale) {
+    comment += `${recommendationRationale}\n\n`;
+  }
+  comment += `${recAdvice}\n\n`;
+
+  // ── Findings table ─────────────────────────────────────────────────────
+  if (findingsTable && findingsTable.length > 0) {
+    comment += `## Findings\n\n`;
+    comment += `| Area | Category | Severity | Finding | File |\n`;
+    comment += `|------|----------|----------|---------|------|\n`;
+    for (const row of findingsTable) {
+      const safe = v => String(v || '').replace(/[|\n\r]/g, ' ').trim();
+      comment += `| ${safe(row.area)} | ${safe(row.category)} | ${safe(row.severity)} | ${safe(row.title)} | ${safe(row.file)} |\n`;
+    }
+    comment += '\n';
+  }
+
+  // ── Agent summary ──────────────────────────────────────────────────────
+  comment += `## Summary\n\n`;
   comment += summaryMarkdown + '\n\n';
-  
-  // Add findings that couldn't be posted inline
+
+  // ── Additional findings that couldn't be posted inline ─────────────────
   if (summaryFindings && summaryFindings.length > 0) {
     comment += `## Additional Findings\n\n`;
     comment += `The following findings could not be mapped to specific lines in the diff:\n\n`;
-    
+
     summaryFindings.forEach((finding, index) => {
       const guidance = SEVERITY_GUIDANCE[finding.severity] || '';
       comment += `### ${index + 1}. ${finding.title}\n\n`;
       comment += `**File:** \`${finding.file}\``;
-      if (finding.line) {
-        comment += ` (Line ${finding.line})`;
-      }
+      if (finding.line) comment += ` (Line ${finding.line})`;
       comment += `\n**Severity:** ${finding.severity} — ${guidance}\n\n`;
       comment += finding.body + '\n\n';
-
-      if (finding.carbonVerified && finding.verificationSource === 'carbon-mcp') {
-        comment += `*✓ Verified with Carbon MCP*\n\n`;
-      } else if (finding.carbonVerified && finding.verificationSource === 'carbon-builder-skill') {
-        comment += `*✓ Verified with Carbon Builder Skill*\n\n`;
-      }
-
       comment += '---\n\n';
     });
   }
-  
-  // Add review artifacts
-  comment += `Review artifacts:\n`;
+
+  // ── Review artifacts ────────────────────────────────────────────────────
+  comment += `Review artifacts:\n\n`;
   comment += `- PR: #${prNumber}\n`;
   comment += `- Commit: ${commitSha.substring(0, 7)}\n`;
   comment += `- Agent: ${agent}\n`;
-  
-  if (inlineFindings && inlineFindings.length > 0) {
-    comment += `- Inline comments: ${inlineFindings.length}\n`;
-  }
-  if (summaryFindings && summaryFindings.length > 0) {
-    comment += `- Summary findings: ${summaryFindings.length}\n`;
-  }
-  
-  // Add token usage estimate if available
+  if (inlineFindings  && inlineFindings.length  > 0) comment += `- Inline comments: ${inlineFindings.length}\n`;
+  if (summaryFindings && summaryFindings.length > 0) comment += `- Summary findings: ${summaryFindings.length}\n`;
+
+  // ── Token usage ─────────────────────────────────────────────────────────
   if (tokenUsage) {
     comment += `\n---\n\n`;
     comment += `**Estimated Token Usage:**\n`;
@@ -151,227 +171,181 @@ function formatSummaryComment({ agent, summaryMarkdown, prNumber, commitSha, inl
     comment += `- Total tokens: ~${tokenUsage.total.toLocaleString()}\n`;
     comment += `\n*Note: Token estimates are approximate and based on character count (1 token ≈ 4 characters).*\n`;
   }
-  
+
   return comment;
 }
 
+// ---------------------------------------------------------------------------
+// buildReviewPrompt
+// ---------------------------------------------------------------------------
+
 /**
- * Build the prompt for the AI agent
- * 
- * @param {Object} options - Prompt options
- * @param {string} options.owner - Repository owner
- * @param {string} options.repo - Repository name
- * @returns {string} - Formatted prompt
+ * Build the prompt for the AI agent.
+ *
+ * @param {Object}  options
+ * @param {string}  options.owner
+ * @param {string}  options.repo
+ * @param {boolean} [options.skillRefsAvailable=true]
+ * @returns {string}
  */
 function buildReviewPrompt({ owner, repo, skillRefsAvailable = true }) {
-  // Local path to skill reference files inside this bundle (always present when skillRefsAvailable=true)
   const SKILL_REF_PATH = '.bob/skills/carbon-builder/references';
 
-  const skillPrimaryInstructions = skillRefsAvailable
-    ? `**STEP 1 — Carbon Builder Skill reference files (FIRST — MANDATORY file reads required):**
-The Carbon Builder Skill reference files are bundled locally. For every Carbon PR review, you MUST use your file-read tool to open and read the relevant file(s) before writing any Carbon finding. Completing this step does NOT satisfy verification — you must always proceed to STEP 2 (Carbon MCP) afterward.
+  // ── Step 2 verification instructions (inlined once, referenced by name) ──
 
-The reference files are at: \`${SKILL_REF_PATH}/\`
+  const step2SkillBlock = skillRefsAvailable
+    ? `**Step 2a — Read Carbon Builder Skill files first (mandatory before any MCP call):**
+Files at \`${SKILL_REF_PATH}/\` — use your file-read tool to physically open the relevant file:
+- \`implementation-guardrails.md\` — component/API correctness, accessibility, tokens (start here)
+- \`framework-rules.md\` — React vs Web Components, SCSS, spacing tokens
+- \`common-pitfalls.md\` — Web Components styling, missing style imports
 
-**MANDATORY: Before writing any Carbon finding, use your file-read tool to open at least one of these files:**
-- \`${SKILL_REF_PATH}/implementation-guardrails.md\` — stability policy, package rules, component/API correctness, styling/theming discipline, layout/accessibility guardrails
-- \`${SKILL_REF_PATH}/framework-rules.md\` — React vs Web Components rules, SCSS setup, IBM Plex font, spacing tokens
-- \`${SKILL_REF_PATH}/common-pitfalls.md\` — Web Components styling mistakes, missing style imports, theme class issues
-- \`${SKILL_REF_PATH}/implementation-guardrails.md\` is the most important — read it first for any Carbon component finding
+Find text directly relevant to the finding. Copy verbatim into \`skillEvidence\` as \`"filename: 'exact sentence'"\`.
+Set \`skillConnected: true\`, \`skillProof\` = same verbatim sentence.
+Then proceed to Step 2b — never stop here.`
+    : `**Step 2a — Skill files NOT available.** Set \`skillConnected: false\`. Proceed to Step 2b.`;
 
-**You MUST physically read the file using your file-read tool. You CANNOT skip this step or claim you read it without actually opening the file.**
-
-**How to use the skill reference files:**
-1. Read the diff to identify what Carbon components, patterns, or tokens are involved.
-2. Use your file-read tool to open the most relevant reference file(s) — start with \`implementation-guardrails.md\`.
-3. Scan the file content for text that directly relates to the finding.
-4. If you find supporting text, copy the exact sentence(s) verbatim into \`skillEvidence\` with the filename.
-5. Set \`skillConnected: true\` and populate \`skillProof\` with the verbatim line you found.
-6. **Now proceed to STEP 2 (Carbon MCP). This is always required — do not stop here.**
-
-**CRITICAL: skillProof and skillEvidence MUST be verbatim text you read from the file — not a paraphrase, not a summary, not text you wrote yourself.**
-- VALID: \`"implementation-guardrails.md: 'Icon-only interactive controls must include descriptive iconDescription.'"\`
-- INVALID: \`"implementation-guardrails.md: Reviewed for Carbon component API correctness."\` ← you wrote this, it is not in the file
-- INVALID: \`"implementation-guardrails.md: 'Keep overlay/floating UI out of normal page Grid flow.'"\` ← layout rule, unrelated to the finding about role attribute
-
-For \`carbonVerification\` in your JSON output when using skill reference files:
-- Set \`skillConnected: true\`
-- Populate \`skillProof\` with a sentence you read verbatim from the file that is **directly relevant to what this PR changes**.
-- If the PR had no Carbon violations, skillProof should quote a rule the PR correctly follows (e.g. if the PR correctly uses role on a dialog, quote the accessibility rule about dialog roles).`
-    : `**STEP 1 — Carbon Builder Skill reference files are NOT available in this bundle.**
-Proceed directly to STEP 2 (Carbon MCP) for Carbon-specific verification.
-Set \`skillConnected: false\` in carbonVerification.`;
-
-  const mcpSecondaryInstructions = `**STEP 2 — Carbon MCP (ALWAYS REQUIRED after Step 1 for every Category 1 finding):**
-After reading the skill reference files in Step 1, you MUST call Carbon MCP tools (server name: \`carbon-mcp\`) for every Category 1 finding. There are no conditions — this step is always required. Use it to:
-- Confirm how the specific Carbon component actually behaves (disabled states, ARIA patterns, rendering modes, prop interactions)
-- Verify prop names, required fields, valid variants, and documented accessibility patterns
-- Surface component-level documentation that the skill files do not cover
-
-Carbon MCP tools available:
-1. **code_search** - Search for components, icons, pictograms, variants, and code examples
-2. **docs_search** - Search design/usage/accessibility documentation for components and tokens
-3. **get_charts** - Verify Carbon Charts usage, options, and variants
-
-- If ANY MCP tool call succeeds, set \`mcpConnected: true\` and populate \`mcpProof\` with a verbatim snippet from the response.
-- If all MCP calls fail due to a network/connection error, set \`mcpConnected: false\` and omit the finding.
-- Tool-specific non-results (e.g. "no results found") do NOT mean MCP is unavailable — try a different query or tool.
-- Set \`verificationSource: "carbon-mcp"\` and populate \`mcpEvidence\` with a direct quote from the tool response.`;
+  const step2McpBlock = `**Step 2b — Carbon MCP (after Step 2a, for every Category 1 item):**
+Call carbon-mcp tools (server: \`carbon-mcp\`). Prefer \`code_search\` (size:2) then \`docs_search\` (size:3).
+When \`example_omitted:true\`, follow \`requery_hint\` (size:1) before falling back.
+Stop after 2 calls for the same prop. If MCP succeeds: set \`mcpConnected:true\`, copy a verbatim snippet into \`mcpEvidence\` and \`mcpProof\`.
+If ALL calls fail (network error): set \`mcpConnected:false\` — post the finding using skill evidence only (set \`verificationSource:"carbon-builder-skill"\`).
+Tool-specific "no results" ≠ network failure — try a different query first.`;
 
   return `You are an agentic PR reviewer for ${owner}/${repo}.
 
-**You are reviewing a Carbon Design System PR. For every Category 1 (Carbon-specific) finding, you MUST complete both steps in order: Step 1 — read Carbon Builder Skill reference files; Step 2 — call Carbon MCP. Both are mandatory. Carbon MCP is never optional for Category 1.**
+**OUTPUT CONTRACT:**
+- Keep ALL reasoning, step narration, and MCP call details inside \`<think>\` tags.
+- Outside \`<think>\`, write ONLY: catalogue lines, NO-FINDINGS/SKIP lines, and the final JSON block.
+- Do not call attempt_completion. Writing the JSON between BEGIN_REVIEW_JSON / END_REVIEW_JSON IS completion.
+- Do not end your response without the JSON block, even when findings is empty.
 
-Review the PR bundle in the current directory:
-- PR_REVIEW_REQUEST.md (summary of the PR)
-- pr.json (PR metadata)
-- files.json (list of changed files)
-- diff.patch (unified diff of changes)
+---
 
-**IMPORTANT: Only review the SOURCE CODE files listed in files.json. DO NOT review the bundle files themselves (diff.patch, pr.json, files.json, PR_REVIEW_REQUEST.md).**
+## Step 1 — Catalogue the diff
 
-Primary objective:
-Find correctness, accessibility, test, migration, and Carbon Design System issues introduced by this PR.
+Read PR_REVIEW_REQUEST.md (contains PR description, changed files, and full diff). Do not read pr.json, files.json, or diff.patch separately.
 
-**CRITICAL: Carbon Ground-Truth Enforcement**
+For each suspicious item write one line:
+\`[file:line] — [what you saw] — [Cat1|Cat2] — pending\`
 
-**Carbon verification is a mandatory two-step sequence for every Category 1 finding: Step 1 — read Carbon Builder Skill files (first); Step 2 — call Carbon MCP (always, after Step 1). Skill files alone do not complete verification.**
+Cat1 = about whether a specific Carbon element accepts a specific attribute/prop/variant → must verify.
+Cat2 = generic correctness, accessibility omission, or diff-visible markup issue → no MCP needed.
 
-${skillPrimaryInstructions}
+For files with no issues: \`NO-FINDINGS [filename] — [reason]\`
+For test fixtures/runners: \`SKIP [filename] — [fixture|test]\`
 
-${mcpSecondaryInstructions}
+Only review SOURCE CODE files in "Changed Files". Skip bundle files (dist/, es/, lib/, .min.js).
+Config/tooling files (.figma.ts, .config.ts, storybook, .scss, .css) ARE source — review them.
 
-You MUST categorize each finding correctly — there are ONLY TWO categories:
+**Rubric — check each changed file for:**
+| # | Check | Cat |
+|---|-------|-----|
+| 1 | Attribute on wrong element in parent/child pair | 1 |
+| 2 | Variant block emits markup identical to default | 2 |
+| 3 | Interactive child element missing aria-label | 2 |
+| 4 | Module comment contradicts TODO in same file | 2 |
+| 5 | TODO references a specific Carbon prop name | 1 |
+| 6 | New abstraction introduced but old raw value still read in same hunk | 2 |
+| 7 | Abstraction argument can produce non-unique value (e.g. \`id ?? ''\`) | 2 |
+| 8 | New/modified interactive element missing aria-label/describedby/alt/role; or \`aria-disabled\` on anchor with unguarded \`href\` | 2 |
+| 9 | Type/framework guarantee contradicted by usage: \`!\` + \`?.\` on same field; \`@query\` selector can be empty; \`firstUpdated\` skips super; React hook in condition/loop; unawaited async; keydown without \`defaultPrevented\` check when slot/children present; unsafe DOM cast without instanceof | 2 |
+| 10 | Key prop can produce empty string or non-unique value | 2 |
+| 11 | Public export/prop/event removed or renamed without deprecation notice | 1 |
+| 12 | Icon name or size variant introduced or changed | 1 |
+| 13 | New exported function / public method / new runtime behaviour with no test file in "Changed Files" | 2 |
+| 14 | Public API surface change with no CHANGELOG/BREAKING_CHANGES entry (only when those files absent from "Changed Files") | 2 |
+| 15a | .scss: removed min/max-block-size or min/max-inline-size with no replacement | 2 |
+| 15b | .scss: \`+\` line widens selector or adds :not() without scoping modifier class | 2 |
+| 15c | .scss: explicit block-size added for some size variants but not others | 2 |
+| 15d | .scss: \`convert.to-rem(Npx)\` where N maps to a Carbon \$spacing-* token (16→05, 24→06, 32→07, 40→08, 48→09, 64→10, 80→11) — one entry per call | 2 |
 
-**Category 1: Carbon-Specific Findings (USE CARBON BUILDER SKILL FIRST, THEN CARBON MCP)**
-   - ANY finding about Carbon Design System components, props, tokens, icons, or patterns
-   - **Examples that MUST be Category 1:**
-     * "DataTable missing required 'headers' prop" → Category 1 (mentions DataTable component)
-     * "TextInput missing required 'labelText' prop" → Category 1 (mentions TextInput component)
-     * "Using native HTML table instead of Carbon DataTable" → Category 1 (mentions DataTable)
-     * "Carbon Button missing iconDescription prop" → Category 1 (mentions Carbon Button component)
-     * "Using native checkbox instead of Carbon Checkbox" → Category 1 (mentions Checkbox)
-     * "Invalid use of Carbon tokens" → Category 1 (mentions Carbon tokens)
-     * "Missing @carbon/react import" → Category 1 (mentions @carbon package)
-     * "Button component should use Carbon Button" → Category 1 (mentions Carbon Button)
-   
-   - **REQUIRED — both steps, always, in order:**
-     * Step 1 (first): read skill reference files at \`${SKILL_REF_PATH}/\` — note any relevant guardrail text
-     * Step 2 (after Step 1, always): call carbon-mcp \`docs_search\` or \`code_search\` for the component/pattern
-     * Set \`carbonVerified: true, verificationSource: "carbon-mcp"\` once MCP returns evidence
-     * Skill files alone never satisfy verification — Step 2 must always happen
+---
 
-   - **If BOTH the skill reference files and Carbon MCP yield no supporting evidence: omit the finding entirely**
-     * Do NOT use raw model memory as evidence
-     * Do NOT post an unverified Carbon claim with a warning
-     * An unverified Carbon claim is invalid and must not be posted
+## Step 2 — Resolve every pending item
 
-**Category 2: Non-Carbon Findings (DO NOT USE CARBON MCP OR SKILL FILES)**
-   - Generic code quality issues that don't mention Carbon
-   - **Examples that MUST be Category 2:**
-     * "Function name should be more descriptive" → Category 2 (generic naming)
-     * "Missing test coverage for new components" → Category 2 (generic testing)
-     * "Missing test coverage for new title attribute behavior" → Category 2 (generic testing)
-     * "Potential memory leak in useEffect" → Category 2 (generic React issue)
-     * "Variable 'x' should be renamed" → Category 2 (generic naming)
-     * "Performance issue with large array" → Category 2 (generic performance)
-     * "Consider adding title prop for consistency" → Category 2 (generic HTML attribute suggestion)
-   
-   - Set: \`carbonVerified: false, verificationSource: "not-carbon-specific"\`
+**If Cat1:**
 
-**CRITICAL RULE:**
-If your finding is specifically about a Carbon component's API — missing or incorrect props,
-wrong variants, incorrect token usage, accessibility pattern violations — AND mentions one of
-these components, it MUST be Category 1:
-- DataTable, TextInput, Button, Checkbox, Dropdown, Modal, Accordion, Tabs, Toggle, TextArea
-- @carbon, Carbon, carbon-react, carbon-icons
-- Any component name from Carbon Design System
+${step2SkillBlock}
 
-**EXCEPTION — Always Category 2 regardless of file name or component names mentioned:**
-If the finding is about framework or language behaviour, it is NEVER Carbon-specific:
-- Lit lifecycle: firstUpdated(), updated(), connectedCallback(), @query, @state, updateComplete
-- React hooks: useEffect, useState, useRef, useMemo, useCallback
-- TypeScript: type errors, generics, type assertions, interface mismatches
-- Event listener registration patterns, timing issues, async/await patterns
-- Memory leaks, observer cleanup, garbage collection
-- Test coverage gaps, test infrastructure, assertion patterns
-- Generic naming, formatting, or code style issues
+${step2McpBlock}
 
-Ask yourself: "Could this exact finding appear on a non-Carbon component that uses the same
-framework?" If YES → Category 2. If NO (it is only wrong because of Carbon's specific API) → Category 1.
+Update to \`confirmed finding\` or \`discarded: [reason]\` (inside \`<think>\`).
 
-**VERIFICATION ENFORCEMENT:**
-If your finding is Category 1 (about a Carbon component's API):
-- Step 1: you MUST read skill reference files at \`${SKILL_REF_PATH}/\` — record any relevant verbatim text
-- Step 2: you MUST call carbon-mcp \`docs_search\` or \`code_search\` — this is always required after Step 1
-- Skill files alone NEVER satisfy verification — a finding is not verified until MCP has been called
-- Set \`verificationSource: "carbon-mcp"\` once MCP returns evidence for the finding
-- You CANNOT use verificationSource: "not-carbon-specific" for Carbon API findings
-- If MCP returns no results, try a different query; if MCP has a connection error, omit the finding entirely
+**If Cat2:** decide from diff alone → \`confirmed finding\` or \`discarded: [reason]\` (inside \`<think>\`).
 
-DO NOT mark findings about Carbon component APIs as "not-carbon-specific" — this is incorrect!
-DO NOT mark findings about framework behaviour as "carbon-builder-skill" or "carbon-mcp" just because they appear in a Carbon file — this is also incorrect!
+No item may remain \`pending\` when you reach Step 3. If any do, resolve them first.
+Check whether the rest of the diff compensates for the concern before confirming a finding.
 
-**EVIDENCE REQUIREMENT:**
-For every finding where verificationSource is "carbon-builder-skill", you MUST populate the "skillEvidence" field with a verbatim quote from one of the skill's reference files that supports the finding. This must be real text copied from the file — not a paraphrase.
+**Valid discard — Cat1:** MCP returned direct evidence (quote from example_clean/props_used/chunk_text) that the API usage is correct.
+**Valid discard — Cat2:** Cite the specific diff line (file:line) that resolves the concern and explain why in one sentence.
 
-Examples of valid skillEvidence:
-- "implementation-guardrails.md: 'Icon-only interactive controls must include descriptive iconDescription.'"
-- "framework-rules.md: 'Never use inline token strings — token strings do NOT resolve at runtime.'"
-- "common-pitfalls.md: 'Missing app-entry style import — import styles before component imports.'"
+---
 
-For every finding where verificationSource is "carbon-mcp", you MUST populate the "mcpEvidence" field with a direct quote or excerpt from the actual MCP tool response that supports the finding. This must be real text returned by the tool — not a paraphrase, not a description of what the tool does, not a summary you wrote yourself.
+## Step 3 — Compile confirmed findings
 
-Examples of valid mcpEvidence:
-- "code_search returned: 'iconDescription: The description of the icon, used for screen reader accessibility. Required when hasIconOnly is true.'"
-- "docs_search returned: 'labelText - Required. Provide a label to describe the input for accessibility purposes.'"
+**Category rules:**
 
-Examples of INVALID evidence (these will be treated as hallucinated verification):
-- "Carbon MCP confirms this component requires the prop"
-- "Verified via code_search"
-- "MCP tools confirm the usage pattern"
-- "Carbon Builder Skill confirmed this"
-- "" (empty string)
-- omitting the field entirely
+Cat1 (Carbon-specific) — finding is about Carbon component props, tokens, variants, icons, or accessibility patterns.
+- Verify with Step 2a (skill) then Step 2b (MCP). If BOTH yield no evidence, omit entirely.
+- \`carbonVerified:true\`, \`verificationSource:"carbon-mcp"\` (or \`"carbon-builder-skill"\` when MCP failed)
+- \`skillEvidence\`: verbatim sentence from skill file. \`mcpEvidence\`: verbatim quote from MCP response. Omit if empty.
+- "Could this appear on a non-Carbon component in the same framework?" → if YES it is Cat2.
 
-If you cannot provide a real quote from the tool or skill response, you did not successfully verify. Omit the finding entirely.
+Cat2 (non-Carbon) — generic correctness, accessibility, test coverage, migration visible in the diff.
+- Do NOT use MCP or skill files.
+- \`carbonVerified:false\`, \`verificationSource:"not-carbon-specific"\`
 
-**CARBON VERIFICATION STATUS — MANDATORY TOP-LEVEL FIELD:**
-You MUST include a \`carbonVerification\` object in your JSON output. This field is always required and always shown to the PR author.
+**Always Cat2 (never Cat1):** Lit lifecycle, React hooks, TypeScript types, event listener patterns, async/await, memory leaks, test coverage, naming.
+**Always Cat1 in config/tooling files:** finding about whether a specific attribute name exists on a specific Carbon element.
 
-- \`skillConnected\`: set \`true\` if you physically opened and read a skill reference file using your file-read tool. Set \`false\` if you did not open any file.
-- \`skillProof\`: populate with a verbatim sentence you read from the file that is directly relevant to what this PR changes. Leave empty string if skillConnected is false.
-- \`mcpConnected\`: set \`true\` ONLY if you actually called a carbon-mcp tool AND it returned a successful response. For any Category 1 finding, MCP must always be called — "skill files were sufficient" is not a valid reason to skip it. Set \`false\` only if all MCP calls failed due to network/connection errors.
-- \`mcpProof\`: populate with a short verbatim snippet from the actual MCP tool response. Leave empty string if mcpConnected is false.
+**Severity:**
+- \`blocking\` — breaks user-facing behaviour or a11y requirement, no workaround in diff.
+- \`major\` — likely visible rendering difference, runtime error, or production regression.
+- \`minor\` — maintainability debt or subtle behaviour difference with evidence of functional impact.
+- \`nit\` — conventional/hygiene only, no functional consequence. Token substitutions, missing comments, changelog on non-public APIs, test gaps covered by play() → always \`nit\`.
 
-**SUMMARY CONTENT RULE:**
-Only mention Carbon skill/MCP availability in summaryMarkdown if you had Carbon-specific findings that could not be posted because neither path was available. Do not mention verification status in the summary — it appears in its own block above the summary.
+**body rule:** \`minor\`/\`major\`/\`blocking\` must end with an imperative sentence: what the submitter should do.
 
-**FINAL STEP — MANDATORY:**
-When you have finished reading the diff and calling any necessary MCP tools, you MUST write the JSON output block below. This is required — do not end your response without it. The review is not complete until the JSON between BEGIN_REVIEW_JSON and END_REVIEW_JSON markers is written.
+---
 
-Return exactly this JSON between markers:
+## Step 4 — Output the JSON
+
+\`summaryMarkdown\`: 1–2 sentences on what the PR does + one sentence on finding count/severity. No emoji, no headings, no verification claims.
+
+\`recommendation\`: \`"consider-revising"\` (any blocking/major) | \`"suggested-improvements"\` (minor only) | \`"looks-good"\` (nit or none).
+\`recommendationRationale\`: one sentence, e.g. "4 major findings that should be addressed before merge."
+
+\`carbonVerification\`:
+- \`skillConnected\`: true if you physically opened a skill file.
+- \`skillProof\`: verbatim sentence from file relevant to this PR. Empty string if false.
+- \`mcpConnected\`: true ONLY if a carbon-mcp tool call succeeded.
+- \`mcpProof\`: short verbatim snippet from MCP response. Empty string if false.
+
+\`findingsTable\`: one entry per confirmed finding. Plain text only — no pipes, newlines, or backslashes in any field.
 
 BEGIN_REVIEW_JSON
 {
   "carbonVerification": {
     "skillConnected": true,
-    "skillProof": "filename + verbatim quote, e.g. 'implementation-guardrails.md: Icon-only interactive controls must include descriptive iconDescription.'",
-    "mcpConnected": false,
-    "mcpProof": "short verbatim snippet from a successful MCP tool call (populate only when MCP was also used for additional precision)"
+    "skillProof": "implementation-guardrails.md: 'exact sentence read from file'",
+    "mcpConnected": true,
+    "mcpProof": "short verbatim snippet from MCP response"
   },
-  "summaryMarkdown": "string",
+  "recommendation": "consider-revising",
+  "recommendationRationale": "4 major findings that should be addressed before merge.",
+  "summaryMarkdown": "1-2 sentences on what the PR does. N findings: severity breakdown.",
   "findings": [
     {
       "severity": "blocking|major|minor|nit",
       "file": "repo-relative path",
       "line": 123,
-      "title": "short title — plain text, no pipes or newlines",
-      "body": "specific actionable comment",
+      "title": "short title — plain text, no pipes",
+      "body": "observation + imperative suggestion (required for minor/major/blocking)",
       "carbonVerified": true,
-      "verificationSource": "carbon-builder-skill|carbon-mcp|not-carbon-specific",
-      "skillEvidence": "direct quote from skill reference file (required when verificationSource is carbon-builder-skill, omit otherwise)",
-      "mcpEvidence": "direct quote from MCP tool response (required when verificationSource is carbon-mcp, omit otherwise)"
+      "verificationSource": "carbon-mcp|carbon-builder-skill|not-carbon-specific",
+      "skillEvidence": "filename: 'verbatim sentence' (Cat1 only, omit for Cat2)",
+      "mcpEvidence": "verbatim quote from tool response (Cat1 with MCP only, omit otherwise)"
     }
   ],
   "findingsTable": [
@@ -379,18 +353,13 @@ BEGIN_REVIEW_JSON
       "area": "Carbon API|General",
       "category": "Cat 1|Cat 2",
       "severity": "blocking|major|minor|nit",
-      "title": "short title — plain text only, no pipes or newlines",
-      "file": "repo-relative path — plain text only, no pipes"
+      "title": "short title — plain text only",
+      "file": "repo-relative path — plain text only"
     }
   ],
   "shouldPostInlineComments": true
 }
 END_REVIEW_JSON
-
-Notes on verificationSource:
-- "carbon-mcp": Expected for all Category 1 findings after both steps complete — mcpEvidence MUST contain a direct quote from the tool response
-- "carbon-builder-skill": Only valid as a fallback when MCP has a connection failure — skillEvidence MUST contain a verbatim quote from a reference file. Do not use this when MCP is reachable.
-- "not-carbon-specific": Non-Carbon finding (generic correctness, accessibility, test, or migration issue)
 `;
 }
 

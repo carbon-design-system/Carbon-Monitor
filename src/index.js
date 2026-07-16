@@ -234,7 +234,10 @@ async function reviewPRs() {
             inlineFindings,
             summaryFindings,
             tokenUsage,
-            carbonVerification: review.carbonVerification || null
+            carbonVerification: review.carbonVerification || null,
+            recommendation: review.recommendation || 'looks-good',
+            recommendationRationale: review.recommendationRationale || '',
+            findingsTable: review.findingsTable || []
           });
           
           await client.postSummaryComment({
