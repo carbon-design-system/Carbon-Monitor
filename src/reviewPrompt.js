@@ -254,7 +254,7 @@ Do not skip files. Do not stop cataloguing because the changes look safe. Comple
 You may skip a file without a catalogue entry ONLY if it is a test fixture (__testfixtures__ path) or a test runner file (__tests__ path). For every skipped file write exactly:
 \`SKIP [filename] — [fixture|test]\`
 
-All other files require at least one catalogue entry or an explicit \`NO-FINDINGS [filename] — [one-sentence reason]\` line.
+All other files require at least one catalogue entry or an explicit \`NO-FINDINGS [filename] — [one-sentence reason]\` line. **Exception:** a \`NO-FINDINGS\` line may not be used to dismiss a file or block that contains a \`+\` line with an \`as SomeType\` cast applied to the return value of a DOM collection or search API (\`children\`, \`querySelector\`, \`querySelectorAll\`, \`assignedElements\`, \`assignedNodes\`, \`firstElementChild\`, \`lastElementChild\`, \`nextElementSibling\`, or \`.find()\`/\`.filter()\` on such a collection) without a preceding \`instanceof\` check on the cast target — such a cast must produce a catalogue entry (pending or discarded). **Do not apply this exception to** \`event.target as X\` or \`event.currentTarget as X\` casts, or to casts on values already inside an \`instanceof\` block — those are safe and may be covered by \`NO-FINDINGS\`.
 
 **Write every catalogue and NO-FINDINGS line in your visible response — not inside <thinking>.** The downstream parser inspects the text before BEGIN_REVIEW_JSON for these exact formats. A run where none appear will be marked unreliable and flagged to the reviewer regardless of what the findings array contains.
 
@@ -299,6 +299,45 @@ In addition, for EVERY changed source file apply these rubric checks during the 
 
 **Stories-file default export change (independent of test coverage)** — if the diff adds or modifies \`args:\` or \`argTypes:\` on the default export of a stories file, check whether this silently changes the rendered output of all existing stories in that file that do not override those values. If yes, this is a catalogue item (new implicit runtime behaviour affecting existing stories). A \`play()\` block does not discharge this check. You may discard this item only if you can quote a specific diff line showing all existing stories in the file already explicitly override the changed args. — **Category 2**
 14. **Changelog / API hygiene** — a public API surface changes (component added, prop added/removed, event renamed) with no entry in a changelog or breaking-changes file. **Scope: apply this check only when NO \`CHANGELOG\`, \`CHANGELOG.md\`, \`BREAKING_CHANGES\`, or \`BREAKING_CHANGES.md\` file appears in the "Changed Files" list.** — **Category 2**
+16. **New option not applied to all code paths** — when a \`+\` line adds a new parameter or option to an existing function and that parameter affects a sizing, flow, or visibility decision (i.e. it is used in a comparison, accumulation, or conditional that controls which items are shown or how space is measured), check whether any \`if\` guard or early-return that executes before the parameter is first read in the function body would produce a different result if the parameter were applied there. If such a guard exists and the parameter would change its outcome, this is a catalogue item.
+
+   **Do not flag** purely cosmetic or logging parameters (e.g. a new \`verbose\` flag, a label string).
+   **Valid discard:** quote the parameter's default value from the diff and show in one sentence that substituting the default into the early-exit branch produces the same result as the current branch (e.g. \`offsetValue = 0\` subtracted from available space is a no-op, so the early exit is safe). The default value must appear as a \`+\` line in the diff — do not assume a default.
+   **This check is distinct from Rule 6** (partial migration of a normalising abstraction) — Rule 16 applies to any new parameter on any function, not only hooks or computed objects. — **Category 2**
+
+17. **DOM measurement box-model double-count** — when a \`+\` line reads a DOM measurement API result and then **adds** a CSS property value to it, check whether the measurement API already includes that property using this lookup:
+
+   | API | Includes padding | Includes border | Includes margin |
+   |-----|-----------------|-----------------|-----------------|
+   | \`getBoundingClientRect().width/height\` | ✓ yes | ✓ yes | ✗ no |
+   | \`offsetWidth\` / \`offsetHeight\` | ✓ yes | ✓ yes | ✗ no |
+   | \`clientWidth\` / \`clientHeight\` | ✓ yes | ✗ no | ✗ no |
+   | \`scrollWidth\` / \`scrollHeight\` | ✓ yes | ✗ no | ✗ no |
+
+   **Do not flag** subtraction of a CSS property from a measurement result — subtracting an included property is valid arithmetic (e.g. removing padding from a border-box value to get the content width).
+
+   If a \`+\` line adds a property the API already includes (e.g. adding \`paddingLeft\` on top of \`getBoundingClientRect().width\`), that is a double-count — catalogue it using this exact format:
+   \`[file:line] — Rule 17: [API call] + [CSS property] — [property] is included per box-model table — Category 2 — pending\`
+   Example: \`overflowHandler.ts:38 — Rule 17: getBoundingClientRect()[dimension] + paddingLeft — padding included per table row 1 — Category 2 — pending\`
+
+   **Do not flag** \`getComputedStyle(el).width/height\` — this returns the CSS computed value for that single property and does NOT bundle padding, border, or margin. Adding those separately on top of a \`getComputedStyle\` result is correct.
+   **Do not flag** additions of \`marginLeft\`/\`marginRight\`/\`marginTop\`/\`marginBottom\` on top of any API in the table above — margins are excluded from all four APIs, so adding them is correct.
+   **Valid discard:** quote the specific measurement API call and the CSS property being added, then cite the exact table row and column (e.g. "getBoundingClientRect row, Includes padding = ✓ yes") showing the property is included — this is what makes it a double-count. Discarding by answering a different question about the same block (e.g. "parseInt is correct for CSS values", "the arithmetic is valid") is an **invalid discard reason** for this rule — each Rule 17 pending item must be resolved by directly addressing the box-model inclusion question. — **Category 2**
+
+18. **Doc/signature mismatch** — applies in two sub-cases; check both during the same per-file pass:
+
+   a. **JSDoc mismatch in source files** — when a \`+\` or \`-\` line modifies a function signature (parameter type, return type, or parameter list), check whether any \`@param\`, \`@returns\`, or \`@description\` tag visible in the same diff hunk or an immediately adjacent context block still describes the old behaviour. A JSDoc comment that contradicts the new signature (e.g. \`@returns The size … Returns 0 if the element is not provided\` after the parameter type changed to non-nullable \`HTMLElement\`) is a catalogue item. — **Category 2**
+
+   b. **README formula mismatch** — when a \`README.md\` or documentation file is in the "Changed Files" list and contains a \`+\` line with a formula or pseudo-code block that uses \`=\` assignment and multi-term arithmetic to describe implementation behaviour (e.g. \`effectiveSize = boundingClientRect[dimension] + padding\`), cross-reference the formula against the diff implementation as follows:
+
+   - **If the formula contains concrete CSS property names** (actual camelCase property names such as \`paddingLeft\`, \`paddingTop\`, \`marginRight\`, \`paddingBottom\` etc.), you must verify the formula against *each conditional branch* visible in the diff (e.g. both the \`width\` path and the \`height\` path of a \`dimension === 'width' ? ... : ...\` expression). A formula that is accurate for one branch but wrong for another is a catalogue item.
+   - **If the formula uses abstract axis notation only** (terms like \`inline-start\`, \`block-start\`, \`start\`, \`end\`, or generic nouns like "padding", "margin" without specifying a direction), no per-branch check is required — write \`discarded: formula uses abstract axis notation — no per-branch check required\`.
+
+   **Do not trigger** on code blocks that only show API call syntax (e.g. \`handler = createOverflowHandler({ ... })\`) — these are usage examples, not behavioural formulas.
+   **Valid discard for concrete property names:** quote a diff line from *each* conditional branch (e.g. both width and height paths) showing the named property is used in that branch. A discard that quotes only one branch when the implementation shows two or more is an **invalid discard reason** — you must verify every branch.
+   The existing NO-FINDINGS exemption for documentation files does not apply when the file contains a formula or behavioural description that can be cross-referenced against the diff implementation. — **Category 2**
+
+
 15. **SCSS structural correctness** — applies to every changed \`.scss\` file. During the same per-file pass, check:
    a. **Removed sizing constraint with no replacement** — a \`-\` line removes a \`min-block-size\`, \`max-block-size\`, \`min-inline-size\`, or \`max-inline-size\` rule and no \`+\` line in the same file's diff hunks restores an equivalent constraint. Before filing, check whether a compensating rule appears elsewhere in the same diff. If one exists, discard: quote it. — **Category 2**
    b. **Unscoped selector broadening** — a \`+\` line adds a \`:not(...)\` exclusion or widens a selector without scoping to a modifier class (e.g. \`--sticky-header\`, \`--condensed\`). This is always **Category 2** — do not treat as Rule 11 (breaking API change), which requires MCP. When a single \`+\` line contains multiple selector changes — some narrowing (e.g. adding a parent combinator \`tr:not([...]) >\`) and some broadening (e.g. adding \`:not(.class)\` to an existing exclusion chain) — catalogue and assess each change independently. A narrowing change on the same line does not discharge a broadening change on the same line.
