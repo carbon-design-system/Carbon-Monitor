@@ -73,7 +73,7 @@ Carbon-Monitor/
 ## Installation
 
 ```bash
-git clone https://github.com/your-org/Carbon-Monitor.git
+git clone https://github.com/carbon-design-system/Carbon-Monitor.git
 cd Carbon-Monitor
 npm install
 ```
@@ -156,11 +156,15 @@ Carbon Monitor uses Carbon MCP over streamable HTTP, not `npx carbon-mcp`. Creat
 }
 ```
 
-Verify it is connected:
+Verify it is connected by opening Bob shell and running `/mcp list`:
 
 ```bash
-bob mcp list
-# Expected: ✓ carbon-mcp (streamable-http) - Connected
+bob
+```
+
+```
+/mcp list
+# Expected: carbon-mcp - Ready
 ```
 
 > **Note:** IBM JWT tokens expire. The API server (see below) is being built to automate token refresh so the MCP connection stays valid when running in the cloud.
@@ -339,9 +343,13 @@ which bob
 
 ### Carbon MCP not connected
 ```bash
-bob mcp list
-# Should show: ✓ carbon-mcp (streamable-http) - Connected
-# If not connected, check ~/.bob/settings/mcp.json and verify your JWT token is valid
+bob
+```
+
+```
+/mcp list
+# Should show: carbon-mcp - Ready
+# If not ready, check ~/.bob/settings/mcp.json and verify your JWT token is valid
 ```
 
 ### IBM JWT token expired

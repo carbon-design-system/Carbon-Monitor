@@ -63,11 +63,15 @@ Carbon Monitor uses Carbon MCP over streamable HTTP. Create `~/.bob/settings/mcp
 }
 ```
 
-Verify it is connected:
+Verify it is connected by opening Bob shell and running `/mcp list`:
 
 ```bash
-bob mcp list
-# Expected: ✓ carbon-mcp (streamable-http) - Connected
+bob
+```
+
+```
+/mcp list
+# Expected: carbon-mcp - Ready
 ```
 
 ## Step 5: Test the Setup
@@ -123,7 +127,7 @@ which bob
 ```
 
 ### "Carbon MCP not connected"
-Check `~/.bob/settings/mcp.json` and confirm your IBM JWT token is current. JWT tokens expire — refresh the token and update the `Authorization` header value.
+Open Bob shell and run `/mcp list`. If carbon-mcp is not showing as Ready, check `~/.bob/settings/mcp.json` and confirm your IBM JWT token and session ID are current. See `docs/TOKEN_REFRESH.md` for the full refresh process.
 
 ### "Bob Shell Cloudflare blocking"
 Bob requires IBM office network or VPN. Connect to IBM VPN and retry.

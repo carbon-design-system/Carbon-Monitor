@@ -14,14 +14,14 @@ const os = require('os');
  * Get Bob's global MCP configuration directory
  */
 function getBobMcpConfigDir() {
-  return path.join(os.homedir(), '.bob', 'mcp');
+  return path.join(os.homedir(), '.bob', 'settings');
 }
 
 /**
- * Get Bob's MCP server list file
+ * Get Bob's MCP config file
  */
 function getBobMcpServersFile() {
-  return path.join(getBobMcpConfigDir(), 'servers.json');
+  return path.join(getBobMcpConfigDir(), 'mcp.json');
 }
 
 /**
@@ -99,7 +99,7 @@ async function getBobMcpConfig() {
     return JSON.parse(content);
   } catch (error) {
     if (error.code === 'ENOENT') {
-      return { servers: [] };
+      return { mcpServers: {} };
     }
     throw error;
   }
@@ -128,7 +128,7 @@ async function updateBobMcpConfig(config) {
  * @param {string[]} [options.repos] - Repository paths for carbon-mcp
  * @returns {Promise<Object>} - Refresh result
  */
-async function refreshMcpToken({ agent = 'bob', token, repos }) {
+async function refreshMcpToken({ agent = 'bob', token, sessionId, repos }) {
   if (!token) {
     throw new Error('Token is required');
   }
@@ -144,57 +144,32 @@ async function refreshMcpToken({ agent = 'bob', token, repos }) {
     throw new Error('Bob CLI is not available. Please install it first.');
   }
 
-  // Check if carbon-mcp is available
-  const mcpAvailable = await isCarbonMcpAvailable();
-  if (!mcpAvailable) {
-    throw new Error('carbon-mcp is not available. Please install it first.');
-  }
-
   try {
     // Get current configuration
     const config = await getBobMcpConfig();
 
-    // Find carbon-mcp server entry
-    let carbonMcpServer = config.servers?.find(s => s.name === 'carbon-mcp');
-
-    if (!carbonMcpServer) {
-      // Add new carbon-mcp server
-      carbonMcpServer = {
-        name: 'carbon-mcp',
-        type: 'stdio',
-        command: 'npx',
-        args: ['-y', 'carbon-mcp']
-      };
-
-      if (!config.servers) {
-        config.servers = [];
-      }
-      config.servers.push(carbonMcpServer);
+    if (!config.mcpServers) {
+      config.mcpServers = {};
     }
 
-    // Update environment variables for carbon-mcp
-    if (!carbonMcpServer.env) {
-      carbonMcpServer.env = {};
+    // Preserve existing carbon-mcp entry, only update the Authorization header
+    const existing = config.mcpServers['carbon-mcp'] || {
+      type: 'streamable-http',
+      url: 'https://mcp.carbondesignsystem.com/mcp',
+      headers: {}
+    };
+
+    if (!existing.headers) {
+      existing.headers = {};
     }
 
-    // Set the token (carbon-mcp might use different env var names)
-    carbonMcpServer.env.CARBON_MCP_TOKEN = token;
-    carbonMcpServer.env.CARBON_API_KEY = token;
+    existing.headers['Authorization'] = `Bearer ${token}`;
 
-    // Add repository paths if provided
-    if (repos && repos.length > 0) {
-      // Update args to include --repos flag
-      const reposArg = `--repos ${repos.join(',')}`;
-      if (!carbonMcpServer.args.includes('--repos')) {
-        carbonMcpServer.args.push('--repos', repos.join(','));
-      } else {
-        // Update existing repos arg
-        const reposIndex = carbonMcpServer.args.indexOf('--repos');
-        if (reposIndex !== -1 && reposIndex + 1 < carbonMcpServer.args.length) {
-          carbonMcpServer.args[reposIndex + 1] = repos.join(',');
-        }
-      }
+    if (sessionId) {
+      existing.headers['X-MCP-Session'] = sessionId;
     }
+
+    config.mcpServers['carbon-mcp'] = existing;
 
     // Save updated configuration
     await updateBobMcpConfig(config);
@@ -238,8 +213,8 @@ async function getMcpStatus() {
     // Get Bob MCP configuration
     if (status.bobAvailable) {
       const config = await getBobMcpConfig();
-      status.servers = config.servers || [];
-      status.configured = status.servers.some(s => s.name === 'carbon-mcp');
+      status.servers = Object.keys(config.mcpServers || {});
+      status.configured = 'carbon-mcp' in (config.mcpServers || {});
       status.configPath = getBobMcpServersFile();
     }
 
@@ -290,17 +265,16 @@ async function removeMcpConfig(agent = 'bob') {
   try {
     const config = await getBobMcpConfig();
 
-    if (!config.servers) {
+    if (!config.mcpServers) {
       return { removed: false, message: 'No servers configured' };
     }
 
     // Remove carbon-mcp server
-    const originalLength = config.servers.length;
-    config.servers = config.servers.filter(s => s.name !== 'carbon-mcp');
-
-    if (config.servers.length === originalLength) {
+    if (!('carbon-mcp' in config.mcpServers)) {
       return { removed: false, message: 'carbon-mcp not found in configuration' };
     }
+
+    delete config.mcpServers['carbon-mcp'];
 
     // Save updated configuration
     await updateBobMcpConfig(config);

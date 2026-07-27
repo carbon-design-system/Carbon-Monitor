@@ -66,7 +66,7 @@ async function handleMcpRefresh(req, res) {
     }
 
     const data = body ? JSON.parse(body) : {};
-    const { agent = 'bob', token, repos } = data;
+    const { agent = 'bob', token, sessionId, repos } = data;
 
     // Validate input
     if (!token) {
@@ -77,6 +77,7 @@ async function handleMcpRefresh(req, res) {
     const result = await refreshMcpToken({
       agent,
       token,
+      sessionId,
       repos
     });
 
