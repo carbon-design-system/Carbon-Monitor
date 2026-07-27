@@ -3,6 +3,8 @@
  * Wraps all GitHub API operations for PR review automation
  */
 
+const { SKIP_LABELS } = require('./constants');
+
 /**
  * Create a GitHub client for PR review operations
  * @param {Object} octokit - Initialized Octokit instance
@@ -33,7 +35,7 @@ function createGitHubClient(octokit) {
         const filtered = prs.filter(pr => {
           if (pr.draft) return false;
           if (new Date(pr.created_at) < since) return false;
-          if (pr.labels.some(l => l.name === label)) return false;
+          if (pr.labels.some(l => l.name === label || SKIP_LABELS.includes(l.name))) return false;
           if (pr.user.type === 'Bot') return false;
           return true;
         });
