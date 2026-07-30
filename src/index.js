@@ -12,12 +12,14 @@
  *****************************************************************************/
 
 require('dotenv').config();
+const { randomUUID } = require('crypto');
 const { createGitHubClient } = require('./githubClient');
 const { buildReviewBundle } = require('./reviewBundle');
 const { runAgent, getConfiguredAgent, isAgentAvailable } = require('./agentRunner');
 const { parseReviewOutput } = require('./reviewParser');
 const { formatSummaryComment, formatInlineComment, estimateTokenUsage } = require('./reviewPrompt');
 const { splitFindings } = require('./diffMapper');
+const { emitEvent } = require('./observability/eventService');
 const {
   GITHUB_OWNER,
   GITHUB_REPO,
@@ -40,10 +42,16 @@ async function reviewPRs() {
     return;
   }
 
+  // One UUID ties every ES event + log line from this invocation together
+  const correlationId = randomUUID();
+  const runStartedAt = Date.now();
+  let prsReviewedThisRun = 0;
+
   // Spec-compliant startup logging
   console.log(`[Carbon-Monitor] repo=${GITHUB_OWNER}/${GITHUB_REPO}`);
   console.log(`[Carbon-Monitor] selectedAgent=${REVIEW_AGENT}`);
   console.log(`[Carbon-Monitor] label=${REVIEW_LABEL}`);
+  console.log(`[Carbon-Monitor] correlationId=${correlationId}`);
   
   // Validate environment
   if (!GITHUB_TOKEN) {
@@ -79,6 +87,13 @@ async function reviewPRs() {
   });
   const client = createGitHubClient(octokit);
   
+  await emitEvent({
+    event_type: 'run_started',
+    correlation_id: correlationId,
+    repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+    agent: REVIEW_AGENT,
+  });
+
   try {
     // Fetch reviewable PRs
     console.log('📥 Fetching reviewable PRs...');
@@ -99,12 +114,22 @@ async function reviewPRs() {
     
     // Review each PR
     for (const pr of prs) {
+      const prStartedAt = Date.now();
       try {
         console.log(`\n${'='.repeat(80)}`);
         console.log(`📌 Reviewing PR #${pr.number}: ${pr.title}`);
         console.log(`   Author: @${pr.user.login}`);
         console.log(`   Created: ${new Date(pr.created_at).toLocaleDateString()}`);
         console.log(`${'='.repeat(80)}\n`);
+
+        await emitEvent({
+          event_type: 'pr_review_started',
+          correlation_id: correlationId,
+          repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+          pr_number: pr.number,
+          agent: REVIEW_AGENT,
+          commit_sha: pr.head.sha,
+        });
         
         // Fetch PR diff — prefer ORIGINAL_DIFF.patch if present (test PRs created
         // by create-test-pr.js embed the real Carbon diff there to preserve - lines)
@@ -166,12 +191,29 @@ async function reviewPRs() {
         console.log(`\n🤖 Running ${agent} review...`);
         console.log('This may take 30-60 seconds...\n');
         
-        const agentOutput = await runAgent({
-          agent,
-          cwd: bundle.dir,
-          prompt: bundle.prompt,
-          timeout: 10 * 60 * 1000 // 10 minutes per spec
-        });
+        let agentOutput;
+        try {
+          agentOutput = await runAgent({
+            agent,
+            cwd: bundle.dir,
+            prompt: bundle.prompt,
+            timeout: 10 * 60 * 1000 // 10 minutes per spec
+          });
+        } catch (agentErr) {
+          const isTimeout = /timeout/i.test(agentErr.message);
+          if (isTimeout) {
+            await emitEvent({
+              event_type: 'agent_timeout',
+              correlation_id: correlationId,
+              repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+              pr_number: pr.number,
+              agent: REVIEW_AGENT,
+              commit_sha: pr.head.sha,
+              payload: { error: agentErr.message },
+            });
+          }
+          throw agentErr;
+        }
         
         console.log(`\n✅ ${agent} review received`);
 
@@ -213,6 +255,14 @@ async function reviewPRs() {
         if (!review) {
           console.error('❌ Failed to parse review output');
           console.error('Skipping this PR');
+          await emitEvent({
+            event_type: 'parse_failed',
+            correlation_id: correlationId,
+            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            pr_number: pr.number,
+            agent: REVIEW_AGENT,
+            commit_sha: pr.head.sha,
+          });
           if (process.env.GITHUB_AI_AGENT_KEEP_ARTIFACTS !== 'true') {
             await bundle.cleanup();
           } else {
@@ -230,6 +280,26 @@ async function reviewPRs() {
         if (!review.hasCatalogue) {
           console.warn('⚠️  No visible catalogue in agent output — agent may have skipped Step 1');
           console.warn('   Zero findings from this run should be treated as unreliable');
+          await emitEvent({
+            event_type: 'catalogue_missing',
+            correlation_id: correlationId,
+            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            pr_number: pr.number,
+            agent: REVIEW_AGENT,
+            commit_sha: pr.head.sha,
+          });
+        }
+
+        // Emit skill_unavailable when carbon-builder was never read
+        if (skillFilesRead.length === 0) {
+          await emitEvent({
+            event_type: 'skill_unavailable',
+            correlation_id: correlationId,
+            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            pr_number: pr.number,
+            agent: REVIEW_AGENT,
+            commit_sha: pr.head.sha,
+          });
         }
         
         // Split findings into inline-able and summary-only
@@ -291,6 +361,43 @@ async function reviewPRs() {
           agentOutput: agentOutput
         });
         console.log(`✅ Estimated tokens: ~${tokenUsage.total.toLocaleString()} (input: ~${tokenUsage.input.toLocaleString()}, output: ~${tokenUsage.output.toLocaleString()})`);
+
+        // ── Emit metrics event for this review ──────────────────────────────
+        const prDurationMs = Date.now() - prStartedAt;
+        await emitEvent({
+          event_type: 'pr_review_completed',
+          correlation_id: correlationId,
+          repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+          pr_number: pr.number,
+          agent: REVIEW_AGENT,
+          commit_sha: pr.head.sha,
+          payload: {
+            recommendation: review.recommendation,
+            findings_total: review.findings.length,
+            // Flat severity counts — one numeric field per level so Kibana can
+            // Sum/Average each independently without dynamic-object sub-key issues.
+            // Mirrors Carbon Migrate's pattern of storing outcomes as individual fields.
+            findings_blocking: review.findings.filter(f => f.severity === 'blocking').length,
+            findings_major:    review.findings.filter(f => f.severity === 'major').length,
+            findings_minor:    review.findings.filter(f => f.severity === 'minor').length,
+            findings_nit:      review.findings.filter(f => f.severity === 'nit').length,
+            cat1_findings: review.findings.filter(f => f.verificationSource !== 'not-carbon-specific').length,
+            cat2_findings: review.findings.filter(f => f.verificationSource === 'not-carbon-specific').length,
+            verification_source_breakdown: _countBy(review.findings, 'verificationSource'),
+            catalogue_present: review.hasCatalogue,
+            skill_activated: skillFilesRead.length > 0,
+            skill_files_read: skillFilesRead.length,
+            inline_comments_posted: inlineFindings.length,
+            summary_findings: summaryFindings.length,
+            token_input: tokenUsage.input,
+            token_output: tokenUsage.output,
+            token_total: tokenUsage.total,
+            duration_ms: prDurationMs,
+          },
+        });
+
+        prsReviewedThisRun++;
+        // ────────────────────────────────────────────────────────────────────
         
         // Format and post summary comment (check env flag)
         const postSummary = process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
@@ -344,9 +451,26 @@ async function reviewPRs() {
       } catch (prError) {
         console.error(`\n❌ Error reviewing PR #${pr.number}:`, prError.message);
         console.error(prError.stack);
+        await emitEvent({
+          event_type: 'pr_review_failed',
+          correlation_id: correlationId,
+          repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+          pr_number: pr.number,
+          agent: REVIEW_AGENT,
+          payload: { error: prError.message },
+        });
       }
     }
-    
+
+    const runDurationMs = Date.now() - runStartedAt;
+    await emitEvent({
+      event_type: 'run_completed',
+      correlation_id: correlationId,
+      repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+      agent: REVIEW_AGENT,
+      payload: { prs_reviewed: prsReviewedThisRun, duration_ms: runDurationMs },
+    });
+
     console.log(`\n${'='.repeat(80)}`);
     console.log('✅ Carbon PR Review Agent Complete');
     console.log(`${'='.repeat(80)}\n`);
@@ -354,7 +478,23 @@ async function reviewPRs() {
   } catch (error) {
     console.error('\n❌ Fatal error:', error.message);
     console.error(error.stack);
+    await emitEvent({
+      event_type: 'run_failed',
+      correlation_id: correlationId,
+      repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+      agent: REVIEW_AGENT,
+      payload: { error: error.message },
+    });
   }
+}
+
+/** Count occurrences of a field value across an array of objects */
+function _countBy(arr, field) {
+  return arr.reduce((acc, item) => {
+    const val = item[field] || 'unknown';
+    acc[val] = (acc[val] || 0) + 1;
+    return acc;
+  }, {});
 }
 
 // Export for module usage

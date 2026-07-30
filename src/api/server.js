@@ -10,6 +10,7 @@
 
 const http = require('http');
 const { URL } = require('url');
+const { timingSafeEqual } = require('crypto');
 const { refreshMcpToken, getMcpStatus } = require('./tokenManager');
 const { reviewPRs } = require('../index');
 
@@ -18,8 +19,14 @@ const PORT = process.env.API_PORT || 3000;
 const API_SECRET = process.env.API_SECRET || '';
 const ENABLE_AUTH = process.env.API_ENABLE_AUTH !== 'false';
 
+// Warn loudly at startup if auth is on but no secret is set
+if (ENABLE_AUTH && !API_SECRET) {
+  console.warn('[api/server] WARNING: API_ENABLE_AUTH=true but API_SECRET is not set — all authenticated requests will be rejected.');
+}
+
 /**
- * Verify API authentication
+ * Verify API authentication using a timing-safe comparison to prevent
+ * timing-based secret enumeration attacks.
  */
 function verifyAuth(req) {
   if (!ENABLE_AUTH) {
@@ -32,7 +39,13 @@ function verifyAuth(req) {
   }
 
   const token = authHeader.replace('Bearer ', '');
-  return token === API_SECRET;
+
+  // timingSafeEqual requires same-length buffers; mismatched lengths are
+  // caught first (and are safe to short-circuit — length is not secret).
+  if (!API_SECRET || token.length !== API_SECRET.length) {
+    return false;
+  }
+  return timingSafeEqual(Buffer.from(token), Buffer.from(API_SECRET));
 }
 
 /**
@@ -164,7 +177,12 @@ function handleConfig(req, res) {
     maxPRs: parseInt(process.env.GITHUB_AI_AGENT_MAX_PRS || '5'),
     daysBack: parseInt(process.env.GITHUB_AI_AGENT_DAYS_BACK || '21'),
     postInlineComments: process.env.GITHUB_AI_AGENT_POST_INLINE_COMMENTS !== 'false',
-    postSummaryComment: process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false'
+    postSummaryComment: process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false',
+    // Observability config — presence only, never the actual credentials
+    elasticsearchConfigured: !!process.env.ES_URL,
+    elasticsearchUrl: process.env.ES_URL || null,  // URL is not a secret
+    elasticsearchUsername: process.env.ES_USERNAME || null,
+    // ES_PASSWORD is intentionally omitted — never returned via API
   };
 
   sendJSON(res, 200, {
@@ -230,6 +248,9 @@ async function handleRequest(req, res) {
  */
 function startServer() {
   const server = http.createServer(handleRequest);
+
+  // Prevent slow-client / idle-connection abuse — 30 s hard limit per request
+  server.setTimeout(30_000);
 
   server.listen(PORT, () => {
     console.log(`\n${'='.repeat(60)}`);

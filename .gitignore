@@ -2,18 +2,23 @@
 node_modules/
 package-lock.json
 
-# Environment
+# Environment — never commit real credentials
 .env
 .env.local
+.env.*.local
 
 # Logs
 *.log
 npm-debug.log*
 
-# Temporary files
+# Temporary files created by reviewBundle.js
 tmp/
 temp/
 *.tmp
+/private/tmp/pr-reviews/
+
+# Test / diagnostic artefacts written by scripts/
+scripts/*.json
 
 # OS files
 .DS_Store
@@ -24,5 +29,10 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Bob local state (settings, cached sessions) — not project files
+.bob/cache/
+.bob/sessions/
+.bob/tmp/
 
 # Made with Bob
