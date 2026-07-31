@@ -25,17 +25,22 @@ const MAX_PRS_PER_RUN = Number(process.env.GITHUB_AI_AGENT_MAX_PRS || 5);
 //   −  20,000 reserved for agent output
 //   = 140,000 default input token budget
 //
-// Overhead derivation:
-//   buildReviewPrompt() measured at 41,064 chars ≈ 10,266 tokens.
-//   +~1,700 for PR metadata wrapper variability → rounded up to 12,000.
-//   If the prompt is significantly extended in future, re-measure and update
-//   PROMPT_OVERHEAD_TOKENS accordingly.
+// Three-slice input budget breakdown (at default 140k):
+//   Slice 1 — Prompt overhead   12,000 tokens  (buildReviewPrompt() measured at
+//             41,064 chars ≈ 10,266 tokens + ~1,700 variability buffer)
+//   Slice 2 — Issue context      5,000 tokens  (linked GitHub issue + parent;
+//             real issues are ~468 tokens — 5k is a generous cap)
+//   Slice 3 — Diff budget      123,000 tokens  → 492,000 chars @ 4 chars/token
+//             ─────────────────────────────────
+//             Total             140,000 tokens
 //
-// Effective diff budget: (MAX_INPUT_TOKENS − PROMPT_OVERHEAD_TOKENS) × CHARS_PER_TOKEN
+// If the prompt is significantly extended in future, re-measure and update
+// PROMPT_OVERHEAD_TOKENS accordingly.
 const CHARS_PER_TOKEN = 4;
 const MAX_INPUT_TOKENS = Number(process.env.GITHUB_AI_AGENT_MAX_INPUT_TOKENS || 140000);
 const PROMPT_OVERHEAD_TOKENS = 12000;
-const MAX_DIFF_CHARS = (MAX_INPUT_TOKENS - PROMPT_OVERHEAD_TOKENS) * CHARS_PER_TOKEN;
+const ISSUE_CONTEXT_TOKENS = 5000;
+const MAX_DIFF_CHARS = (MAX_INPUT_TOKENS - PROMPT_OVERHEAD_TOKENS - ISSUE_CONTEXT_TOKENS) * CHARS_PER_TOKEN;
 
 module.exports = {
   GITHUB_OWNER,
@@ -48,6 +53,7 @@ module.exports = {
   MAX_INPUT_TOKENS,
   CHARS_PER_TOKEN,
   PROMPT_OVERHEAD_TOKENS,
+  ISSUE_CONTEXT_TOKENS,
   MAX_PRS_PER_RUN,
 };
 

@@ -154,7 +154,7 @@ The bundle directory is printed to the console and contains `agent-output.txt` a
 | `GITHUB_AI_AGENT_CLI` | ❌ | `bob` | Agent to use — only `bob` is supported |
 | `GITHUB_AI_AGENT_MAX_PRS` | ❌ | `5` | Max PRs reviewed per run |
 | `GITHUB_AI_AGENT_DAYS_BACK` | ❌ | `21` | How far back to look for PRs (days) |
-| `GITHUB_AI_AGENT_MAX_INPUT_TOKENS` | ❌ | `140000` | Total input token budget (prompt + diff). Effective diff budget = (value − 12,000 prompt overhead) × 4 chars/token ≈ 512k chars at the default. |
+| `GITHUB_AI_AGENT_MAX_INPUT_TOKENS` | ❌ | `140000` | Total input token budget. Three slices at the default: 12,000 prompt overhead + 5,000 issue context + 123,000 diff = 140,000 tokens. Effective diff budget = 492,000 chars. |
 | `GITHUB_AI_AGENT_REVIEW_LABEL` | ❌ | `AIReviewed` | Label added after review |
 | `GITHUB_AI_AGENT_POST_INLINE_COMMENTS` | ❌ | `true` | Post inline diff comments |
 | `GITHUB_AI_AGENT_POST_SUMMARY_COMMENT` | ❌ | `true` | Post summary issue comment |

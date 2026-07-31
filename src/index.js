@@ -182,7 +182,8 @@ async function reviewPRs() {
           repo: GITHUB_REPO,
           pr,
           diff,
-          files
+          files,
+          client
         });
         console.log(`✅ Bundle: ${bundle.dir}`);
         

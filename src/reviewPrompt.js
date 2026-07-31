@@ -237,6 +237,8 @@ function buildReviewPrompt({ owner, repo }) {
 
 Read PR_REVIEW_REQUEST.md. It contains the PR description, changed files list, and the full diff in one place. You do not need to read pr.json, files.json, or diff.patch separately.
 
+If a \`## Linked Issue Context\` section is present, read it before cataloguing — it contains the acceptance criteria and intent for this change.
+
 As you read each file, write one line per suspicious item in this format:
 \`[file:line] — [what you saw] — [Category 1 / Category 2] — pending\`
 
