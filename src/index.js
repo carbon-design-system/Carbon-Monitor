@@ -26,7 +26,6 @@ const {
   REVIEW_LABEL,
   REVIEW_AGENT,
   N_DAYS_SINCE_PR_CREATED,
-  MAX_DIFF_CHARS,
   MAX_PRS_PER_RUN,
 } = require('./constants');
 

@@ -2,6 +2,8 @@
  * Format review comments according to Carbon PR review spec
  */
 
+const { CHARS_PER_TOKEN } = require('./constants');
+
 /**
  * Estimate token usage for a PR review
  *
@@ -12,10 +14,7 @@
  * @returns {Object} - Token usage estimate { input: number, output: number, total: number }
  */
 function estimateTokenUsage({ prompt, diff, agentOutput }) {
-  // Rough estimation: 1 token ≈ 4 characters for English text
-  // This is a conservative estimate; actual tokenization varies by model
-  const CHARS_PER_TOKEN = 4;
-
+  // Rough estimation: 1 token ≈ 4 characters for English text (CHARS_PER_TOKEN from constants)
   const inputChars = (prompt?.length || 0) + (diff?.length || 0);
   const outputChars = agentOutput?.length || 0;
 

@@ -6,7 +6,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
-const { MAX_DIFF_CHARS } = require('./constants');
+const { MAX_DIFF_CHARS, CHARS_PER_TOKEN } = require('./constants');
 const { buildReviewPrompt } = require('./reviewPrompt');
 
 /**
@@ -133,7 +133,7 @@ async function buildReviewBundle({ owner, repo, pr, diff, files }) {
       diffTruncated = true;
       diffToWrite = diff.substring(0, MAX_DIFF_CHARS);
       diffToWrite += '\n\n[... diff truncated due to size ...]\n';
-      diffToWrite += `Original size: ${diff.length} chars, truncated to: ${MAX_DIFF_CHARS} chars\n`;
+      diffToWrite += `Original size: ${diff.length} chars, truncated to: ~${Math.round(MAX_DIFF_CHARS / CHARS_PER_TOKEN / 1000)}k tokens (${MAX_DIFF_CHARS} chars)\n`;
       diffToWrite += `View full diff at: https://github.com/${owner}/${repo}/pull/${pr.number}/files\n`;
     }
     
