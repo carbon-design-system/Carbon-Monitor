@@ -6,7 +6,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
-const { MAX_DIFF_CHARS } = require('./constants');
+const { MAX_DIFF_CHARS, CHARS_PER_TOKEN, ISSUE_CONTEXT_TOKENS } = require('./constants');
 const { buildReviewPrompt } = require('./reviewPrompt');
 
 /**
@@ -91,7 +91,7 @@ async function copyDirectory(src, dest) {
  * @param {Object} options - { owner, repo, pr, diff, files }
  * @returns {Promise<Object>} Bundle object with dir, prompt, and cleanup function
  */
-async function buildReviewBundle({ owner, repo, pr, diff, files }) {
+async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
   // Create temp directory under /private/tmp (trusted by Bob Shell for MCP access).
   // os.tmpdir() resolves to /var/folders/…/T on macOS which is NOT in Bob's
   // trustedFolders.json, causing Bob to silently disable MCP tools.
@@ -133,7 +133,7 @@ async function buildReviewBundle({ owner, repo, pr, diff, files }) {
       diffTruncated = true;
       diffToWrite = diff.substring(0, MAX_DIFF_CHARS);
       diffToWrite += '\n\n[... diff truncated due to size ...]\n';
-      diffToWrite += `Original size: ${diff.length} chars, truncated to: ${MAX_DIFF_CHARS} chars\n`;
+      diffToWrite += `Original size: ${diff.length} chars, truncated to: ~${Math.round(MAX_DIFF_CHARS / CHARS_PER_TOKEN / 1000)}k tokens (${MAX_DIFF_CHARS} chars)\n`;
       diffToWrite += `View full diff at: https://github.com/${owner}/${repo}/pull/${pr.number}/files\n`;
     }
     
@@ -142,7 +142,34 @@ async function buildReviewBundle({ owner, repo, pr, diff, files }) {
       diffToWrite
     );
 
-    // 6. Write PR review request summary — embed diff directly so the agent
+    // 6. Fetch linked issue context if a GitHub client is available
+    let issueContextSection = '';
+    if (client) {
+      const issueContext = await client.fetchLinkedIssueContext({
+        owner,
+        repo,
+        prBody: pr.body
+      });
+
+      if (issueContext.found) {
+        const maxIssueChars = ISSUE_CONTEXT_TOKENS * CHARS_PER_TOKEN;
+        const { subIssue, parentIssue } = issueContext;
+
+        let issueContent = `### Issue #${subIssue.number}: ${subIssue.title}\n\n${subIssue.body}`;
+
+        if (parentIssue) {
+          issueContent += `\n\n### Parent Issue #${parentIssue.number}: ${parentIssue.title}\n\n${parentIssue.body}`;
+        }
+
+        if (issueContent.length > maxIssueChars) {
+          issueContent = issueContent.substring(0, maxIssueChars) + '\n\n[... issue context truncated ...]';
+        }
+
+        issueContextSection = `\n## Linked Issue Context\n\n${issueContent}\n`;
+      }
+    }
+
+    // 7. Write PR review request summary — embed diff directly so the agent
     // needs only ONE file read to get all context, reducing coin spend.
     const prSummary = `# PR Review Request
 
@@ -157,7 +184,7 @@ async function buildReviewBundle({ owner, repo, pr, diff, files }) {
 ## Description
 
 ${pr.body || 'No description provided'}
-
+${issueContextSection}
 ## Changed Files
 
 ${files.map(f => `- \`${f.filename}\` (+${f.additions}/-${f.deletions})`).join('\n')}

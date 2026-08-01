@@ -101,7 +101,7 @@ GITHUB_AI_AGENT_REPO=carbon
 GITHUB_AI_AGENT_CLI=bob
 GITHUB_AI_AGENT_MAX_PRS=5
 GITHUB_AI_AGENT_DAYS_BACK=21
-GITHUB_AI_AGENT_MAX_DIFF_CHARS=120000
+GITHUB_AI_AGENT_MAX_INPUT_TOKENS=140000
 GITHUB_AI_AGENT_REVIEW_LABEL=AIReviewed
 GITHUB_AI_AGENT_POST_INLINE_COMMENTS=true
 GITHUB_AI_AGENT_POST_SUMMARY_COMMENT=true
@@ -119,7 +119,7 @@ Full variable reference:
 | `GITHUB_AI_AGENT_CLI` | ❌ | `bob` | Agent to use — only `bob` is supported |
 | `GITHUB_AI_AGENT_MAX_PRS` | ❌ | `5` | Max PRs reviewed per run |
 | `GITHUB_AI_AGENT_DAYS_BACK` | ❌ | `21` | How far back to look for PRs (days) |
-| `GITHUB_AI_AGENT_MAX_DIFF_CHARS` | ❌ | `120000` | Diff truncation limit |
+| `GITHUB_AI_AGENT_MAX_INPUT_TOKENS` | ❌ | `140000` | Total input token budget. Three slices at the default: 12,000 prompt overhead + 5,000 issue context + 123,000 diff = 140,000 tokens. Effective diff budget = 492,000 chars. |
 | `GITHUB_AI_AGENT_REVIEW_LABEL` | ❌ | `AIReviewed` | Label added after review |
 | `GITHUB_AI_AGENT_POST_INLINE_COMMENTS` | ❌ | `true` | Post inline diff comments |
 | `GITHUB_AI_AGENT_POST_SUMMARY_COMMENT` | ❌ | `true` | Post summary issue comment |

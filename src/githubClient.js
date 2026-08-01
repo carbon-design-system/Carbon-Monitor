@@ -206,6 +206,61 @@ function createGitHubClient(octokit) {
         console.error('Error adding reviewed label:', error.message);
         throw error;
       }
+    },
+
+    /**
+     * Fetch linked issue context from a PR body.
+     * Parses the first Closes/Fixes/Resolves #N reference, fetches the issue,
+     * and fetches its parent issue if parent_issue_url is present.
+     * @param {Object} options - { owner, repo, prBody }
+     * @returns {Promise<Object>} { found, subIssue, parentIssue }
+     */
+    async fetchLinkedIssueContext({ owner, repo, prBody }) {
+      // Guard: null/undefined/empty PR body — no issue to fetch
+      if (!prBody) return { found: false };
+
+      try {
+        // Parse first Closes/Fixes/Resolves #N reference (case-insensitive)
+        const match = prBody.match(/(?:closes|fixes|resolves)\s+#(\d+)/i);
+        if (!match) {
+          console.log('ℹ️  No linked issue found in PR body');
+          return { found: false };
+        }
+
+        const issueNumber = parseInt(match[1], 10);
+        console.log(`🔗 Fetching linked issue #${issueNumber}...`);
+
+        const { data: subIssueData } = await octokit.rest.issues.get({
+          owner,
+          repo,
+          issue_number: issueNumber
+        });
+
+        const subIssue = {
+          number: subIssueData.number,
+          title: subIssueData.title,
+          body: subIssueData.body || ''
+        };
+
+        // Fetch parent issue if present (parent_issue_url is a full API URL —
+        // octokit.request() handles cross-repo parents transparently)
+        let parentIssue = null;
+        if (subIssueData.parent_issue_url) {
+          console.log(`🔗 Fetching parent issue from ${subIssueData.parent_issue_url}...`);
+          const { data: parentData } = await octokit.request(subIssueData.parent_issue_url);
+          parentIssue = {
+            number: parentData.number,
+            title: parentData.title,
+            body: parentData.body || ''
+          };
+        }
+
+        return { found: true, subIssue, parentIssue };
+
+      } catch (error) {
+        console.warn(`⚠️  Could not fetch linked issue context: ${error.message}`);
+        return { found: false };
+      }
     }
   };
 }
