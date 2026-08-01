@@ -16,6 +16,12 @@ Carbon-specific claims (component props, tokens, icons, accessibility patterns) 
    - `.bob/rules/01-output.md` — agent behavioural rules injected into Bob's context
    - `.bob/skills/carbon-builder/` — Carbon Builder skill copied from the local workspace so Bob can load it inside the bundle directory
 
+   **Linked issue context:** If the PR body contains a `Closes #N`, `Fixes #N`, or `Resolves #N` reference, Carbon Monitor fetches that issue (and its parent issue, if one exists) and includes it in the bundle as a `## Linked Issue Context` section.
+
+   The agent prompt instructs Bob to read this section before cataloguing the diff. It is treated as the acceptance criteria and intent for the change, giving the agent the *why* behind the PR and not just the *what* — so it can distinguish an intentional API removal from an accidental one, verify the implementation matches the stated requirements, and avoid flagging changes the issue explicitly calls for.
+
+   The issue content is capped at 5,000 tokens and truncated with a notice if it exceeds that. If no linked issue is found or fetching fails, the section is silently omitted and the review continues from the diff alone.
+
 3. **Review** — Runs Bob in advanced mode (`bob -p <prompt> --yolo --chat-mode advanced --allowed-mcp-server-names carbon-mcp`) against the bundle directory. Bob works through a structured protocol:
    - **Step 1** — Reads `PR_REVIEW_REQUEST.md` and writes a visible catalogue of every suspicious item per file, classified as Category 1 (Carbon API — requires MCP) or Category 2 (generic — diff-visible).
    - **Step 2** — Resolves every pending catalogue item. Category 1 items are verified using the Carbon Builder skill and Carbon MCP tools (`code_search`, `docs_search`, `get_charts`). Category 2 items are resolved from the diff alone.
