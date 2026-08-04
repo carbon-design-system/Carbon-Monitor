@@ -401,11 +401,14 @@ function parseReviewOutput(agentOutput) {
     // (scoped regex avoids false positives from PR description text containing "pending").
     const hasPendingItems = /—\s*Category\s*\d\s*—\s*pending/i.test(preJson);
 
-    // step2Window: the slice of preJson after the last catalogue line — this is
+    // step2Window: the slice of preJson after the last PENDING catalogue line — this is
     // exclusively agent Step 2 output and cannot contain prompt text, preventing
     // false positives from the prompt's own "confirmed finding" / "discarded:" literals.
+    // Scoped to "— pending" lines only: NO-FINDINGS and SKIP are already-resolved
+    // dispositions that must not push the window past a discarded:/confirmed finding
+    // line the agent wrote between a pending entry and its NO-FINDINGS/SKIP closing line.
     const lastCatalogueMatches = preJson.match(
-      /^.*(?:—\s*Category\s*\d\s*—\s*pending|NO-FINDINGS\s+\S|SKIP\s+\S).*$/gim
+      /^.*—\s*Category\s*\d\s*—\s*pending.*$/gim
     );
     const lastCatalogueEntry = lastCatalogueMatches
       ? lastCatalogueMatches[lastCatalogueMatches.length - 1]

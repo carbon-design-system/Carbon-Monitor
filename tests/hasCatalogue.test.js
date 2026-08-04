@@ -18,6 +18,7 @@
 // ---------------------------------------------------------------------------
 const fs = require('fs');
 const parserSrc = fs.readFileSync(require.resolve('../src/reviewParser.js'), 'utf8');
+const { parseReviewOutput } = require('../src/reviewParser');
 
 // Pull the regex literal from the source: hasCatalogue = /<regex>/m.test(...)
 const regexMatch = parserSrc.match(/hasCatalogue\s*=\s*(\/.*?\/[gimsuy]*)\s*\.test/);
@@ -185,6 +186,64 @@ test(
   'agent step heading with em-dash',
   '## Catalogue entries:',
   false
+);
+
+// ---------------------------------------------------------------------------
+// step2Window / hasStep2 — ordering-independent resolution detection
+//
+// These tests call parseReviewOutput with a minimal valid agent output and
+// assert on catalogueWarning, which is the observable output of hasStep2.
+// catalogueWarning === null  means hasStep2 = true  (correct, no false positive)
+// catalogueWarning !== null  means hasStep2 = false (warning fired)
+// ---------------------------------------------------------------------------
+console.log('\n── step2Window / hasStep2: resolution ordering ───────────────');
+
+// Minimal valid JSON suffix reused across all three fixtures.
+const _json = 'BEGIN_REVIEW_JSON\n{"summaryMarkdown":"Clean.","findings":[]}\nEND_REVIEW_JSON';
+
+function testStep2(description, agentOutput, expectWarning) {
+  const result = parseReviewOutput(agentOutput);
+  const hasWarning = result !== null && result.catalogueWarning !== null &&
+    result.catalogueWarning.toLowerCase().includes('pending');
+  const ok = hasWarning === expectWarning;
+  if (ok) {
+    passed++;
+    console.log(`  ✅ ${description}`);
+  } else {
+    failed++;
+    console.log(`  ❌ ${description}`);
+    console.log(`     expected warning=${expectWarning}, got warning=${hasWarning}`);
+    console.log(`     catalogueWarning: ${result?.catalogueWarning}`);
+  }
+}
+
+// Case 1 — THE FAILING PATTERN (artifact pull-149):
+// Agent writes discarded: BEFORE NO-FINDINGS.
+// Current code: false-positive warning. Fixed code: no warning.
+testStep2(
+  'discarded before NO-FINDINGS — no false-positive warning (pull-149 pattern)',
+  'file.ts:5 — doc change — Category 2 — pending\n' +
+  'discarded: file.ts:5 is non-behavioral.\n' +
+  'NO-FINDINGS file.ts — clean file.\n' + _json,
+  false  // no warning expected — step was correctly resolved
+);
+
+// Case 2 — NORMAL ORDER: resolution after NO-FINDINGS (already worked before fix).
+// Must continue to work after the regex narrowing.
+testStep2(
+  'discarded after NO-FINDINGS — no warning (normal order)',
+  'file.ts:5 — doc change — Category 2 — pending\n' +
+  'NO-FINDINGS file.ts — clean.\n' +
+  'discarded: file.ts:5 is non-behavioral.\n' + _json,
+  false  // no warning expected
+);
+
+// Case 3 — GENUINELY UNRESOLVED: pending with no discarded/confirmed finding.
+// Warning must still fire — this is not a false positive.
+testStep2(
+  'pending with no resolution — warning correctly fires',
+  'file.ts:5 — doc change — Category 2 — pending\n' + _json,
+  true   // warning expected — agent skipped Step 2
 );
 
 // ---------------------------------------------------------------------------

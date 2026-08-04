@@ -125,7 +125,7 @@ function formatSummaryComment({
 
   let comment = `[AI agent review — Carbon grounded] · **${recLabel}**\n\n`;
   comment += `Reviewed by: ${agent} · Commit: ${commitSha.substring(0, 7)}\n`;
-  comment += `Carbon verification: Carbon-specific claims require Carbon Builder and Carbon MCP verification.\n\n`;
+  comment += `Carbon verification: Carbon-specific claims verified using Carbon Builder skill (primary authority) and Carbon MCP (fallback).\n\n`;
 
   // ── Recommendation section ─────────────────────────────────────────────
   comment += `## Recommendation\n\n`;
@@ -141,7 +141,7 @@ function formatSummaryComment({
 
   // ── Findings table (rendered from typed array — no Markdown in agent JSON) ──
   if (findingsTable && findingsTable.length > 0) {
-    comment += `## Findings\n\n`;
+    comment += `<details>\n<summary>Findings (${findingsTable.length})</summary>\n\n`;
     comment += `| Area | Category | Severity | Finding | File |\n`;
     comment += `|------|----------|----------|---------|------|\n`;
     for (const row of findingsTable) {
@@ -149,12 +149,15 @@ function formatSummaryComment({
       const safe = v => String(v || '').replace(/[|\n\r]/g, ' ').trim();
       comment += `| ${safe(row.area)} | ${safe(row.category)} | ${safe(row.severity)} | ${safe(row.title)} | ${safe(row.file)} |\n`;
     }
-    comment += '\n';
+    comment += '\n</details>\n\n';
   }
 
   // ── Agent summary (verbatim — this field is never mutated after parse) ──
   comment += `## Summary\n\n`;
   comment += summaryMarkdown + '\n\n';
+
+  // ── Details dropdown — open (unconditional) ─────────────────────────────
+  comment += '\n<details>\n<summary>Details</summary>\n\n';
 
   // ── Additional findings that couldn't be posted inline ─────────────────
   if (summaryFindings && summaryFindings.length > 0) {
@@ -203,6 +206,9 @@ function formatSummaryComment({
     comment += `- Total tokens: ~${tokenUsage.total.toLocaleString()}\n`;
     comment += `\n*Note: Token estimates are approximate and based on character count (1 token ≈ 4 characters).*\n`;
   }
+
+  // ── Details dropdown — close (unconditional, outside all conditionals) ───
+  comment += '\n</details>\n';
 
   // ── AI disclaimer ────────────────────────────────────────────────────────
   comment += `\n---\n\n`;

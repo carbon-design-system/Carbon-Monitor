@@ -10,7 +10,7 @@
     "test:parser": "node tests/test-parser.js",
     "test:diff": "node tests/test-diff-mapper.js",
     "test:authority": "node tests/carbonBuilderAuthority.test.js",
-    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js"
+    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js"
   },
   "keywords": [
     "carbon",

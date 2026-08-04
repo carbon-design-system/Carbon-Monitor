@@ -288,6 +288,32 @@ test('summary comment header positions carbon-builder before MCP', () => {
   );
 });
 
+test('summary comment contains <details> dropdown block', () => {
+  assert(
+    dummySummary.includes('<details>'),
+    'summary comment must contain a <details> dropdown block'
+  );
+});
+
+test('summary comment </details> appears before AI disclaimer', () => {
+  const closePos = dummySummary.indexOf('</details>');
+  const disclaimerPos = dummySummary.indexOf('AI agent generated');
+  assert(closePos !== -1, '</details> tag must be present in summary comment');
+  assert(disclaimerPos !== -1, 'AI disclaimer must be present in summary comment');
+  assert(
+    closePos < disclaimerPos,
+    `</details> (pos ${closePos}) must appear before AI disclaimer (pos ${disclaimerPos})`
+  );
+});
+
+test('summary comment <details> block is present even with no summary findings', () => {
+  // dummySummary is constructed without summaryFindings or tokenUsage — worst-case probe
+  assert(
+    dummySummary.includes('<details>') && dummySummary.includes('</details>'),
+    '<details> block must be unconditional — present even when summaryFindings is empty'
+  );
+});
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);
