@@ -175,6 +175,10 @@ bob
 
 > **Note:** IBM JWT tokens expire. The API server (see below) is being built to automate token refresh so the MCP connection stays valid when running in the cloud.
 
+### 4. Carbon Builder skill
+
+If `.bob/skills/carbon-builder` doesn't exist yet, install it by following the [Carbon Builder skill setup guide](https://carbondesignsystem.com/developing/carbon-mcp/onboarding-and-setup/#step-4:-adding-the-carbon-builder-skill). If it's already there, you're good to go.
+
 ---
 
 ## Running
