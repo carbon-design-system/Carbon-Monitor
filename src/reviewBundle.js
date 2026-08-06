@@ -162,7 +162,13 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
         }
 
         if (issueContent.length > maxIssueChars) {
-          issueContent = issueContent.substring(0, maxIssueChars) + '\n\n[... issue context truncated ...]';
+          const hardCut = issueContent.substring(0, maxIssueChars);
+          const lastNewline = hardCut.lastIndexOf('\n');
+          // Snap to the last complete line if one exists within the cut window.
+          // If lastIndexOf returns -1 (no newlines — wall-of-text body), fall back
+          // to the hard char cut. Guard > 0 also handles a degenerate \n-at-start case.
+          const snapPos = lastNewline > 0 ? lastNewline : maxIssueChars;
+          issueContent = issueContent.substring(0, snapPos) + '\n\n[... issue context truncated ...]';
         }
 
         issueContextSection = `\n## Linked Issue Context\n\n${issueContent}\n`;
