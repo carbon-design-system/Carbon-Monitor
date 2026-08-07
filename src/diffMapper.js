@@ -4,9 +4,17 @@
  */
 
 /**
- * Parse unified diff to extract line mappings
+ * Parse unified diff to extract line mappings.
+ *
+ * Returns a Map of file paths to two sub-maps:
+ *   lineMap     — new-file line number → GitHub diff position
+ *   hunkLines   — ordered list of {diffLine, newFileStart} for each @@ hunk,
+ *                 where diffLine is the 1-based line index within the diff string.
+ *                 Used by the secondary lookup to convert agent-reported
+ *                 PR_REVIEW_REQUEST.md absolute line numbers back to new-file lines.
+ *
  * @param {string} diff - Unified diff text
- * @returns {Map} Map of file paths to line position mappings
+ * @returns {Map} Map of file paths to { lineMap, hunkLines }
  */
 function parseDiffLinePositions(diff) {
   const fileMap = new Map();
@@ -17,7 +25,10 @@ function parseDiffLinePositions(diff) {
   let oldLine = 0;
   let newLine = 0;
   
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const diffLine = i + 1; // 1-based line number within the diff string
+
     // File header: diff --git a/path b/path
     // GitHub resets position per file; the diff --git line itself is not counted.
     // index, new file mode, deleted file mode, ---, +++ are also not counted —
@@ -26,7 +37,7 @@ function parseDiffLinePositions(diff) {
       const match = line.match(/\sb\/(.+)$/);
       if (match) {
         currentFile = match[1];
-        fileMap.set(currentFile, new Map());
+        fileMap.set(currentFile, { lineMap: new Map(), hunkLines: [] });
         position = 0;
       }
       continue;
@@ -49,6 +60,10 @@ function parseDiffLinePositions(diff) {
         newLine = parseInt(match[2], 10);
       }
       position++;
+      // Record this hunk's position within the diff string for secondary lookup.
+      if (currentFile) {
+        fileMap.get(currentFile).hunkLines.push({ diffLine, newFileStart: newLine });
+      }
       continue;
     }
     
@@ -59,13 +74,13 @@ function parseDiffLinePositions(diff) {
     
     // Context line (unchanged)
     if (line.startsWith(' ')) {
-      fileMap.get(currentFile).set(newLine, position);
+      fileMap.get(currentFile).lineMap.set(newLine, position);
       oldLine++;
       newLine++;
     }
     // Addition line
     else if (line.startsWith('+')) {
-      fileMap.get(currentFile).set(newLine, position);
+      fileMap.get(currentFile).lineMap.set(newLine, position);
       newLine++;
     }
     // Deletion line
@@ -78,13 +93,27 @@ function parseDiffLinePositions(diff) {
 }
 
 /**
- * Map a finding to a diff position for inline commenting
- * @param {Object} finding - Finding object with file and line
- * @param {string} diff - Unified diff text
- * @param {Array} files - Array of changed file objects from GitHub
- * @returns {Object|null} - { path, position, side } or null if not mappable
+ * Map a finding to a diff position for inline commenting.
+ *
+ * Primary lookup: finding.line is treated as a new-file line number and looked
+ * up directly in the lineMap built by parseDiffLinePositions.
+ *
+ * Secondary lookup (activated when mdDiffStartLine > 0): the agent sometimes
+ * reports the absolute line number within PR_REVIEW_REQUEST.md rather than the
+ * new-file line number. When the primary lookup fails and mdDiffStartLine is
+ * provided, we convert the reported line using:
+ *   new_file_line = reported_line - (mdDiffStartLine + hunk_diffLine)
+ * where hunk_diffLine is the 1-based position of the file's @@ header within
+ * the diff string. We try each hunk and use the first that resolves.
+ *
+ * @param {Object} finding       - Finding object with file and line
+ * @param {string} diff          - Unified diff text
+ * @param {Array}  files         - Array of changed file objects from GitHub
+ * @param {number} [mdDiffStartLine=0] - 1-based line of the ```diff fence in
+ *                                       PR_REVIEW_REQUEST.md; 0 disables secondary lookup
+ * @returns {Object|null} - { path, position } or null if not mappable
  */
-function mapFindingToDiffPosition(finding, diff, files) {
+function mapFindingToDiffPosition(finding, diff, files, mdDiffStartLine = 0) {
   // Validate finding has required fields
   if (!finding.file || !finding.line) {
     return null;
@@ -127,40 +156,52 @@ function mapFindingToDiffPosition(finding, diff, files) {
   
   // Parse diff to get line-to-position mappings
   const fileMap = parseDiffLinePositions(diff);
-  const lineMap = fileMap.get(matchedFilename);
+  const entry = fileMap.get(matchedFilename);
   
-  if (!lineMap) {
+  if (!entry) {
     return null;
   }
-  
-  // Look up the diff position for this line number
-  const diffPosition = lineMap.get(finding.line);
-  
-  if (!diffPosition) {
-    // Line not found in diff - it's outside the changed hunks
-    return null;
+
+  const { lineMap, hunkLines } = entry;
+
+  // Primary lookup: finding.line as new-file line number (correct per prompt spec)
+  const primaryPosition = lineMap.get(finding.line);
+  if (primaryPosition) {
+    return { path: matchedFilename, position: primaryPosition };
   }
-  
-  // Return the actual diff position
-  return {
-    path: matchedFilename,
-    position: diffPosition
-  };
+
+  // Secondary lookup: agent reported PR_REVIEW_REQUEST.md absolute line number.
+  // Convert: new_file_line = reported - (mdDiffStartLine + hunk.diffLine)
+  // Try each hunk in the file; use the first that resolves in the lineMap.
+  if (mdDiffStartLine > 0 && hunkLines.length > 0) {
+    for (const hunk of hunkLines) {
+      const newFileLine = finding.line - (mdDiffStartLine + hunk.diffLine);
+      if (newFileLine > 0) {
+        const secondaryPosition = lineMap.get(newFileLine);
+        if (secondaryPosition) {
+          return { path: matchedFilename, position: secondaryPosition };
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
  * Split findings into those that can be posted inline vs summary only
- * @param {Array} findings - Array of finding objects
- * @param {string} diff - Unified diff text
- * @param {Array} files - Array of changed file objects
+ * @param {Array}  findings         - Array of finding objects
+ * @param {string} diff             - Unified diff text
+ * @param {Array}  files            - Array of changed file objects
+ * @param {number} [mdDiffStartLine=0] - Passed through to mapFindingToDiffPosition
  * @returns {Object} - { inlineFindings, summaryFindings }
  */
-function splitFindings(findings, diff, files) {
+function splitFindings(findings, diff, files, mdDiffStartLine = 0) {
   const inlineFindings = [];
   const summaryFindings = [];
   
   for (const finding of findings) {
-    const position = mapFindingToDiffPosition(finding, diff, files);
+    const position = mapFindingToDiffPosition(finding, diff, files, mdDiffStartLine);
     
     if (position) {
       inlineFindings.push({

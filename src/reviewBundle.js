@@ -202,6 +202,12 @@ ${diffToWrite}
 \`\`\`
 `;
 
+    // Compute the 1-based line number of the ```diff fence within prSummary.
+    // The agent reports finding lines as absolute line numbers within
+    // PR_REVIEW_REQUEST.md. diffMapper needs this offset to convert those
+    // reported numbers back to new-file line numbers via the secondary lookup.
+    const mdDiffStartLine = prSummary.split('\n').indexOf('```diff') + 1;
+
     await fs.writeFile(
       path.join(tempDir, 'PR_REVIEW_REQUEST.md'),
       prSummary
@@ -268,6 +274,7 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
     return {
       dir: tempDir,
       prompt,
+      mdDiffStartLine,
       cleanup: async () => {
         try {
           await fs.rm(tempDir, { recursive: true, force: true });

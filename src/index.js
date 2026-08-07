@@ -186,6 +186,7 @@ async function reviewPRs() {
           client
         });
         console.log(`✅ Bundle: ${bundle.dir}`);
+        console.log(`✅ mdDiffStartLine: ${bundle.mdDiffStartLine}`);
         
         // Run agent review
         console.log(`\n🤖 Running ${agent} review...`);
@@ -289,7 +290,8 @@ async function reviewPRs() {
         const { inlineFindings, summaryFindings } = splitFindings(
           review.findings,
           diff,
-          files
+          files,
+          bundle.mdDiffStartLine
         );
         console.log(`✅ Inline: ${inlineFindings.length}, Summary: ${summaryFindings.length}`);
         
