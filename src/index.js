@@ -12,6 +12,32 @@
  *****************************************************************************/
 
 require('dotenv').config();
+
+// Resolve target PR: CLI flag --pr takes precedence over env var
+const _cliPrIdx = process.argv.indexOf('--pr');
+const _cliPrFlagPresent = _cliPrIdx !== -1;
+
+if (_cliPrFlagPresent && process.argv[_cliPrIdx + 1] === undefined) {
+  console.error('❌ --pr flag requires a PR number.');
+  console.error('   Example: node src/index.js --pr 12345');
+  process.exit(1);
+}
+
+const _rawTargetPR = _cliPrFlagPresent
+  ? process.argv[_cliPrIdx + 1]
+  : process.env.GITHUB_AI_AGENT_PR_NUMBER || null;
+
+let TARGET_PR = null;
+if (_rawTargetPR != null) {
+  const _parsed = Number(_rawTargetPR);
+  if (!Number.isInteger(_parsed) || _parsed <= 0) {
+    console.error(`❌ Invalid PR number: "${_rawTargetPR}". Must be a positive integer.`);
+    console.error('   Example: node src/index.js --pr 12345');
+    process.exit(1);
+  }
+  TARGET_PR = _parsed;
+}
+
 const { randomUUID } = require('crypto');
 const { createGitHubClient } = require('./githubClient');
 const { buildReviewBundle } = require('./reviewBundle');
@@ -94,21 +120,32 @@ async function reviewPRs() {
   });
 
   try {
-    // Fetch reviewable PRs
-    console.log('📥 Fetching reviewable PRs...');
-    const prs = await client.fetchReviewablePRs({
-      owner: GITHUB_OWNER,
-      repo: GITHUB_REPO,
-      label: REVIEW_LABEL,
-      maxPRs: MAX_PRS_PER_RUN,
-      daysBack: N_DAYS_SINCE_PR_CREATED
-    });
-    
-    if (prs.length === 0) {
-      console.log('✅ No PRs need review');
-      return;
+    // Fetch PRs — targeted (--pr / env var) or auto-select
+    let prs;
+    if (TARGET_PR) {
+      console.log(`🎯 Targeting specific PR #${TARGET_PR} (skipping auto-selection)`);
+      const pr = await client.fetchSinglePR({
+        owner: GITHUB_OWNER,
+        repo: GITHUB_REPO,
+        pullNumber: TARGET_PR
+      });
+      prs = [pr];
+    } else {
+      console.log('📥 Fetching reviewable PRs...');
+      prs = await client.fetchReviewablePRs({
+        owner: GITHUB_OWNER,
+        repo: GITHUB_REPO,
+        label: REVIEW_LABEL,
+        maxPRs: MAX_PRS_PER_RUN,
+        daysBack: N_DAYS_SINCE_PR_CREATED
+      });
+
+      if (prs.length === 0) {
+        console.log('✅ No PRs need review');
+        return;
+      }
     }
-    
+
     console.log(`Found ${prs.length} PR(s) to review\n`);
     
     // Review each PR

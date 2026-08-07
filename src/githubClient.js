@@ -209,6 +209,20 @@ function createGitHubClient(octokit) {
     },
 
     /**
+     * Fetch a single PR by number — no filtering applied
+     * @param {Object} options - { owner, repo, pullNumber }
+     * @returns {Promise<Object>} PR object
+     */
+    async fetchSinglePR({ owner, repo, pullNumber }) {
+      const { data: pr } = await octokit.rest.pulls.get({
+        owner,
+        repo,
+        pull_number: pullNumber
+      });
+      return pr;
+    },
+
+    /**
      * Fetch linked issue context from a PR body.
      * Parses the first Closes/Fixes/Resolves #N reference, fetches the issue,
      * and fetches its parent issue if parent_issue_url is present.

@@ -123,6 +123,7 @@ Full variable reference:
 | `GITHUB_AI_AGENT_OWNER` | ❌ | `carbon-design-system` | Repository owner |
 | `GITHUB_AI_AGENT_REPO` | ❌ | `carbon` | Repository name |
 | `GITHUB_AI_AGENT_CLI` | ❌ | `bob` | Agent to use — only `bob` is supported |
+| `GITHUB_AI_AGENT_PR_NUMBER` | ❌ | — | Review a specific PR by number; bypasses auto-selection. Can also be set via `--pr <number>` CLI flag. `DAYS_BACK` and `MAX_PRS` filters do not apply. |
 | `GITHUB_AI_AGENT_MAX_PRS` | ❌ | `5` | Max PRs reviewed per run |
 | `GITHUB_AI_AGENT_DAYS_BACK` | ❌ | `21` | How far back to look for PRs (days) |
 | `GITHUB_AI_AGENT_MAX_INPUT_TOKENS` | ❌ | `140000` | Total input token budget. Three slices at the default: 12,000 prompt overhead + 5,000 issue context + 123,000 diff = 140,000 tokens. Effective diff budget = 492,000 chars. |
@@ -190,6 +191,21 @@ npm start
 # or
 node src/index.js
 ```
+
+### Review a specific PR
+
+```bash
+# Primary form
+node src/index.js --pr 12345
+
+# Via npm start (note the -- separator — required by npm)
+npm start -- --pr 12345
+
+# Via env var
+GITHUB_AI_AGENT_PR_NUMBER=12345 npm start
+```
+
+> `DAYS_BACK` and `MAX_PRS` filters are not applied when a specific PR is targeted. The PR is reviewed regardless of age, label, or draft status.
 
 ### Tests
 
