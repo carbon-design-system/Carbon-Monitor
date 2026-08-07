@@ -248,6 +248,8 @@ If a \`## Linked Issue Context\` section is present, read it before cataloguing 
 As you read each file, write one line per suspicious item in this format:
 \`[file:line] — [what you saw] — [Category 1 / Category 2] — pending\`
 
+The \`line\` number in \`[file:line]\` must be the line number of the \`+\` line you are referencing **as it appears in the diff** (i.e. the new-file line number from the \`@@\` hunk header, counting forward from the hunk's \`+\` start). Do not use memorised or inferred line numbers from the full repository file — only use numbers you can derive by counting the \`+\` and context lines visible in the diff.
+
 Category 1 = the finding is about whether a specific Carbon element accepts a specific attribute, prop, or variant — OR whether a specific quoted string argument value is valid for a Carbon utility mixin must verify with Carbon Builder skill.
 Category 2 = generic correctness, accessibility omission, or duplicate markup visible from the diff alone — no MCP needed.
 
@@ -521,7 +523,7 @@ BEGIN_REVIEW_JSON
     {
       "severity": "nit=convention only | minor=maintainability risk | major=likely runtime impact | blocking=breaks behaviour or a11y",
       "file": "repo-relative path",
-      "line": 123,
+      "line": 123,  ← new-file line number from the diff (count from the @@ hunk's + start); never a memorised repository line number
       "title": "short title — plain text, no pipes or newlines",
       "body": "observation + concrete suggestion (minor/major/blocking must end with an imperative sentence: what the submitter should do)",
       "carbonVerified": true,

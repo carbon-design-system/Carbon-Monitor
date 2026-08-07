@@ -102,8 +102,8 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
 
   try {
     // 1. Write .env file with API key for Bob
-    // Bob looks for BOBSHELL_API_KEY in .env file in current directory
-    const envContent = `BOBSHELL_API_KEY=${process.env.BOBSHELL_API_KEY || ''}\n`;
+    // Bob v2 reads BOB_API_KEY from the environment (renamed from BOBSHELL_API_KEY in v1)
+    const envContent = `BOB_API_KEY=${process.env.BOB_API_KEY || ''}\n`;
     await fs.writeFile(
       path.join(tempDir, '.env'),
       envContent

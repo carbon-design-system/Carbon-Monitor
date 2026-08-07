@@ -97,17 +97,25 @@ function looksCarbonSpecific(finding) {
  * @returns {Object} - { filtered: Array, stats: Object }
  */
 function extractCarbonBuilderSkillReads(agentOutput = '') {
-  const skillReadPatterns = [
+  // v1 patterns — capture a file path from the transcript
+  const capturePatterns = [
     /\[using tool read_file:\s*([^\]]*\.bob\/skills\/carbon-builder\/[^\]]*)\]/gi,
     /read_file[^\n]*path["'=:\s]+([^\s"'\],]*\.bob\/skills\/carbon-builder\/[^\s"'\],]*)/gi,
     /Contents of file\s+([^:\n]*\.bob\/skills\/carbon-builder\/[^:\n]*):/gi,
     /relative to:\s*(\.bob\/skills\/carbon-builder\/[^\s\n]*)/gi
   ];
 
+  // v2 patterns — use_skill is a first-class tool; no read_file call appears.
+  // Match the post-call result block: "Tool: use_skill" followed by
+  // "skill_name: carbon-builder" (with any intervening whitespace/padding).
+  const presencePatterns = [
+    /Tool:\s*use_skill[\s\S]*?skill_name:\s*carbon-builder/i
+  ];
+
   const skillFilesRead = [];
   const seenSkillFiles = new Set();
 
-  for (const pattern of skillReadPatterns) {
+  for (const pattern of capturePatterns) {
     let skillMatch;
     while ((skillMatch = pattern.exec(agentOutput)) !== null) {
       const filePath = skillMatch[1].trim();
@@ -115,6 +123,13 @@ function extractCarbonBuilderSkillReads(agentOutput = '') {
         seenSkillFiles.add(filePath);
         skillFilesRead.push(filePath);
       }
+    }
+  }
+
+  for (const pattern of presencePatterns) {
+    if (pattern.test(agentOutput) && !seenSkillFiles.has('use_skill:carbon-builder')) {
+      seenSkillFiles.add('use_skill:carbon-builder');
+      skillFilesRead.push('use_skill:carbon-builder');
     }
   }
 
@@ -371,14 +386,17 @@ function parseReviewOutput(agentOutput) {
   const skillFilesRead = extractCarbonBuilderSkillReads(agentOutput);
 
   try {
-    // Find JSON markers — search for BEGIN_REVIEW_JSON immediately followed by
-    // optional whitespace and '{', which is the only form that precedes real JSON.
-    // The prompt text contains the bare marker as a literal, and the
-    // attempt_completion echo contains it followed by prose — neither is followed
-    // by '{'. This makes the match unambiguous regardless of marker count or order.
-    const jsonStartMatch = agentOutput.match(/BEGIN_REVIEW_JSON\s*\{/);
+    // Find JSON markers — search for the LAST BEGIN_REVIEW_JSON immediately followed
+    // by optional whitespace and '{'. Using the last match is critical for Bob v2,
+    // which echoes the full conversation as a transcript: the prompt itself contains
+    // BEGIN_REVIEW_JSON as a literal instruction, so the first match always lands
+    // inside the prompt echo rather than the agent's actual output.
+    const markerRe = /BEGIN_REVIEW_JSON\s*\{/g;
+    let jsonStartMatch = null;
+    let m;
+    while ((m = markerRe.exec(agentOutput)) !== null) jsonStartMatch = m;
     const jsonStart = jsonStartMatch
-      ? agentOutput.indexOf(jsonStartMatch[0])
+      ? jsonStartMatch.index
       : agentOutput.lastIndexOf('BEGIN_REVIEW_JSON'); // fallback for unexpected formats
 
     // Detect whether the agent wrote a visible catalogue before the JSON.
@@ -433,7 +451,14 @@ function parseReviewOutput(agentOutput) {
       // writing the JSON block. This happens when the agent finds no issues and
       // short-circuits to attempt_completion. Extract the prose as summaryMarkdown
       // and return a valid empty-findings review rather than failing entirely.
-      const completionMatch = agentOutput.match(/\[using tool attempt_completion:.*?\]\s*---output---\s*([\s\S]+?)\s*---output---/);
+      //
+      // v1 pretty format: [using tool attempt_completion:...] ---output--- <prose> ---output---
+      // v2 pretty format: [attempt_completion] Result: <prose>  (no closing delimiter)
+      // The greedy [\s\S]+ with .trim() on the captured group handles both trailing
+      // whitespace and any stray boundary characters safely.
+      const completionMatch =
+        agentOutput.match(/\[attempt_completion\]\s*Result:\s*([\s\S]+)/) ||
+        agentOutput.match(/\[using tool attempt_completion:.*?\]\s*---output---\s*([\s\S]+?)\s*---output---/);
       if (completionMatch) {
         const prose = completionMatch[1].trim();
         console.warn('⚠️  No BEGIN_REVIEW_JSON marker — agent used attempt_completion. Synthesising empty-findings review.');
@@ -489,6 +514,106 @@ function parseReviewOutput(agentOutput) {
     if (nonEmptyLines.length > 0 && nonEmptyLines.every(l => l.startsWith('+'))) {
       jsonStr = jsonStr.split('\n').map(l => l.startsWith('+') ? l.slice(1) : l).join('\n');
       console.warn('⚠️  Stripped write_to_file diff prefixes from JSON output');
+    }
+
+    // Bob v2 pretty-format fix: every output line is padded to 120 characters,
+    // causing JSON string values to be word-wrapped with trailing spaces before \n.
+    // Step 1 — strip trailing spaces from every line (removes the padding).
+    // Step 2 — walk char-by-char: any bare \n that remains inside a JSON string
+    //           is a line-wrap artifact; replace it with a space so the value
+    //           reads as a single unbroken string (matching v1 behaviour).
+    if (jsonStr.split('\n').some(l => l !== l.trimEnd())) {
+      console.warn('⚠️  Detected v2 line-padding in JSON output — normalising');
+      const trimmedLines = jsonStr.split('\n').map(l => l.trimEnd()).join('\n');
+      let fixed = '';
+      let inStr = false;
+      let i = 0;
+      while (i < trimmedLines.length) {
+        const ch = trimmedLines[i];
+        if (!inStr) {
+          if (ch === '"') inStr = true;
+          fixed += ch;
+          i++;
+        } else {
+          if (ch === '\\' && i + 1 < trimmedLines.length) {
+            // Already-escaped sequence — pass through verbatim
+            fixed += ch + trimmedLines[i + 1];
+            i += 2;
+          } else if (ch === '"') {
+            inStr = false;
+            fixed += ch;
+            i++;
+          } else if (ch === '\n') {
+            // Bare newline inside a string = v2 line-wrap; replace with space
+            fixed += ' ';
+            i++;
+          } else {
+            fixed += ch;
+            i++;
+          }
+        }
+      }
+      jsonStr = fixed;
+
+      // After pass 1, some string fields may still contain unescaped double-quote
+      // characters — e.g. the agent wrote role="dialog" or ["style","align"] inside
+      // a string value. These cannot be fixed by the char-by-char pass because they
+      // look like valid JSON structure to a sequential scanner.
+      // Pass 2: if JSON.parse still fails, walk every line. For any line that opens
+      // a string value ("key": "...) check whether the value closes properly on that
+      // same line. If it doesn't (i.e. the closing " is missing or there are bare
+      // interior quotes), replace all bare " inside the value with ' to sanitise it.
+      // Accumulate continuation lines until a properly-closing line is found.
+      try { JSON.parse(jsonStr); } catch (_) {
+        const lines = jsonStr.split('\n');
+        const rebuilt = [];
+        let i2 = 0;
+        while (i2 < lines.length) {
+          const line = lines[i2];
+          const lt = line.trimStart();
+          // Detect a line that opens a string value: "key": "...
+          if (/^"[^"]+"\s*:\s*"/.test(lt)) {
+            // Accumulate continuation lines until we reach the next key or a closing
+            // bracket — those signal the value (however many lines) has ended.
+            let j = i2 + 1;
+            while (j < lines.length) {
+              const jt = lines[j].trimStart();
+              if (/^"[^"]+"\s*:/.test(jt) || /^[}\]]/.test(jt)) break;
+              j++;
+            }
+            const valueLines = lines.slice(i2, j);
+            const assembled = valueLines.join(' ');
+
+            // Test whether the assembled value is already valid JSON
+            const keyPart = assembled.match(/^(\s*"[^"]+"\s*:\s*)/)[1];
+            const rawValue = assembled.slice(keyPart.length);
+            // rawValue should be: "...content...", or "...content..."
+            // Try parsing it as a standalone JSON string
+            const trailingStrip = rawValue.trimEnd().replace(/,$/, '').trimEnd();
+            let isClean = false;
+            try { JSON.parse(trailingStrip); isClean = true; } catch (_2) {}
+
+            if (!isClean) {
+              // The value has unescaped interior quotes. Reconstruct it by:
+              // 1. Strip the outer opening " and closing " (plus optional trailing ,)
+              // 2. Replace bare " and also \" (escaped-quote sequences left by the
+              //    agent) with ' — the \ must be removed too or it becomes \' which
+              //    is itself an invalid escape in a JSON string.
+              const inner = trailingStrip.slice(1, -1); // remove outer quotes
+              const sanitised = inner.replace(/\\"/g, "'").replace(/"/g, "'");
+              const trailingComma = rawValue.trimEnd().endsWith(',') ? ',' : '';
+              rebuilt.push(keyPart + '"' + sanitised + '"' + trailingComma);
+              console.warn(`⚠️  Sanitised unescaped quotes in field (lines ${i2}–${j - 1})`);
+              i2 = j;
+              continue;
+            }
+          }
+          rebuilt.push(line);
+          i2++;
+        }
+        // Remove trailing commas before } or ] left behind by any replacement
+        jsonStr = rebuilt.join('\n').replace(/,(\s*[}\]])/g, '$1');
+      }
     }
 
     // Additional cleanup: remove any leading/trailing non-JSON content
@@ -702,9 +827,15 @@ function computeRecommendation(findings, { hasCatalogue, hasStep2 = true, verifi
     };
   }
 
-  // Rule 2 — MCP partially unavailable: Cat 1 findings may be missing
+  // Rule 2 — MCP partially unavailable: Cat 1 findings may be missing.
+  // Only fires when there were carbon-specific findings that survived filtering
+  // but none were MCP-verified. If all carbon-specific findings were rejected/
+  // filtered out (e.g. carbon-builder claimed without skill reads), the surviving
+  // findings are all Cat 2 and MCP was correctly not used — no warning needed.
+  const survivingCarbonSpecific =
+    (verificationStats.carbonSpecific || 0) - (verificationStats.filtered || 0);
   const mcpPartiallyUnavailable =
-    (verificationStats.carbonSpecific || 0) > 0 &&
+    survivingCarbonSpecific > 0 &&
     (verificationStats.carbonVerified || 0) === 0;
   if (mcpPartiallyUnavailable) {
     return {
@@ -783,6 +914,7 @@ function countBySeverity(findings) {
 module.exports = {
   parseReviewOutput,
   filterUnverifiedCarbonFindings,
+  extractCarbonBuilderSkillReads,
   looksCarbonSpecific,
   countBySeverity,
   computeRecommendation

@@ -16,7 +16,7 @@ const { randomUUID } = require('crypto');
 const { createGitHubClient } = require('./githubClient');
 const { buildReviewBundle } = require('./reviewBundle');
 const { runAgent, getConfiguredAgent, isAgentAvailable } = require('./agentRunner');
-const { parseReviewOutput } = require('./reviewParser');
+const { parseReviewOutput, extractCarbonBuilderSkillReads } = require('./reviewParser');
 const { formatSummaryComment, formatInlineComment, estimateTokenUsage } = require('./reviewPrompt');
 const { splitFindings } = require('./diffMapper');
 const { emitEvent } = require('./observability/eventService');
@@ -218,33 +218,15 @@ async function reviewPRs() {
         console.log(`\n✅ ${agent} review received`);
 
         // ── Carbon Builder skill activation observability ─────────────────
-        // Track transcript evidence by scanning for explicit reads of
-        // .bob/skills/carbon-builder/ files. Keep this visible in logs even if
-        // the agent never prints a dedicated skill-activation tool call.
-        // This logging does not change any review behaviour — it is pure observation.
-        const skillReadPatterns = [
-          /\[using tool read_file:\s*([^\]]*\.bob\/skills\/carbon-builder\/[^\]]*)\]/gi,
-          /read_file[^\n]*path["'=:\s]+([^\s"'\],]*\.bob\/skills\/carbon-builder\/[^\s"'\],]*)/gi,
-          /Contents of file\s+([^:\n]*\.bob\/skills\/carbon-builder\/[^:\n]*):/gi,
-          /relative to:\s*(\.bob\/skills\/carbon-builder\/[^\s\n]*)/gi
-        ];
-        const skillFilesRead = [];
-        const seenSkillFiles = new Set();
-        for (const pattern of skillReadPatterns) {
-          let skillMatch;
-          while ((skillMatch = pattern.exec(agentOutput)) !== null) {
-            const filePath = skillMatch[1].trim();
-            if (!seenSkillFiles.has(filePath)) {
-              seenSkillFiles.add(filePath);
-              skillFilesRead.push(filePath);
-            }
-          }
-        }
+        // Reuse the shared extractor from reviewParser — handles both v1
+        // (read_file calls to .bob/skills/carbon-builder/) and v2 (use_skill
+        // tool with skill_name: carbon-builder).
+        const skillFilesRead = extractCarbonBuilderSkillReads(agentOutput);
         if (skillFilesRead.length > 0) {
-          console.log(`\n🔬 Carbon Builder skill files read — ${skillFilesRead.length} file(s):`);
+          console.log(`\n🔬 Carbon Builder skill activated — ${skillFilesRead.length} evidence signal(s):`);
           skillFilesRead.forEach(f => console.log(`   📄 ${f}`));
         } else {
-          console.log('\n🔬 Carbon Builder skill: no .bob/skills/carbon-builder/ read_file calls detected in agent output');
+          console.log('\n🔬 Carbon Builder skill: not detected in agent output');
         }
         // ─────────────────────────────────────────────────────────────────
 

@@ -27,9 +27,9 @@ async function runAgent({ agent, cwd, prompt, timeout = 10 * 60 * 1000 }) {
       CI: 'true',
     };
 
-    // Only pass BOBSHELL_API_KEY to Bob agent
+    // Only pass BOB_API_KEY to Bob agent
     if (agent !== 'bob') {
-      delete env.BOBSHELL_API_KEY;
+      delete env.BOB_API_KEY;
     }
 
     // Set config paths for each agent to use the bundle's config
@@ -49,18 +49,15 @@ async function runAgent({ agent, cwd, prompt, timeout = 10 * 60 * 1000 }) {
     
     switch (agent) {
       case 'bob':
-        // Bob Shell CLI - advanced mode with MCP support
-        // MCP tools are only available in advanced mode
+        // Bob Shell CLI v2 - headless mode with MCP support
         // Note: carbon-mcp is configured globally via streamable HTTP in ~/.bob/settings.json
+        // v2 changes from v1: 'bob run <prompt>' replaces 'bob -p <prompt> --yolo';
+        //   --mode agent is the default (v1's 'advanced' mode no longer exists in v2);
+        //   --allowed-mcp-server-names removed (unknown option in v2)
         command = 'bob';
         args = [
-          '-p',
+          'run',
           prompt,
-          '--yolo',
-          '--chat-mode',
-          'advanced',
-          '--allowed-mcp-server-names',
-          'carbon-mcp'
         ];
         break;
         
@@ -84,11 +81,14 @@ async function runAgent({ agent, cwd, prompt, timeout = 10 * 60 * 1000 }) {
         break;
     }
     
-    // Spawn the process with increased timeout for MCP server startup
+    // Spawn the process with increased timeout for MCP server startup.
+    // stdin is set to 'ignore' so bob run never blocks waiting for interactive
+    // input (trust prompts, license confirmations, etc.) in a headless context.
     const proc = spawn(command, args, {
       cwd,
       env,
       shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
       // Note: spawn doesn't have a timeout option, we handle it manually below
     });
 
