@@ -209,6 +209,20 @@ function createGitHubClient(octokit) {
     },
 
     /**
+     * Fetch a single PR by number — no filtering applied
+     * @param {Object} options - { owner, repo, pullNumber }
+     * @returns {Promise<Object>} PR object
+     */
+    async fetchSinglePR({ owner, repo, pullNumber }) {
+      const { data: pr } = await octokit.rest.pulls.get({
+        owner,
+        repo,
+        pull_number: pullNumber
+      });
+      return pr;
+    },
+
+    /**
      * Fetch linked issue context from a PR body.
      * Parses the first Closes/Fixes/Resolves #N reference, fetches the issue,
      * and fetches its parent issue if parent_issue_url is present.
@@ -220,8 +234,10 @@ function createGitHubClient(octokit) {
       if (!prBody) return { found: false };
 
       try {
-        // Parse first Closes/Fixes/Resolves #N reference (case-insensitive)
-        const match = prBody.match(/(?:closes|fixes|resolves)\s+#(\d+)/i);
+        // Parse first GitHub closing keyword reference (case-insensitive).
+        // All 9 GitHub-documented forms: close, closes, closed, fix, fixes, fixed,
+        // resolve, resolves, resolved. \b prevents partial-word matches (e.g. "hotfix").
+        const match = prBody.match(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i);
         if (!match) {
           console.log('ℹ️  No linked issue found in PR body');
           return { found: false };
@@ -242,17 +258,26 @@ function createGitHubClient(octokit) {
           body: subIssueData.body || ''
         };
 
-        // Fetch parent issue if present (parent_issue_url is a full API URL —
-        // octokit.request() handles cross-repo parents transparently)
+        // parent_issue_url is present in GitHub's sub-issues API response when the
+        // issue is a child of another (e.g. a task under an epic). It is absent
+        // (null/undefined) for standalone issues — the guard below handles both.
+        // This branch is intentional and forward-compatible: do not remove it.
+        // octokit.request() accepts the full URL directly, handling cross-repo parents.
         let parentIssue = null;
         if (subIssueData.parent_issue_url) {
           console.log(`🔗 Fetching parent issue from ${subIssueData.parent_issue_url}...`);
-          const { data: parentData } = await octokit.request(subIssueData.parent_issue_url);
-          parentIssue = {
-            number: parentData.number,
-            title: parentData.title,
-            body: parentData.body || ''
-          };
+          try {
+            const { data: parentData } = await octokit.request(subIssueData.parent_issue_url);
+            parentIssue = {
+              number: parentData.number,
+              title: parentData.title,
+              body: parentData.body || ''
+            };
+          } catch (parentError) {
+            // Parent fetch failure is non-fatal — degrade gracefully with the
+            // sub-issue context still intact rather than discarding everything.
+            console.warn(`⚠️  Could not fetch parent issue context: ${parentError.message}`);
+          }
         }
 
         return { found: true, subIssue, parentIssue };

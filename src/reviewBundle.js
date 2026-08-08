@@ -102,8 +102,8 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
 
   try {
     // 1. Write .env file with API key for Bob
-    // Bob looks for BOBSHELL_API_KEY in .env file in current directory
-    const envContent = `BOBSHELL_API_KEY=${process.env.BOBSHELL_API_KEY || ''}\n`;
+    // Bob v2 reads BOB_API_KEY from the environment (renamed from BOBSHELL_API_KEY in v1)
+    const envContent = `BOB_API_KEY=${process.env.BOB_API_KEY || ''}\n`;
     await fs.writeFile(
       path.join(tempDir, '.env'),
       envContent
@@ -162,7 +162,13 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
         }
 
         if (issueContent.length > maxIssueChars) {
-          issueContent = issueContent.substring(0, maxIssueChars) + '\n\n[... issue context truncated ...]';
+          const hardCut = issueContent.substring(0, maxIssueChars);
+          const lastNewline = hardCut.lastIndexOf('\n');
+          // Snap to the last complete line if one exists within the cut window.
+          // If lastIndexOf returns -1 (no newlines — wall-of-text body), fall back
+          // to the hard char cut. Guard > 0 also handles a degenerate \n-at-start case.
+          const snapPos = lastNewline > 0 ? lastNewline : maxIssueChars;
+          issueContent = issueContent.substring(0, snapPos) + '\n\n[... issue context truncated ...]';
         }
 
         issueContextSection = `\n## Linked Issue Context\n\n${issueContent}\n`;
@@ -195,6 +201,12 @@ ${files.map(f => `- \`${f.filename}\` (+${f.additions}/-${f.deletions})`).join('
 ${diffToWrite}
 \`\`\`
 `;
+
+    // Compute the 1-based line number of the ```diff fence within prSummary.
+    // The agent reports finding lines as absolute line numbers within
+    // PR_REVIEW_REQUEST.md. diffMapper needs this offset to convert those
+    // reported numbers back to new-file line numbers via the secondary lookup.
+    const mdDiffStartLine = prSummary.split('\n').indexOf('```diff') + 1;
 
     await fs.writeFile(
       path.join(tempDir, 'PR_REVIEW_REQUEST.md'),
@@ -262,6 +274,7 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
     return {
       dir: tempDir,
       prompt,
+      mdDiffStartLine,
       cleanup: async () => {
         try {
           await fs.rm(tempDir, { recursive: true, force: true });

@@ -288,6 +288,143 @@ test('summary comment header positions carbon-builder before MCP', () => {
   );
 });
 
+test('summary comment contains <details> dropdown block', () => {
+  assert(
+    dummySummary.includes('<details>'),
+    'summary comment must contain a <details> dropdown block'
+  );
+});
+
+test('summary comment </details> appears before AI disclaimer', () => {
+  const closePos = dummySummary.indexOf('</details>');
+  const disclaimerPos = dummySummary.indexOf('AI agent generated');
+  assert(closePos !== -1, '</details> tag must be present in summary comment');
+  assert(disclaimerPos !== -1, 'AI disclaimer must be present in summary comment');
+  assert(
+    closePos < disclaimerPos,
+    `</details> (pos ${closePos}) must appear before AI disclaimer (pos ${disclaimerPos})`
+  );
+});
+
+test('summary comment <details> block is present even with no summary findings', () => {
+  // dummySummary is constructed without summaryFindings or tokenUsage — worst-case probe
+  assert(
+    dummySummary.includes('<details>') && dummySummary.includes('</details>'),
+    '<details> block must be unconditional — present even when summaryFindings is empty'
+  );
+});
+
+// ─── Rule 19: documentation prose review ──────────────────────────────────────
+console.log('\n── Rule 19: documentation prose review ───────────────────────');
+
+test('prompt does not contain old "Only review SOURCE CODE files" gate', () => {
+  assert(
+    !/Only review SOURCE CODE files/i.test(prompt),
+    'prompt must not contain the old "Only review SOURCE CODE files" gate — all changed files are now in scope'
+  );
+});
+
+test('Rule 19 is documentation prose review and caps findings at nit', () => {
+  const rule19Start = prompt.indexOf('Documentation prose review');
+  assert(rule19Start !== -1, '"Documentation prose review" not found in prompt — Rule 19 must describe doc prose review');
+  const rule19Block = prompt.slice(rule19Start, rule19Start + 400);
+  assert(
+    /spelling.*grammar|grammar.*spelling/i.test(rule19Block),
+    'Rule 19 must specify spelling and grammar as the applicable checks'
+  );
+  assert(
+    /nit/i.test(rule19Block),
+    'Rule 19 must state that prose findings are always nit severity'
+  );
+});
+
+test('severity calibration nit bullet uses generic doc prose cap with no Rule 19 Step C reference', () => {
+  const severityStart = prompt.indexOf('Severity calibration');
+  assert(severityStart !== -1, '"Severity calibration" not found in prompt');
+  const severityBlock = prompt.slice(severityStart, severityStart + 1400);
+  assert(
+    /Documentation file prose findings.*nit/i.test(severityBlock),
+    'nit bullet must state "Documentation file prose findings … are always nit"'
+  );
+  assert(
+    !/Rule 19 Step C/i.test(severityBlock),
+    'severity calibration block must not reference "Rule 19 Step C" — old language must be removed'
+  );
+});
+
+// ─── Linked issue / PR description scope prohibition ─────────────────────────
+console.log('\n── Linked issue scope prohibition ────────────────────────────');
+
+test('prompt prohibits using linked issue or PR description to assess completeness', () => {
+  assert(
+    /Do not use the linked issue context or the PR description to assess whether the PR is complete/i.test(prompt),
+    'prompt must prohibit using linked issue context or PR description to assess PR completeness'
+  );
+});
+
+test('linked issue prohibition permits use as background context for individual code changes', () => {
+  const prohibitionPos = prompt.indexOf('Do not use the linked issue context');
+  assert(prohibitionPos !== -1, 'linked issue prohibition not found');
+  const prohibitionBlock = prompt.slice(prohibitionPos, prohibitionPos + 300);
+  assert(
+    /background context.*individual code changes/i.test(prohibitionBlock),
+    'prohibition must explicitly permit use as background context when evaluating individual code changes'
+  );
+});
+
+// ─── Rule 9b: unbalanced string literal ───────────────────────────────────────
+console.log('\n── Rule 9b: unbalanced string literal ────────────────────────');
+
+test('prompt contains rule 9b unbalanced string literal check', () => {
+  assert(
+    /unbalanced string literal/i.test(prompt),
+    'prompt must contain rule 9b unbalanced string literal check'
+  );
+});
+
+test('rule 9b is positioned inside the per-file rubric block (after rule 9, before rule 10)', () => {
+  const rule9Pos = prompt.indexOf('9. **TypeScript');
+  const rule9bPos = prompt.indexOf('9b. **Unbalanced string literal');
+  const rule10Pos = prompt.indexOf('10. **Unsafe ID');
+  assert(rule9Pos !== -1, 'rule 9 not found');
+  assert(rule9bPos !== -1, 'rule 9b not found');
+  assert(rule10Pos !== -1, 'rule 10 not found');
+  assert(rule9Pos < rule9bPos, `rule 9 (${rule9Pos}) must appear before rule 9b (${rule9bPos})`);
+  assert(rule9bPos < rule10Pos, `rule 9b (${rule9bPos}) must appear before rule 10 (${rule10Pos})`);
+});
+
+test('rule 9b specifies blocking severity', () => {
+  const rule9bPos = prompt.indexOf('9b. **Unbalanced string literal');
+  assert(rule9bPos !== -1, 'rule 9b not found');
+  const rule9bBlock = prompt.slice(rule9bPos, rule9bPos + 600);
+  assert(
+    /blocking/i.test(rule9bBlock),
+    'rule 9b must assign blocking severity'
+  );
+});
+
+test('rule 9b lists all required do-not-flag guards', () => {
+  const rule9bPos = prompt.indexOf('9b. **Unbalanced string literal');
+  assert(rule9bPos !== -1, 'rule 9b not found');
+  const rule9bBlock = prompt.slice(rule9bPos, rule9bPos + 1200);
+  assert(/template literal|backtick/i.test(rule9bBlock), 'rule 9b must guard against template literals');
+  assert(/escaped quote/i.test(rule9bBlock), 'rule 9b must guard against escaped quotes');
+  assert(/apostrophe|double-quoted/i.test(rule9bBlock), 'rule 9b must guard against apostrophes in opposite-quote strings');
+  assert(/comment/i.test(rule9bBlock), 'rule 9b must guard against comment lines');
+  assert(/multi-line|spans multiple/i.test(rule9bBlock), 'rule 9b must guard against multi-line strings');
+});
+
+test('NO-FINDINGS paragraph includes rule 9b exception', () => {
+  const noFindingsPos = prompt.indexOf('NO-FINDINGS [filename]');
+  assert(noFindingsPos !== -1, 'NO-FINDINGS paragraph not found');
+  // Use 1600 chars to ensure the rule 9b exception at the end of the paragraph is captured
+  const noFindingsBlock = prompt.slice(noFindingsPos, noFindingsPos + 1600);
+  assert(
+    /unbalanced string literal.*rule 9b|rule 9b.*unbalanced string literal/i.test(noFindingsBlock),
+    'NO-FINDINGS paragraph must include the rule 9b unbalanced string literal exception'
+  );
+});
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`Results: ${passed} passed, ${failed} failed`);

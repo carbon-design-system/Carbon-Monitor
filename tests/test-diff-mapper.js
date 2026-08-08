@@ -85,7 +85,7 @@ console.log('Test 1: Parse diff line positions');
 const lineMap = parseDiffLinePositions(sampleDiff);
 console.log('Files found:', Array.from(lineMap.keys()));
 const buttonMap = lineMap.get('src/components/Button.js');
-console.log('Line mappings for Button.js:', buttonMap ? buttonMap.size : 0);
+console.log('Line mappings for Button.js:', buttonMap ? buttonMap.lineMap.size : 0);
 console.log('✅ Test 1 passed\n');
 
 // Test 2: Map individual findings
@@ -116,6 +116,94 @@ summaryFindings.forEach(f => {
 });
 
 console.log('✅ Test 3 passed\n');
+
+// Test 4: Secondary lookup — agent reports PR_REVIEW_REQUEST.md absolute line numbers
+// Mirrors the exact numbers from PR #161:
+//   mdDiffStartLine = 44 (line of ```diff in PR_REVIEW_REQUEST.md)
+//   Stories @@ at diff line 6  → agent reports md line 117  → new-file line 67
+//   Banner  @@ at diff line 90 → agent reports md line 176  → new-file line 42
+console.log('Test 4: Secondary lookup (md-absolute line numbers)');
+
+// Build a minimal two-file all-+ diff that matches the structure used in create-test-pr.js
+const storiesLines = Array.from({ length: 77 }, (_, i) => `+line ${i + 1}`);
+const bannerLines  = Array.from({ length: 68 }, (_, i) => `+line ${i + 1}`);
+const storiesPath  = 'packages/react/src/components/Notification/stories/ActionableNotification.stories.js';
+const bannerPath   = 'packages/react/src/components/Notification/NotificationBanner.tsx';
+
+// diff line 1-5: stories header; diff line 6: stories @@; diff line 7-83: stories content
+// diff line 84: blank; diff line 85-89: banner header; diff line 90: banner @@; 91-158: banner content
+const secondaryDiff =
+  `diff --git a/${storiesPath} b/${storiesPath}\n` +
+  `new file mode 100644\nindex 0000000..0000000\n--- /dev/null\n+++ b/${storiesPath}\n` +
+  `@@ -0,0 +1,77 @@\n` +
+  storiesLines.join('\n') + '\n\n' +
+  `diff --git a/${bannerPath} b/${bannerPath}\n` +
+  `new file mode 100644\nindex 0000000..0000000\n--- /dev/null\n+++ b/${bannerPath}\n` +
+  `@@ -0,0 +1,68 @@\n` +
+  bannerLines.join('\n') + '\n';
+
+const secondaryFiles = [
+  { filename: storiesPath, status: 'modified' },
+  { filename: bannerPath,  status: 'added'    },
+];
+
+// Verify @@ positions in the constructed diff match expected
+const secondaryDiffLines = secondaryDiff.split('\n');
+const storiesHunkLine = secondaryDiffLines.findIndex(l => l.startsWith('@@ -0,0 +1,77')) + 1;
+const bannerHunkLine  = secondaryDiffLines.findIndex(l => l.startsWith('@@ -0,0 +1,68')) + 1;
+console.log(`  Stories @@ at diff line: ${storiesHunkLine} (expected 6)`);
+console.log(`  Banner  @@ at diff line: ${bannerHunkLine}  (expected 90)`);
+
+const MD_DIFF_START = 44; // ```diff is at line 44 of PR_REVIEW_REQUEST.md (PR #161 value)
+
+// Agent-reported md-absolute lines (what the agent actually writes in its JSON)
+const cat1MdLine = MD_DIFF_START + storiesHunkLine + 67 - 1; // = 44 + 6 + 66 = 116? Let's compute directly
+// Formula: agent reports md_@@_line + new_file_line = (MD_DIFF_START + hunkLine) + new_file_line
+// For stories new-file line 67: agent reports (44 + 6) + 67 = 117
+// For banner  new-file line 42: agent reports (44 + 90) + 42 = 176 -- but wait:
+// md_@@_line = MD_DIFF_START + hunkLine. new_file_line 1 starts at md_@@_line + 1.
+// agent_reported = md_@@_line + new_file_line = (44 + 6) + 67 = 117. Confirmed from actual run.
+const cat1Reported = (MD_DIFF_START + storiesHunkLine) + 67;  // = 117
+const cat2Reported = (MD_DIFF_START + bannerHunkLine)  + 42;  // = 176
+console.log(`  Cat1 agent-reported md line: ${cat1Reported} (expected 117)`);
+console.log(`  Cat2 agent-reported md line: ${cat2Reported} (expected 176)`);
+
+const cat1Secondary = mapFindingToDiffPosition(
+  { file: storiesPath, line: cat1Reported },
+  secondaryDiff, secondaryFiles, MD_DIFF_START
+);
+const cat2Secondary = mapFindingToDiffPosition(
+  { file: bannerPath,  line: cat2Reported },
+  secondaryDiff, secondaryFiles, MD_DIFF_START
+);
+
+console.log(`  Cat1 secondary result: ${JSON.stringify(cat1Secondary)}`);
+console.log(`  Cat2 secondary result: ${JSON.stringify(cat2Secondary)}`);
+
+// Expected: stories new-file line 67 → position 68; banner new-file line 42 → position 43
+if (!cat1Secondary || cat1Secondary.position !== 68) {
+  console.error(`❌ Test 4 failed: Cat1 expected position 68, got ${cat1Secondary?.position}`);
+  process.exit(1);
+}
+if (!cat2Secondary || cat2Secondary.position !== 43) {
+  console.error(`❌ Test 4 failed: Cat2 expected position 43, got ${cat2Secondary?.position}`);
+  process.exit(1);
+}
+
+// Verify backward compat: without mdDiffStartLine, these same reported lines return null
+const cat1NoBridge = mapFindingToDiffPosition(
+  { file: storiesPath, line: cat1Reported },
+  secondaryDiff, secondaryFiles
+  // no mdDiffStartLine → defaults to 0 → secondary lookup skipped
+);
+if (cat1NoBridge !== null) {
+  console.error(`❌ Test 4 failed: backward-compat check — expected null without mdDiffStartLine`);
+  process.exit(1);
+}
+
+console.log('✅ Test 4 passed (secondary lookup + backward compat)\n');
+
+
 
 // Validation
 const expectedInline = 2; // Lines 13 and 29 should be mappable

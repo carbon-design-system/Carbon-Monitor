@@ -12,11 +12,37 @@
  *****************************************************************************/
 
 require('dotenv').config();
+
+// Resolve target PR: CLI flag --pr takes precedence over env var
+const _cliPrIdx = process.argv.indexOf('--pr');
+const _cliPrFlagPresent = _cliPrIdx !== -1;
+
+if (_cliPrFlagPresent && process.argv[_cliPrIdx + 1] === undefined) {
+  console.error('❌ --pr flag requires a PR number.');
+  console.error('   Example: node src/index.js --pr 12345');
+  process.exit(1);
+}
+
+const _rawTargetPR = _cliPrFlagPresent
+  ? process.argv[_cliPrIdx + 1]
+  : process.env.GITHUB_AI_AGENT_PR_NUMBER || null;
+
+let TARGET_PR = null;
+if (_rawTargetPR != null) {
+  const _parsed = Number(_rawTargetPR);
+  if (!Number.isInteger(_parsed) || _parsed <= 0) {
+    console.error(`❌ Invalid PR number: "${_rawTargetPR}". Must be a positive integer.`);
+    console.error('   Example: node src/index.js --pr 12345');
+    process.exit(1);
+  }
+  TARGET_PR = _parsed;
+}
+
 const { randomUUID } = require('crypto');
 const { createGitHubClient } = require('./githubClient');
 const { buildReviewBundle } = require('./reviewBundle');
 const { runAgent, getConfiguredAgent, isAgentAvailable } = require('./agentRunner');
-const { parseReviewOutput } = require('./reviewParser');
+const { parseReviewOutput, extractCarbonBuilderSkillReads } = require('./reviewParser');
 const { formatSummaryComment, formatInlineComment, estimateTokenUsage } = require('./reviewPrompt');
 const { splitFindings } = require('./diffMapper');
 const { emitEvent } = require('./observability/eventService');
@@ -94,21 +120,32 @@ async function reviewPRs() {
   });
 
   try {
-    // Fetch reviewable PRs
-    console.log('📥 Fetching reviewable PRs...');
-    const prs = await client.fetchReviewablePRs({
-      owner: GITHUB_OWNER,
-      repo: GITHUB_REPO,
-      label: REVIEW_LABEL,
-      maxPRs: MAX_PRS_PER_RUN,
-      daysBack: N_DAYS_SINCE_PR_CREATED
-    });
-    
-    if (prs.length === 0) {
-      console.log('✅ No PRs need review');
-      return;
+    // Fetch PRs — targeted (--pr / env var) or auto-select
+    let prs;
+    if (TARGET_PR) {
+      console.log(`🎯 Targeting specific PR #${TARGET_PR} (skipping auto-selection)`);
+      const pr = await client.fetchSinglePR({
+        owner: GITHUB_OWNER,
+        repo: GITHUB_REPO,
+        pullNumber: TARGET_PR
+      });
+      prs = [pr];
+    } else {
+      console.log('📥 Fetching reviewable PRs...');
+      prs = await client.fetchReviewablePRs({
+        owner: GITHUB_OWNER,
+        repo: GITHUB_REPO,
+        label: REVIEW_LABEL,
+        maxPRs: MAX_PRS_PER_RUN,
+        daysBack: N_DAYS_SINCE_PR_CREATED
+      });
+
+      if (prs.length === 0) {
+        console.log('✅ No PRs need review');
+        return;
+      }
     }
-    
+
     console.log(`Found ${prs.length} PR(s) to review\n`);
     
     // Review each PR
@@ -186,6 +223,7 @@ async function reviewPRs() {
           client
         });
         console.log(`✅ Bundle: ${bundle.dir}`);
+        console.log(`✅ mdDiffStartLine: ${bundle.mdDiffStartLine}`);
         
         // Run agent review
         console.log(`\n🤖 Running ${agent} review...`);
@@ -218,33 +256,15 @@ async function reviewPRs() {
         console.log(`\n✅ ${agent} review received`);
 
         // ── Carbon Builder skill activation observability ─────────────────
-        // Track transcript evidence by scanning for explicit reads of
-        // .bob/skills/carbon-builder/ files. Keep this visible in logs even if
-        // the agent never prints a dedicated skill-activation tool call.
-        // This logging does not change any review behaviour — it is pure observation.
-        const skillReadPatterns = [
-          /\[using tool read_file:\s*([^\]]*\.bob\/skills\/carbon-builder\/[^\]]*)\]/gi,
-          /read_file[^\n]*path["'=:\s]+([^\s"'\],]*\.bob\/skills\/carbon-builder\/[^\s"'\],]*)/gi,
-          /Contents of file\s+([^:\n]*\.bob\/skills\/carbon-builder\/[^:\n]*):/gi,
-          /relative to:\s*(\.bob\/skills\/carbon-builder\/[^\s\n]*)/gi
-        ];
-        const skillFilesRead = [];
-        const seenSkillFiles = new Set();
-        for (const pattern of skillReadPatterns) {
-          let skillMatch;
-          while ((skillMatch = pattern.exec(agentOutput)) !== null) {
-            const filePath = skillMatch[1].trim();
-            if (!seenSkillFiles.has(filePath)) {
-              seenSkillFiles.add(filePath);
-              skillFilesRead.push(filePath);
-            }
-          }
-        }
+        // Reuse the shared extractor from reviewParser — handles both v1
+        // (read_file calls to .bob/skills/carbon-builder/) and v2 (use_skill
+        // tool with skill_name: carbon-builder).
+        const skillFilesRead = extractCarbonBuilderSkillReads(agentOutput);
         if (skillFilesRead.length > 0) {
-          console.log(`\n🔬 Carbon Builder skill files read — ${skillFilesRead.length} file(s):`);
+          console.log(`\n🔬 Carbon Builder skill activated — ${skillFilesRead.length} evidence signal(s):`);
           skillFilesRead.forEach(f => console.log(`   📄 ${f}`));
         } else {
-          console.log('\n🔬 Carbon Builder skill: no .bob/skills/carbon-builder/ read_file calls detected in agent output');
+          console.log('\n🔬 Carbon Builder skill: not detected in agent output');
         }
         // ─────────────────────────────────────────────────────────────────
 
@@ -307,7 +327,8 @@ async function reviewPRs() {
         const { inlineFindings, summaryFindings } = splitFindings(
           review.findings,
           diff,
-          files
+          files,
+          bundle.mdDiffStartLine
         );
         console.log(`✅ Inline: ${inlineFindings.length}, Summary: ${summaryFindings.length}`);
         
