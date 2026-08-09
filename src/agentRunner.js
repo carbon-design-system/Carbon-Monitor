@@ -54,11 +54,28 @@ async function runAgent({ agent, cwd, prompt, timeout = 10 * 60 * 1000 }) {
         // v2 changes from v1: 'bob run <prompt>' replaces 'bob -p <prompt> --yolo';
         //   --mode agent is the default (v1's 'advanced' mode no longer exists in v2);
         //   --allowed-mcp-server-names removed (unknown option in v2)
+        //
+        // --trust and --accept-license make the run safe in a fresh container, where
+        // neither trustedFolders.json nor the license consent flag has been written by
+        // a prior interactive session. Both are idempotent no-ops on a developer Mac
+        // that has already trusted the folder and accepted the license.
         command = 'bob';
         args = [
           'run',
-          prompt,
+          '--trust',
+          '--accept-license',
         ];
+
+        // Bob authenticates via SSO by default, which cannot complete headlessly.
+        // In a container BOB_API_KEY (passed through in env above) is the only viable
+        // path; an API key of type 'general' additionally requires --team-id, while an
+        // 'Inference'-scoped key does not. Sending --team-id unconditionally would
+        // break Inference keys, so it is only added when explicitly configured.
+        if (process.env.BOB_TEAM_ID) {
+          args.push('--team-id', process.env.BOB_TEAM_ID);
+        }
+
+        args.push(prompt);
         break;
         
       case 'claude':

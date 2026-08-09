@@ -23,6 +23,23 @@ function stripJsonComments(jsonString) {
 }
 
 /**
+ * Root directory review bundles are created under.
+ *
+ * Override with BOB_WORKSPACE_ROOT. The macOS default is /private/tmp because that
+ * path is in Bob's trustedFolders.json; elsewhere (containers) the platform temp
+ * directory is correct and the Dockerfile points BOB_WORKSPACE_ROOT at a writable
+ * volume so bundles survive the read-only parts of the image.
+ *
+ * @returns {string} Absolute path to the bundle root
+ */
+function getWorkspaceRoot() {
+  if (process.env.BOB_WORKSPACE_ROOT) {
+    return process.env.BOB_WORKSPACE_ROOT;
+  }
+  return process.platform === 'darwin' ? '/private/tmp' : os.tmpdir();
+}
+
+/**
  * Get the current working directory's Bob settings path
  * @returns {string|null} Path to settings.json or null if not found
  */
@@ -92,21 +109,30 @@ async function copyDirectory(src, dest) {
  * @returns {Promise<Object>} Bundle object with dir, prompt, and cleanup function
  */
 async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
-  // Create temp directory under /private/tmp (trusted by Bob Shell for MCP access).
-  // os.tmpdir() resolves to /var/folders/…/T on macOS which is NOT in Bob's
-  // trustedFolders.json, causing Bob to silently disable MCP tools.
-  const BOB_TRUSTED_TMP = '/private/tmp';
+  // Create the bundle under a directory Bob Shell treats as trusted for MCP access.
+  //
+  // On macOS this must be /private/tmp: os.tmpdir() resolves to /var/folders/…/T,
+  // which is NOT in Bob's trustedFolders.json, so Bob silently disables MCP tools.
+  // In a Linux container /private/tmp does not exist, so the root is env-driven and
+  // the platform default is used otherwise. agentRunner additionally passes --trust
+  // so a fresh container trusts the bundle without a pre-seeded trustedFolders.json.
+  const bobTrustedTmp = getWorkspaceRoot();
+  await fs.mkdir(bobTrustedTmp, { recursive: true });
   const tempDir = await fs.mkdtemp(
-    path.join(BOB_TRUSTED_TMP, `${owner}__${repo}__pull-${pr.number}-`)
+    path.join(bobTrustedTmp, `${owner}__${repo}__pull-${pr.number}-`)
   );
 
   try {
     // 1. Write .env file with API key for Bob
     // Bob v2 reads BOB_API_KEY from the environment (renamed from BOBSHELL_API_KEY in v1)
     const envContent = `BOB_API_KEY=${process.env.BOB_API_KEY || ''}\n`;
+    // 0600, not the 0644 a bare writeFile would produce: this is the only file
+    // in the bundle that carries a live credential, and it must not be the most
+    // readable one. The bundle directory is already 0700 from mkdtemp.
     await fs.writeFile(
       path.join(tempDir, '.env'),
-      envContent
+      envContent,
+      { mode: 0o600 }
     );
 
     // 2. Create .bob directory for rules (carbon-mcp is configured globally via streamable HTTP)
@@ -295,6 +321,6 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
   }
 }
 
-module.exports = { buildReviewBundle };
+module.exports = { buildReviewBundle, getWorkspaceRoot };
 
 // Made with Bob

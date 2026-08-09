@@ -2,6 +2,13 @@
 node_modules/
 package-lock.json
 
+# Build output — the console bundle is built by `npm run build:client`
+dist/
+
+# IBM Plex fonts staged into the client by scripts/copy-plex-fonts.js.
+# Copied from node_modules at build time rather than committed.
+client/public/plex/
+
 # Environment — never commit real credentials
 .env
 .env.local

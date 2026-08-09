@@ -1,40 +1,178 @@
-FROM node:18-alpine
+# ─────────────────────────────────────────────────────────────────────────────
+# Carbon Monitor — IBM Cloud Code Engine image
+#
+# BASE IMAGE: Debian (glibc)
+#
+#   Bob Shell depends on @lydell/node-pty, whose Linux prebuild is a dynamically
+#   linked ELF requiring GLIBC_2.28+ (verified with `strings pty.node`). It
+#   publishes no musl variant, so on Alpine the binary cannot load and `bob`
+#   fails at startup. Bob's own dist/vscode-policy-watcher.node is likewise a
+#   glibc x86-64 ELF. bookworm-slim provides glibc 2.36.
+#
+# NODE VERSION: 22, because Bob Shell requires >= 22.15.0 and refuses to install
+#   below that. The previous node:18-alpine base failed on both counts.
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Install system dependencies
-RUN apk add --no-cache git bash
-
-# Set working directory
+# ---- Dependencies (production only) ----
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+COPY package.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# `npm install`, not `npm ci`: this repo's .npmrc sets package-lock=false and
+# package-lock.json is gitignored, so no lockfile exists to install from.
+#
+# --registry is pinned explicitly because a developer's ~/.npmrc may default to
+# IBM Artifactory. That registry needs credentials the image does not carry, and
+# the failure surfaces minutes into the build as an opaque E401.
+RUN npm install --omit=dev --registry=https://registry.npmjs.org/ --no-audit --no-fund
 
-# Copy source code
-COPY src/ ./src/
-COPY docs/ ./docs/
+# ---- Runtime ----
+FROM node:22-bookworm-slim
 
-# Create temp directory for review bundles
-RUN mkdir -p /tmp/pr-reviews && chmod 777 /tmp/pr-reviews
-
-# Set environment variables
 ENV NODE_ENV=production
-ENV TMPDIR=/tmp/pr-reviews
 
-# Run as non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001 && \
-    chown -R nodejs:nodejs /app /tmp/pr-reviews
+# Bob Shell version, pinned so an upstream release cannot silently change what
+# ships. Verified against the SHA-256 published alongside the tarball; override
+# both together at build time to move versions:
+#   podman build --build-arg BOB_VERSION=x.y.z --build-arg BOB_SHA256=... .
+ARG BOB_VERSION=2.0.0
+ARG BOB_SHA256=de2d773e7e7a79cddf671d1019c8852f58b4c4472f96eccf4a23b9feac620812
+ARG BOB_DOWNLOAD_BASE=https://s3.us-south.cloud-object-storage.appdomain.cloud/bob-shell
 
-USER nodejs
+# curl for the download and the healthcheck; ca-certificates so TLS to the Carbon
+# MCP host and GitHub verifies; git because review bundles are git workspaces.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends curl ca-certificates git \
+  && rm -rf /var/lib/apt/lists/*
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD node -e "console.log('healthy')" || exit 1
+# ---- Bob Shell ----
+#
+# Installed by replicating what https://bob.ibm.com/download/bobshell.sh does,
+# rather than piping that script into a shell. The script is interactive (it can
+# prompt for a package manager and reads from /dev/tty), requires bash, and
+# resolves "latest" at build time — none of which belong in a reproducible image
+# build. The steps below are the same ones it performs, with the version pinned
+# and the checksum enforced.
+RUN set -eux; \
+  curl -fsSL "${BOB_DOWNLOAD_BASE}/bobshell-${BOB_VERSION}.tgz" -o /tmp/bobshell.tgz; \
+  echo "${BOB_SHA256}  /tmp/bobshell.tgz" | sha256sum -c -; \
+  npm install -g --registry=https://registry.npmjs.org/ --no-audit --no-fund /tmp/bobshell.tgz; \
+  rm -f /tmp/bobshell.tgz; \
+  bob --version
 
-# Run the agent
-CMD ["node", "src/index.js"]
+WORKDIR /app
+
+# Non-root, with a real home directory: Bob writes its settings, MCP
+# configuration and OAuth state under $HOME, and the app rewrites
+# ~/.bob/settings/mcp.json on every token refresh.
+RUN groupadd -r app && useradd -r -g app -m -d /home/app app
+
+COPY --from=deps --chown=app:app /app/node_modules ./node_modules
+COPY --chown=app:app package.json ./
+COPY --chown=app:app src ./src
+COPY --chown=app:app docs ./docs
+
+# The Carbon Builder skill. reviewBundle.js copies .bob/skills/carbon-builder
+# into each review bundle, because Bob resolves skills from the workspace's own
+# .bob/skills directory rather than from $HOME.
+#
+# Not optional: without it the copy fails with ENOENT, the skill never loads, and
+# every Carbon-specific claim silently falls back to MCP. The review still
+# completes and still posts comments — it just loses its primary authority, which
+# is the failure mode worth guarding because nothing about the output announces
+# it. The verification below turns that into a build failure instead.
+#
+# The repo copy is the FALLBACK; the authoritative version is fetched next.
+COPY --chown=app:app .bob ./.bob
+
+# ---- Refresh the skill from its source of truth ----
+#
+# carbon-mcp publishes the canonical carbon-builder skill, and the copy vendored
+# in this repo drifts behind it — at the time of writing it was missing three
+# reference files and its SKILL.md was 23 lines stale. A stale skill does not
+# fail loudly; it just answers Carbon questions from an older rulebook, which is
+# precisely the kind of silent degradation worth engineering against.
+#
+# Pinned to a ref rather than an immutable commit so a rebuild picks up skill
+# improvements without a code change. Set CARBON_SKILL_REF to a tag or SHA when a
+# byte-identical rebuild matters more than freshness.
+ARG CARBON_SKILL_REPO=carbon-design-system/carbon-mcp
+ARG CARBON_SKILL_REF=main
+ARG CARBON_SKILL_PATH=public/skills/carbon-builder
+
+# Failure here is NOT fatal: the vendored copy above is already in place, so a
+# GitHub outage or a moved path degrades to "slightly stale" rather than blocking
+# a deploy. It is loud, and it records which source won in skill-source.txt so
+# the choice is auditable after the fact instead of being guessed from a build
+# log nobody kept.
+RUN set -eux; \
+  SKILL_DIR=/app/.bob/skills/carbon-builder; \
+  TMP=$(mktemp -d); \
+  REF_SLUG=$(echo "${CARBON_SKILL_REF}" | tr '/' '-'); \
+  if curl -fsSL --max-time 120 \
+       "https://codeload.github.com/${CARBON_SKILL_REPO}/tar.gz/refs/heads/${CARBON_SKILL_REF}" \
+       -o "${TMP}/repo.tgz" 2>/dev/null \
+     && tar -xzf "${TMP}/repo.tgz" -C "${TMP}" \
+          --strip-components=4 \
+          "$(basename ${CARBON_SKILL_REPO})-${REF_SLUG}/${CARBON_SKILL_PATH}" 2>/dev/null \
+     && [ -f "${TMP}/SKILL.md" ]; then \
+    rm -rf "${SKILL_DIR}"; \
+    mkdir -p "${SKILL_DIR}"; \
+    cp -R "${TMP}/." "${SKILL_DIR}/"; \
+    echo "${CARBON_SKILL_REPO}@${CARBON_SKILL_REF} (downloaded $(date -u +%Y-%m-%dT%H:%M:%SZ))" \
+      > "${SKILL_DIR}/skill-source.txt"; \
+    echo "carbon-builder: refreshed from ${CARBON_SKILL_REPO}@${CARBON_SKILL_REF}"; \
+  else \
+    echo "WARNING: could not fetch carbon-builder from ${CARBON_SKILL_REPO}@${CARBON_SKILL_REF}."; \
+    echo "WARNING: falling back to the copy vendored in this repo, which may be stale."; \
+    echo "vendored in carbon-monitor (upstream fetch failed at build time)" \
+      > "${SKILL_DIR}/skill-source.txt"; \
+  fi; \
+  rm -rf "${TMP}"; \
+  chown -R app:app "${SKILL_DIR}"; \
+  echo "carbon-builder files: $(find ${SKILL_DIR} -type f | wc -l)"
+
+# Whichever source won, the skill must exist. This is the check that would have
+# caught the .dockerignore exclusion that shipped an image without it.
+RUN test -f /app/.bob/skills/carbon-builder/SKILL.md \
+  || (echo "FATAL: carbon-builder skill missing from the image. Check .dockerignore." && exit 1)
+
+# Pre-built console bundle. Built on the host by `npm run build:client` so the
+# runtime image needs no Vite, Sass or React — matching the carbon-mcp exemplar.
+COPY --chown=app:app dist ./dist
+
+# Seed Bob's state so a cold container never blocks on an interactive prompt.
+# licenseConsent short-circuits the license gate, and the review workspace is
+# pre-trusted so Bob does not disable MCP tools on an unrecognised folder.
+# `bob run` also passes --trust and --accept-license as a second line of defence.
+RUN mkdir -p /home/app/.bob/settings /workspace \
+  && printf '%s\n' '{"ibm":{"licenseConsent":true,"isNotFirstTime":true}}' \
+     > /home/app/.bob/settings.json \
+  && printf '%s\n' '{"/workspace":true}' > /home/app/.bob/trustedFolders.json \
+  && printf '%s\n' '{"mcpServers":{}}' > /home/app/.bob/settings/mcp.json \
+  && chown -R app:app /home/app /workspace
+
+USER app
+ENV HOME=/home/app
+
+# Review bundles are written here. /workspace rather than /tmp so the path is
+# stable, owned by the app user, and can be backed by a Code Engine mount.
+ENV BOB_WORKSPACE_ROOT=/workspace
+
+# Survives a restart, so a container that is rescheduled does not force an
+# operator back through the browser sign-in.
+ENV MCP_STATE_PATH=/workspace/.mcp-state.json
+
+# Code Engine injects PORT; 8080 documents the default for local runs.
+ENV PORT=8080
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl --fail "http://127.0.0.1:${PORT:-8080}/api/health" || exit 1
+
+# The API server, not src/index.js: this deployment is the long-running console
+# that owns MCP refresh and triggers reviews, rather than a one-shot review run.
+CMD ["node", "src/api/server.js"]
 
 # Made with Bob

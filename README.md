@@ -69,10 +69,91 @@ Carbon-Monitor/
 
 ## Prerequisites
 
-1. **Node.js** >= 18.0.0
-2. **GitHub token** with `repo` and `write:discussion` scopes
+1. **Node.js** >= 22.15.0 (required by Bob Shell)
+2. **GitHub personal access token** — see [GitHub token](#github-token) for the
+   exact permissions, including the repository role the token's account needs
 3. **Bob Shell CLI** installed and on `PATH`
 4. **Carbon MCP** configured globally in Bob as a streamable-HTTP connection (see setup below)
+
+---
+
+## GitHub token
+
+The agent makes eight distinct API calls. Six are reads, and three write:
+`pulls.createReviewComment` (inline comments), `issues.createComment` (the
+summary) and `issues.addLabels` (the `AIReviewed` label).
+
+### The label is the binding requirement
+
+**Adding a label needs the Triage role or higher on the repository.** No token
+scope grants this on its own — the *account* the token belongs to must hold that
+role on `carbon-design-system/carbon`.
+
+It is not optional:
+
+- `addReviewedLabel` throws, and the per-PR handler treats that as a failure — so
+  the run fails *after* it has already posted its comments.
+- The label is the de-duplication key. `fetchReviewablePRs` skips any PR that
+  already carries it, so a token that can comment but not label will **re-review
+  the same PR on every run and post duplicate comments each time.**
+
+Inline comment failures, by contrast, are non-fatal: they are logged and the loop
+continues.
+
+### Fine-grained token (recommended)
+
+| Setting | Value |
+|---------|-------|
+| Resource owner | `carbon-design-system` |
+| Repository access | `carbon` — plus any repo hosting linked parent issues |
+| **Pull requests** | Read and write |
+| **Issues** | Read and write |
+| **Contents** | Read |
+| **Metadata** | Read (mandatory, selected automatically) |
+
+*Issues* write is needed for two reasons that are easy to miss: labels are an
+issue-level concept, and the PR summary comment is posted through the issues
+endpoint.
+
+Grant access to more than one repository if PRs link to parent issues elsewhere —
+`fetchLinkedIssueContext` follows `parent_issue_url` across repositories, and a
+token scoped to a single repo silently returns no issue context rather than
+failing.
+
+### Classic token
+
+`public_repo` is sufficient: the target repository is public, and that scope
+grants write. Use full `repo` only when pointing at a private repository.
+
+Classic tokens are coarser — `public_repo` grants write access to *every* public
+repository the account can push to, which is why the fine-grained token is
+preferred.
+
+> **Not `write:discussion`.** Earlier revisions of this document listed that
+> scope. It governs *team discussions*, which this agent never touches; it grants
+> nothing the agent needs and can be dropped from existing tokens.
+
+### Two things that will bite you
+
+- **SAML SSO authorization.** `carbon-design-system` is IBM-managed, so after
+  creating the token you must use **Configure SSO → Authorize** on it. Without
+  that, every call returns 403 with an otherwise valid-looking token, and the
+  console's GitHub tile reports `Token rejected`.
+- **Fine-grained tokens expire** (one year maximum, often capped shorter by org
+  policy). An expired token is indistinguishable from a revoked one in the status
+  tile — both read `Token rejected`.
+
+### Running without write access
+
+Comment posting can be disabled:
+
+```bash
+GITHUB_AI_AGENT_POST_INLINE_COMMENTS=false
+GITHUB_AI_AGENT_POST_SUMMARY_COMMENT=false
+```
+
+The label call is **not** behind a flag, so it still runs and still needs Triage.
+There is currently no fully read-only mode.
 
 ---
 
@@ -99,7 +180,8 @@ Edit `.env`:
 ```bash
 # Required
 GITHUB_AI_AGENT_TOKEN=ghp_your_github_token_here
-BOBSHELL_API_KEY=your_bob_api_key_here
+# BOB_API_KEY, not BOBSHELL_API_KEY — Bob Shell v2 renamed it
+BOB_API_KEY=your_bob_api_key_here
 
 # Defaults shown — override as needed
 GITHUB_AI_AGENT_OWNER=carbon-design-system
@@ -118,8 +200,9 @@ Full variable reference:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GITHUB_AI_AGENT_TOKEN` | ✅ | — | GitHub personal access token |
-| `BOBSHELL_API_KEY` | ✅ | — | Bob Shell API key |
+| `GITHUB_AI_AGENT_TOKEN` | ✅ | — | GitHub PAT. Needs Pull requests + Issues write and Contents read, **and Triage on the repo** — see [GitHub token](#github-token) |
+| `BOB_API_KEY` | ✅ | — | Bob Shell API key. Create with Scope **Inference** in the Bob web portal — browser SSO cannot complete in a container |
+| `BOB_TEAM_ID` | ❌ | — | Only for a `general`-type Bob key; sending it with an Inference key breaks the run |
 | `GITHUB_AI_AGENT_OWNER` | ❌ | `carbon-design-system` | Repository owner |
 | `GITHUB_AI_AGENT_REPO` | ❌ | `carbon` | Repository name |
 | `GITHUB_AI_AGENT_CLI` | ❌ | `bob` | Agent to use — only `bob` is supported |
@@ -216,31 +299,347 @@ npm run test:diff       # diffMapper unit tests
 npm run test:all        # parser + diffMapper
 ```
 
-### API server (in development)
+### API server and console
 
 ```bash
-npm run api
+npm run build:client   # build the console once
+npm run api            # http://localhost:3000
 ```
 
-Starts a lightweight HTTP server on port 3000 (configurable via `API_PORT`). Intended for cloud deployments where the process runs continuously and needs a way to receive token refreshes without a restart.
-
-Endpoints (all except `/api/health` require `Authorization: Bearer <API_SECRET>`):
+Serves the operator console and the REST API on one port (`PORT`, then
+`API_PORT`, default `3000`). Code Engine injects `PORT`, and exposes a single
+port per app, which is why both share one.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/health` | Health check — no auth required |
-| `GET` | `/api/config` | Current configuration (sanitised) |
-| `GET` | `/api/mcp/status` | Carbon MCP connection status |
-| `POST` | `/api/mcp/refresh` | Push a new IBM JWT token into Bob's MCP config |
-| `POST` | `/api/review/trigger` | Manually trigger a review run |
+| `GET` | `/api/health` | Health check — always open |
+| `GET` | `/api/auth/status` | Whether sign-in is required and satisfied — always open |
+| `POST` | `/api/auth/login` / `logout` | Session sign-in — always open |
+| `GET` | `/api/mcp/callback` | OAuth redirect target — guarded by one-shot `state` + PKCE |
+| `GET` | `/api/status` | All dependency checks (Bob, Carbon MCP, GitHub, Elasticsearch, Bobcoins) |
+| `GET` | `/api/config` | Current configuration (sanitised — never returns credentials) |
+| `GET` | `/api/mcp/status` | Carbon MCP connection detail |
+| `POST` | `/api/mcp/connect` | Begin the IBMid OAuth bootstrap |
+| `POST` | `/api/mcp/refresh` | Force a refresh, or store a pasted token / session id |
+| `POST` | `/api/mcp/test` | Live probe — also repairs a session-backed connection |
+| `POST` | `/api/mcp/disconnect` | Forget the stored OAuth state and strip Bob's MCP headers |
+| `GET` | `/api/credits` | Bobcoins balance and spend summary |
+| `GET` | `/api/credits/history` | Per-review spend, plus a cumulative series |
+| `POST` | `/api/review/trigger` | Trigger a review (202, runs in the background) — see [Triggering a review over HTTP](#triggering-a-review-over-http) |
+| `GET` | `/api/review/status` | Current or most recent run, with its mode and PR numbers |
 
-Configure the API server in `.env`:
+`POST /api/mcp/disconnect` is the inverse of **Sign in with IBMid**: it deletes
+the stored refresh token and removes the `Authorization` / `X-MCP-Session`
+headers from `~/.bob/settings/mcp.json`, so the next review genuinely runs with
+no Carbon MCP credential. It is idempotent — disconnecting an already
+disconnected server still returns `{ "success": true, "disconnected": true }`.
+Reconnecting costs a browser round trip through IBMid, which is why the console
+asks for confirmation first.
+
+**Authentication is off by default** — every route above answers without a
+credential. When `AUTH_REQUIRED=true`, everything except the always-open routes
+needs either a session cookie or `Authorization: Bearer <API_SECRET>`. See
+[Console sign-in](#console-sign-in-optional).
 
 ```bash
 API_PORT=3000
-API_SECRET=your_secure_api_secret_here
-API_ENABLE_AUTH=true
+API_SECRET=your_secure_api_secret_here   # bearer token for CI / curl
+API_ENABLE_AUTH=true                     # only has effect when AUTH_REQUIRED=true
 ```
+
+#### Triggering a review over HTTP
+
+**Review one specific PR** — copy, paste, change the number:
+
+```bash
+curl -X POST https://carbon-monitor.1zvnn29on9q1.us-south.codeengine.appdomain.cloud/api/review/trigger -H "Content-Type: application/json" -d '{"prNumbers":[22971]}'
+```
+
+**Check on it** — the trigger returns `202` immediately and runs in the
+background, so the outcome is polled, not awaited:
+
+```bash
+curl https://carbon-monitor.1zvnn29on9q1.us-south.codeengine.appdomain.cloud/api/review/status
+```
+
+**Review the most recent PRs instead** — no body at all:
+
+```bash
+curl -X POST https://carbon-monitor.1zvnn29on9q1.us-south.codeengine.appdomain.cloud/api/review/trigger
+```
+
+> Each of these posts **real** inline comments, a summary comment and the
+> `AIReviewed` label to the pull requests, publicly. The last one does it to
+> every PR that passes the auto-select filter — up to `GITHUB_AI_AGENT_MAX_PRS`
+> of them.
+
+The rest of this section covers the full contract: every accepted body shape,
+the validation rules, and the error responses.
+
+`POST /api/review/trigger` starts a **real** review. It reads live open PRs from
+the configured repository, runs Bob against them, and posts public inline and
+summary comments on each one, then labels them. There is no dry-run mode — every
+command below writes to GitHub.
+
+Two things follow from that, and both are deliberate:
+
+- **The call is asynchronous.** It returns `202` the moment the run is accepted
+  and does the work in the background. A review takes minutes, far longer than
+  Code Engine's 300-second request ceiling, so there is nothing useful to wait
+  on — the HTTP request would time out long before the review finished. Poll
+  `GET /api/review/status` for the outcome.
+- **Auth is off by default.** With `AUTH_REQUIRED` unset, the commands below work
+  as written, including against the public deployment URL. When
+  `AUTH_REQUIRED=true`, add `-H "Authorization: Bearer $API_SECRET"` to every
+  call — see **With authentication on** at the end of this section.
+
+Examples use `$BASE`. Set it once to whichever instance you are driving:
+
+```bash
+# Local
+BASE=http://localhost:3000
+
+# Deployed (IBM Cloud Code Engine)
+BASE=https://carbon-monitor.1zvnn29on9q1.us-south.codeengine.appdomain.cloud
+```
+
+**1. Auto mode — no body**
+
+```bash
+curl -X POST http://localhost:3000/api/review/trigger
+
+curl -X POST https://carbon-monitor.1zvnn29on9q1.us-south.codeengine.appdomain.cloud/api/review/trigger
+```
+
+An empty body, or no body at all, means auto mode: exactly what `npm start`
+does. Carbon Monitor selects up to `GITHUB_AI_AGENT_MAX_PRS` (default `5`) of
+the most recent open PRs created within `GITHUB_AI_AGENT_DAYS_BACK` days
+(default `21`), excluding drafts, bot authors, and PRs already carrying the
+`GITHUB_AI_AGENT_REVIEW_LABEL` label. Every PR that survives that filter gets
+real comments posted on it. On the deployed URL with sign-in off, this is an
+unauthenticated public write to the repo — the command is one keystroke, the
+consequences are not.
+
+```json
+{
+  "success": true,
+  "message": "Review triggered, running in background",
+  "startedAt": "2026-08-08T14:22:03.118Z",
+  "mode": "auto",
+  "prNumbers": null,
+  "maxPRs": 5,
+  "daysBack": 21
+}
+```
+
+**2. Explicit list — JSON array**
+
+```bash
+curl -X POST "$BASE/api/review/trigger" \
+  -H 'Content-Type: application/json' \
+  -d '{"prNumbers": [22971, 22972]}'
+```
+
+Explicit PRs bypass every filter, the same way `--pr` does on the CLI (see
+[Review a specific PR](#review-a-specific-pr)). A draft, a six-month-old PR, or
+one already labelled `AIReviewed` is reviewed anyway — and a PR that was already
+reviewed receives a second set of comments.
+
+```json
+{
+  "success": true,
+  "message": "Review triggered for 2 PRs, running in background",
+  "startedAt": "2026-08-08T14:22:03.118Z",
+  "mode": "explicit",
+  "prNumbers": [22971, 22972],
+  "maxPRs": 5
+}
+```
+
+`daysBack` is absent in explicit mode because no age filter was applied.
+`maxPRs` is still reported — it is the ceiling the list was validated against.
+
+**3. Explicit list — comma-separated string**
+
+```bash
+curl -X POST "$BASE/api/review/trigger" \
+  -H 'Content-Type: application/json' \
+  -d '{"prNumbers": "22971, 22972"}'
+```
+
+Identical semantics to the array form, for callers that would rather not build
+JSON arrays — a shell variable, a form field, a scheduler's text box.
+Surrounding whitespace is ignored.
+
+**4. A single PR**
+
+```bash
+curl -X POST "$BASE/api/review/trigger" \
+  -H 'Content-Type: application/json' \
+  -d '{"prNumbers": "22971"}'
+```
+
+The HTTP equivalent of `node src/index.js --pr 22971`. `{"prNumbers": [22971]}`
+does the same thing.
+
+> **Precedence.** An explicit `prNumbers` in the request body wins over
+> `GITHUB_AI_AGENT_PR_NUMBER` / `--pr`, which in turn wins over auto-selection.
+> So on a container started with `GITHUB_AI_AGENT_PR_NUMBER=12345`, a body-less
+> trigger reviews PR 12345, and a trigger carrying `prNumbers` reviews the PRs
+> you named instead.
+
+**5. Polling for the outcome**
+
+```bash
+curl "$BASE/api/review/status"
+```
+
+While the run is in flight:
+
+```json
+{
+  "success": true,
+  "running": true,
+  "startedAt": "2026-08-08T14:22:03.118Z",
+  "finishedAt": null,
+  "error": null,
+  "mode": "explicit",
+  "prNumbers": [22971, 22972],
+  "timestamp": "2026-08-08T14:24:41.902Z"
+}
+```
+
+After it finishes:
+
+```json
+{
+  "success": true,
+  "running": false,
+  "startedAt": "2026-08-08T14:22:03.118Z",
+  "finishedAt": "2026-08-08T14:31:57.640Z",
+  "error": null,
+  "mode": "auto",
+  "prNumbers": null,
+  "timestamp": "2026-08-08T14:32:10.005Z"
+}
+```
+
+`mode` and `prNumbers` describe the current run, or the most recent one once
+`running` is `false` — which is how the console can say *what* is being
+reviewed, not merely that something is. `error` carries the message from a run
+that threw, and is `null` on success.
+
+A single PR that 404s does not abort the run: the failure is recorded and the
+remaining PRs are still reviewed, so a typo in one number does not cost you the
+others. Check the app log for which ones failed.
+
+Status reports the run, not per-PR verdicts. The findings themselves land on the
+PRs. To block a script on completion:
+
+```bash
+until curl -s "$BASE/api/review/status" | grep -q '"running": *false'; do sleep 30; done
+```
+
+(Responses are pretty-printed, so match `"running": false` with the space — or
+pipe through `jq -e '.running == false'` and skip the guesswork.)
+
+The console polls the same endpoint every 30 seconds.
+
+**6. Validation errors (400)**
+
+Explicit mode is validated before anything is fetched, and the message names the
+value that caused the rejection:
+
+| Body | Rejected because |
+|------|------------------|
+| `{"prNumbers": "abc"}` | `abc` is not a number |
+| `{"prNumbers": [22971, 0]}` | `0` is not a positive integer |
+| `{"prNumbers": [-5]}` | negative |
+| `{"prNumbers": [22971.5]}` | not an integer |
+| `{"prNumbers": [22971, null]}` | `null` entry |
+| `{"prNumbers": ", ,"}` | a stray comma leaves an empty value |
+| `{"prNumbers": 22971}` | a bare number is neither an array nor a comma-separated string |
+| `{"prNumbers": {"pr": 22971}}` | an object is neither an array nor a string |
+| more distinct numbers than the limit | more than `GITHUB_AI_AGENT_MAX_PRS` after de-duplication |
+
+`{"prNumbers": []}` and `{"prNumbers": ""}` are **not** errors — an absent list
+means auto mode, and an empty one says the same thing. They return `202` with
+`"mode": "auto"`.
+
+Nothing is fetched and no comment is posted when validation fails.
+
+A `400` uses the API's standard error envelope — note that this is **`error`**,
+not the `success`/`message` pair the `202` and `409` responses use, so parse
+accordingly:
+
+```json
+{
+  "error": "Invalid PR number \"abc\" — must be a positive integer.",
+  "timestamp": "2026-08-08T23:24:33.491Z"
+}
+```
+
+```json
+{
+  "error": "Too many PRs: 11 requested, but at most 10 may be reviewed in one run (GITHUB_AI_AGENT_MAX_PRS).",
+  "timestamp": "2026-08-08T23:24:33.491Z"
+}
+```
+
+Duplicates are not an error. `[22971, 22971, 22972]` is de-duplicated to
+`[22971, 22972]` with the original order preserved, and the limit is checked
+*after* de-duplication — so listing the same PR six times is fine, while six
+distinct PRs is a `400` on the default configuration. Raise
+`GITHUB_AI_AGENT_MAX_PRS` if you genuinely need a longer list; it governs both
+modes. Malformed JSON, or a body over 256 KB, is also a `400`.
+
+**7. Already running (409)**
+
+```json
+{
+  "success": false,
+  "message": "A review is already running",
+  "startedAt": "2026-08-08T23:24:33.525Z",
+  "mode": "auto",
+  "prNumbers": null
+}
+```
+
+Only one review runs at a time. This is not a resource limit — it is there
+because two agents reviewing the same PR would post the same findings twice:
+duplicate inline comments on the same diff lines, and two summary comments. The
+`409` carries the in-flight run's `startedAt`, `mode` and `prNumbers`, so a
+caller can tell what is already running without a second request.
+
+The guard is in-process, and the Code Engine app is pinned to a single instance
+(`--max-scale 1`, for Carbon MCP's rotating refresh tokens), so one lock covers
+the whole deployment.
+
+**With authentication on**
+
+When `AUTH_REQUIRED=true`, these routes answer `401` without a credential.
+Browsers use the session cookie from the sign-in page; scripts and CI use the
+bearer token:
+
+```bash
+curl -X POST "$BASE/api/review/trigger" \
+  -H "Authorization: Bearer $API_SECRET" \
+  -H 'Content-Type: application/json' \
+  -d '{"prNumbers": "22971, 22972"}'
+
+curl "$BASE/api/review/status" -H "Authorization: Bearer $API_SECRET"
+```
+
+`API_SECRET` is the value in the deployment secret — see
+[Console sign-in](#console-sign-in-optional).
+
+**From the console instead**
+
+The **Reviews** tile carries a PR-list field that is the exact equivalent of the
+explicit call: type `22971, 22972`, press **Run review now**, and the console
+sends the same request. Leave the field empty for auto mode. It validates
+against the rules above as you type, and the button stays disabled until the
+list is valid, so a bad list is caught before it becomes a `400`.
 
 ---
 
@@ -333,29 +732,106 @@ An unreliable run still posts a comment but sets the recommendation to `Suggeste
 
 ## Deployment
 
-Carbon Monitor is designed to run as a scheduled job in the cloud. The intended setup is:
+Carbon Monitor deploys to **IBM Cloud Code Engine** as a single always-on app
+that serves an operator console, keeps the Carbon MCP connection alive, and runs
+reviews on demand.
 
-1. Deploy the Node process to a cloud environment.
-2. Run `npm start` on a schedule (cron or a scheduler service) — e.g. daily at 03:00.
-3. Use the API server (`npm run api`) alongside it to accept token refresh requests without restarting the process.
-
-The CI/CD safety check in `index.js` skips execution when `TRAVIS_BRANCH` is set to anything other than `main`, preventing accidental reviews from feature branch CI runs.
-
-### Docker
+**[→ Full architecture documentation](docs/ARCHITECTURE.md)** — container layout,
+Bob Shell packaging, the Carbon MCP OAuth bootstrap and unattended refresh, the
+authentication model, and the Code Engine topology, with diagrams.
 
 ```bash
-# Build and run
-docker-compose up -d
+# One-time: create the secret holding this app's credentials
+ibmcloud ce secret create --name carbon-monitor-secrets \
+  --from-literal GITHUB_AI_AGENT_TOKEN=ghp_xxx \
+  --from-literal BOB_API_KEY=xxx \
+  --from-literal ES_USERNAME=xxx \
+  --from-literal ES_PASSWORD=xxx \
+  --from-literal SESSION_SIGNING_KEY=$(openssl rand -hex 32) \
+  --from-literal API_SECRET=$(openssl rand -hex 32)
 
-# Or without Compose
-docker build -t carbon-monitor .
-docker run -d --name carbon-monitor --env-file .env carbon-monitor
-
-# Logs
-docker-compose logs -f
-# or
-docker logs -f carbon-monitor
+# Build the console, build the image, push to ICR, deploy
+./deploy_ce.sh
 ```
+
+Then open the console and press **Sign in with IBMid** once. After that the
+container renews its own Carbon MCP token — the connection no longer dies every
+two hours.
+
+The console requires **no authentication by default**. To put it behind a
+password, set `AUTH_REQUIRED=true` and add `ES_USERNAME` / `ES_PASSWORD` (and
+ideally `SESSION_SIGNING_KEY`) to the secret — see
+[Console sign-in](#console-sign-in-optional).
+
+The deployment targets the same account, region, resource group, Code Engine
+project (`mcp-ce`) and registry namespace (`cxp-mcp`) as `carbon-mcp`.
+
+### The operator console
+
+`npm run api` serves both the API and the Carbon React v11 console:
+
+- **Status tiles** — Bob Shell, Carbon MCP, GitHub and Elasticsearch, each
+  reporting what is wrong rather than only that something is
+- **Carbon MCP connection** — sign in with IBMid, test the connection, force a
+  refresh, paste a bearer token and session id as a fallback, or sign out and
+  drop the stored credential entirely
+- **Reviews** — trigger a run, name specific PRs to review, and see the state of
+  the current or most recent run — see
+  [Triggering a review over HTTP](#triggering-a-review-over-http)
+
+```bash
+npm run build:client   # build the console (also stages IBM Plex)
+npm run api            # http://localhost:3000
+npm run dev:client     # optional: live reload at :5173, proxying to :3000
+```
+
+### Console sign-in (optional)
+
+The console is **open by default** — no login page, everywhere, including
+production. Password protection is a feature flag:
+
+```bash
+AUTH_REQUIRED=true ES_USERNAME=operator ES_PASSWORD=secret \
+  SESSION_SIGNING_KEY=$(openssl rand -hex 32) npm run api
+```
+
+With it on, the console shows the sign-in page ported from Carbon Migrate and
+accepts the same credentials (`ES_USERNAME` / `ES_PASSWORD`), so one identity
+works across both tools. With it off, the "Sign out" control is hidden — there is
+no session to end.
+
+The flag accepts `true`/`1`/`yes`/`on`; anything unrecognised is reported at
+startup and treated as off, so a typo cannot leave you believing the console is
+protected when it is not. Every start logs the resulting posture:
+
+```
+🔓 Sign-in:        open — no authentication (set AUTH_REQUIRED=true to enable)
+```
+
+> Worth knowing: the Code Engine app has a public HTTPS URL. With sign-in off,
+> anyone with that URL can read status and trigger a review. No secret is exposed
+> — the API never returns tokens, keys or passwords — but the actions are
+> unauthenticated.
+
+### Running reviews on a schedule
+
+`npm start` still runs a single review pass and exits, so the agent can also be
+driven by a scheduler. The CI/CD safety check in `index.js` skips execution when
+`TRAVIS_BRANCH` is set to anything other than `main`, preventing accidental
+reviews from feature-branch CI runs.
+
+### Local container
+
+```bash
+npm run build:client
+podman build --platform linux/amd64 -t carbon-monitor .
+podman run -d -p 8080:8080 --env-file .env carbon-monitor
+```
+
+> The image must be Debian-based and Node 22+. Bob Shell requires
+> Node >= 22.15.0, and its `node-pty` prebuild needs glibc 2.28+ with no musl
+> variant published — so Alpine cannot run it. See
+> [docs/ARCHITECTURE.md §3.1](docs/ARCHITECTURE.md).
 
 ---
 

@@ -1,20 +1,27 @@
-version: '3.8'
-
 services:
-  carbon-pr-review:
+  carbon-monitor:
     build: .
-    container_name: carbon-pr-review
+    container_name: carbon-monitor
     restart: unless-stopped
     env_file:
       - .env
     environment:
       - NODE_ENV=production
-      - TMPDIR=/tmp/pr-reviews
+      # Review bundles and the OAuth refresh state live here. Backed by a named
+      # volume below so a container restart does not force an operator back
+      # through the browser sign-in.
+      - BOB_WORKSPACE_ROOT=/workspace
+      - MCP_STATE_PATH=/workspace/.mcp-state.json
+      - PORT=8080
+      # The OAuth redirect_uri derives from this. It must match the URL the
+      # browser actually uses, or "Sign in with IBMid" fails.
+      - BASE_URL=http://localhost:8080
+    ports:
+      # The console and API share one port, matching Code Engine, which exposes
+      # a single port per app.
+      - "8080:8080"
     volumes:
-      # Mount .env file for configuration
-      - ./.env:/app/.env:ro
-      # Mount temp directory for review bundles
-      - pr-reviews-tmp:/tmp/pr-reviews
+      - carbon-monitor-workspace:/workspace
     networks:
       - carbon-network
     logging:
@@ -24,7 +31,7 @@ services:
         max-file: "3"
 
 volumes:
-  pr-reviews-tmp:
+  carbon-monitor-workspace:
     driver: local
 
 networks:
