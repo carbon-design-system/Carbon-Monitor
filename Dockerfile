@@ -146,11 +146,12 @@ COPY --chown=app:app dist ./dist
 # licenseConsent short-circuits the license gate, and the review workspace is
 # pre-trusted so Bob does not disable MCP tools on an unrecognised folder.
 # `bob run` also passes --trust and --accept-license as a second line of defence.
-RUN mkdir -p /home/app/.bob/settings /workspace \
+RUN mkdir -p /home/app/.bob/settings /home/app/.bob/skills /workspace \
   && printf '%s\n' '{"ibm":{"licenseConsent":true,"isNotFirstTime":true}}' \
      > /home/app/.bob/settings.json \
   && printf '%s\n' '{"/workspace":true}' > /home/app/.bob/trustedFolders.json \
   && printf '%s\n' '{"mcpServers":{}}' > /home/app/.bob/settings/mcp.json \
+  && cp -R /app/.bob/skills/carbon-builder /home/app/.bob/skills/carbon-builder \
   && chown -R app:app /home/app /workspace
 
 USER app
