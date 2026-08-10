@@ -5,6 +5,10 @@
  *
  *   - maxRetries: 0   — the circuit breaker owns retry logic, not the client
  *   - requestTimeout  — 50 s hard timeout so a slow ES never stalls a review run
+ *   - readTrimmedString() on all credential env vars — prevents silent 401s from
+ *     Kubernetes/Code Engine secrets carrying trailing newlines
+ *   - Startup credential diagnostics — fingerprints logged without ever logging
+ *     the actual value; use SHA-256 prefix to compare local vs deployed secrets
  *
  * Circuit breaker states:
  *   CLOSED    — normal operation
@@ -15,12 +19,14 @@
  *   ES_URL          e.g. https://my-cluster.es.ibm.com:9243
  *   ES_USERNAME     e.g. elastic
  *   ES_PASSWORD     e.g. <password>
- *   ES_CA_CERT_PATH path to PEM CA cert (only for self-signed certs)
+ *   ES_CA_CERT_PATH path to PEM CA cert (only for self-signed / IBM Cloud certs)
  */
 
 'use strict';
 
-const fs = require('fs');
+const fs   = require('fs');
+const path = require('path');
+const { describeCredential, readTrimmedString } = require('../config/env');
 
 // Lazy-require so the app starts fine when the package is not yet installed.
 let Client;
@@ -59,33 +65,67 @@ let _client = null;
 
 function getClient() {
   if (!Client) return null;          // package not installed
-  if (!process.env.ES_URL) return null; // not configured
+
+  const url      = readTrimmedString('ES_URL');
+  const username = readTrimmedString('ES_USERNAME') || 'elastic';
+  const password = readTrimmedString('ES_PASSWORD');
+  const caCert   = readTrimmedString('ES_CA_CERT_PATH');
+
+  if (!url) return null;             // not configured
 
   if (!_client) {
+    // ── Startup credential diagnostics (mirrors Carbon Migrate) ──────────────
+    // Logs a safe fingerprint of each credential: length, whitespace flags,
+    // first/last 2 chars, SHA-256 prefix. Never logs the actual secret value.
+    // Compare this output between local and cloud to find stale secrets.
+    const diagnostics = [
+      describeCredential('ES_URL',      url),
+      describeCredential('ES_USERNAME', username),
+      describeCredential('ES_PASSWORD', password),
+      ...(caCert ? [describeCredential('ES_CA_CERT_PATH', caCert)] : []),
+    ];
+    console.log('[esClient] Credential diagnostics at startup:',
+      JSON.stringify(diagnostics, null, 2));
+
     const opts = {
-      node: process.env.ES_URL,
-      auth: {
-        username: process.env.ES_USERNAME || 'elastic',
-        password: process.env.ES_PASSWORD || '',
-      },
+      node: url,
+      auth: { username, password },
       requestTimeout: 50_000, // 50 s — mirrors Carbon Migrate
       maxRetries: 0,          // circuit breaker handles retries
     };
 
-    if (process.env.ES_CA_CERT_PATH) {
-      // Explicit CA cert provided — use it (IBM Cloud / production clusters)
-      try {
-        opts.tls = { ca: fs.readFileSync(process.env.ES_CA_CERT_PATH) };
-      } catch (err) {
-        console.warn('[esClient] Could not read ES_CA_CERT_PATH:', err.message);
+    if (caCert) {
+      // Resolve with two-candidate strategy: CWD first, then package root.
+      const candidates = [
+        path.resolve(process.cwd(), caCert),
+        path.resolve(__dirname, '..', '..', caCert),
+      ];
+      for (const candidate of candidates) {
+        try {
+          const pem = fs.readFileSync(candidate);
+          opts.tls = { ca: pem };
+          const { createHash } = require('crypto');
+          console.log(
+            '[esClient] CA cert loaded',
+            JSON.stringify({
+              certPath:     candidate,
+              sizeBytes:    pem.length,
+              sha256Prefix: createHash('sha256').update(pem).digest('hex').slice(0, 12),
+            })
+          );
+          break;
+        } catch (_) { /* try next candidate */ }
       }
-    } else if (process.env.ES_URL && process.env.ES_URL.startsWith('https://localhost')) {
+      if (!opts.tls) {
+        console.warn('[esClient] Could not read ES_CA_CERT_PATH from either candidate path');
+      }
+    } else if (url.startsWith('https://localhost') || url.startsWith('https://127.')) {
       // Local dev cluster with self-signed cert — skip verification
       opts.tls = { rejectUnauthorized: false };
     }
 
     _client = new Client(opts);
-    console.log('[esClient] Elasticsearch client initialised →', process.env.ES_URL);
+    console.log('[esClient] Elasticsearch client initialised →', url);
   }
 
   return _client;
@@ -114,6 +154,12 @@ async function esCall(fn) {
     }
     return result;
   } catch (err) {
+    // 404/409/403 are expected control-flow errors — do not trip the breaker
+    const status = err.meta?.statusCode;
+    if (status === 404 || status === 409 || status === 403) {
+      console.warn('[esClient] ES call returned expected status', status, '— breaker not tripped');
+      return null;
+    }
     tripBreaker();
     console.error('[esClient] ES call failed:', err.message);
     return null;
