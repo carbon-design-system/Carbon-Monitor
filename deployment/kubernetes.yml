@@ -3,22 +3,16 @@ kind: Namespace
 metadata:
   name: carbon-pr-review
 ---
-apiVersion: v1
-kind: Secret
-metadata:
-  name: carbon-pr-review-secrets
-  namespace: carbon-pr-review
-type: Opaque
-stringData:
-  GITHUB_AI_AGENT_TOKEN: "REPLACE_WITH_YOUR_TOKEN"
-  GITHUB_AI_AGENT_CLI: "bob"
-  BOBSHELL_API_KEY: "REPLACE_WITH_YOUR_KEY"
-  ANTHROPIC_API_KEY: "REPLACE_WITH_YOUR_KEY"
-  GITHUB_AI_AGENT_OWNER: "carbon-design-system"
-  GITHUB_AI_AGENT_REPO: "carbon"
-  GITHUB_AI_AGENT_MAX_PRS: "5"
-  GITHUB_AI_AGENT_DAYS_BACK: "21"
-  GITHUB_AI_AGENT_REVIEW_LABEL: "AIReviewed"
+# The runtime Secret is intentionally NOT hardcoded here. .env is the single
+# source of truth; generate the Secret from it so no value (tokens, keys,
+# GITHUB_AI_AGENT_MAX_PRS, ...) is duplicated in git or drifts out of sync:
+#
+#   kubectl create secret generic carbon-pr-review-secrets \
+#     -n carbon-pr-review --from-env-file=.env \
+#     --dry-run=client -o yaml | kubectl apply -f -
+#
+# Run that BEFORE `kubectl apply -f kubernetes.yml`. The Deployment and CronJob
+# below inject every key via `envFrom: secretRef` (see the README ConfigMap).
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -160,11 +154,19 @@ data:
     # Carbon PR Review Kubernetes Deployment
     
     ## Quick Start
-    
-    1. Update secrets in carbon-pr-review-secrets
-    2. Apply configuration: kubectl apply -f kubernetes.yml
-    3. Check status: kubectl get pods -n carbon-pr-review
-    4. View logs: kubectl logs -f deployment/carbon-pr-review -n carbon-pr-review
+
+    # .env is the single source of truth — the Secret is generated from it, never
+    # hardcoded in this manifest.
+    1. Create namespace + Secret from .env:
+         kubectl create namespace carbon-pr-review --dry-run=client -o yaml | kubectl apply -f -
+         kubectl create secret generic carbon-pr-review-secrets \
+           -n carbon-pr-review --from-env-file=.env \
+           --dry-run=client -o yaml | kubectl apply -f -
+    2. Apply the workloads: kubectl apply -f kubernetes.yml
+    3. After editing .env, re-run step 1's secret command, then:
+         kubectl rollout restart deployment/carbon-pr-review -n carbon-pr-review
+    4. Check status: kubectl get pods -n carbon-pr-review
+    5. View logs: kubectl logs -f deployment/carbon-pr-review -n carbon-pr-review
     
     ## Components
     
