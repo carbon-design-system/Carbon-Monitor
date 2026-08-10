@@ -1,8 +1,17 @@
 #!/usr/bin/env node
 /**
- * Rebuilds all 9 Lens panels and the dashboard from scratch using the
+ * Rebuilds Lens panels and the dashboard from scratch using the
  * Kibana Saved Objects API. Deletes stale objects first, then writes
  * correct ones with fully-populated datasourceStates.
+ *
+ * Panels (7 total):
+ *   lens-001  PRs Reviewed per Day           (bar)
+ *   lens-004  Recommendation Distribution    (donut)
+ *   lens-005  Findings per PR — Severity     (stacked bar, shades of blue)
+ *   lens-006  Carbon API Verification        (stacked bar)
+ *   lens-008  Input & Output Tokens          (line — Input / Output)
+ *   lens-009  Run Health                     (horizontal bar)
+ *   lens-010  Total Token Usage              (line — Total)
  *
  * Usage:  node scripts/rebuild-dashboard.js
  */
@@ -58,39 +67,28 @@ async function create(type, id, attributes, references = []) {
   return r;
 }
 
-// ── Shared layer builder ──────────────────────────────────────────────────────
-function xyLayer({ seriesType, xField, xInterval, metrics, filters = [] }) {
-  const columns = {};
-  // X axis — date histogram
-  columns[xField] = {
-    dataType: 'date', isBucketed: true, label: 'timestamp',
+// ── Column helpers ────────────────────────────────────────────────────────────
+// label is what shows in legends and tooltips — keep it short and human-readable.
+// field is the ES field path — never shown to the user.
+
+function dateCol() {
+  return {
+    dataType: 'date', isBucketed: true, label: 'Date',
     operationType: 'date_histogram',
-    params: { dropPartials: false, includeEmptyRows: true, interval: xInterval },
+    params: { dropPartials: false, includeEmptyRows: true, interval: '1d' },
     scale: 'interval', sourceField: 'timestamp',
   };
-  // Y axis metrics
-  for (const m of metrics) {
-    columns[m.id] = m.col;
-  }
-  return {
-    columnOrder: [xField, ...metrics.map(m => m.id)],
-    columns,
-    incompleteColumns: {},
-  };
 }
-
 function countCol(label) {
-  // Kibana 8.15 requires sourceField on count operations
   return { dataType: 'number', isBucketed: false, label, operationType: 'count', scale: 'ratio', sourceField: '___records___' };
 }
 function sumCol(label, field) {
-  return { dataType: 'number', isBucketed: false, label, operationType: 'sum', scale: 'ratio', sourceField: field };
+  return { dataType: 'number', isBucketed: false, label, customLabel: true, operationType: 'sum', scale: 'ratio', sourceField: field };
 }
 function avgCol(label, field) {
-  return { dataType: 'number', isBucketed: false, label, operationType: 'average', scale: 'ratio', sourceField: field };
+  return { dataType: 'number', isBucketed: false, label, customLabel: true, operationType: 'average', scale: 'ratio', sourceField: field };
 }
 function filteredCountCol(label, query) {
-  // Kibana 8.15 requires sourceField on count operations
   return { dataType: 'number', isBucketed: false, label, operationType: 'count', scale: 'ratio', sourceField: '___records___', filter: { query, language: 'kuery' } };
 }
 
@@ -102,15 +100,17 @@ function eventTypeFilter(et) {
   }];
 }
 
-function xyState({ seriesType, layers, filters = [], legend = { isVisible: true, position: 'bottom' } }) {
+// ── Full XY state builder ─────────────────────────────────────────────────────
+// yTitle:  label shown on the left Y axis (replaces the raw field path Kibana
+//          would otherwise auto-generate from the column definition)
+// xTitle:  label shown on the X axis (default 'Date')
+function xyState({ seriesType, layers, filters = [], legend = { isVisible: true, position: 'bottom' }, yTitle = '', xTitle = 'Date', yConfig = [] }) {
   return {
-    datasourceStates: {
-      formBased: { layers },
-    },
+    datasourceStates: { formBased: { layers } },
     filters,
     query: { language: 'kuery', query: '' },
     visualization: {
-      axisTitlesVisibilitySettings: { x: true, yLeft: true, yRight: true },
+      axisTitlesVisibilitySettings: { x: true, yLeft: true, yRight: false },
       fittingFunction: 'None',
       gridlinesVisibilitySettings: { x: true, yLeft: true, yRight: true },
       labelsOrientation: { x: 0, yLeft: 0, yRight: 0 },
@@ -120,12 +120,16 @@ function xyState({ seriesType, layers, filters = [], legend = { isVisible: true,
         layerType: 'data',
         seriesType,
         xAccessor: layer.columnOrder[0],
-        yConfig: [],
+        yConfig,
       })),
       legend,
       preferredSeriesType: seriesType,
       tickLabelsVisibilitySettings: { x: true, yLeft: true, yRight: true },
       valueLabels: 'hide',
+      // Explicit axis titles override the auto-generated "Sum of payload.x" text
+      yLeftExtent: { mode: 'full' },
+      yTitle,
+      xTitle,
     },
   };
 }
@@ -135,7 +139,7 @@ const dvRef = (name) => [{ id: DV_ID, name, type: 'index-pattern' }];
 // ── Build all lens objects ────────────────────────────────────────────────────
 async function buildLensObjects() {
 
-  // lens-001: PRs reviewed per day (bar)
+  // ── lens-001: PRs reviewed per day (bar) ─────────────────────────────────
   await create('lens', 'lens-001', {
     title: 'PRs Reviewed per Day',
     visualizationType: 'lnsXY',
@@ -146,66 +150,19 @@ async function buildLensObjects() {
         layer1: {
           columnOrder: ['col-date', 'col-count'],
           columns: {
-            'col-date': { dataType:'date', isBucketed:true, label:'timestamp', operationType:'date_histogram', params:{dropPartials:false,includeEmptyRows:true,interval:'1d'}, scale:'interval', sourceField:'timestamp' },
+            'col-date':  dateCol(),
             'col-count': countCol('PRs Reviewed'),
           },
           incompleteColumns: {},
         },
       },
       legend: { isVisible: false, position: 'right' },
+      yTitle: 'PRs Reviewed',
+      xTitle: 'Date',
     }),
   }, dvRef('indexpattern-datasource-layer-layer1'));
 
-  // lens-002: PRs reviewed per week (area)
-  await create('lens', 'lens-002', {
-    title: 'PRs Reviewed per Week',
-    visualizationType: 'lnsXY',
-    state: xyState({
-      seriesType: 'area',
-      filters: eventTypeFilter('pr_review_completed'),
-      layers: {
-        layer1: {
-          columnOrder: ['col-date', 'col-count'],
-          columns: {
-            'col-date': { dataType:'date', isBucketed:true, label:'timestamp', operationType:'date_histogram', params:{dropPartials:false,includeEmptyRows:true,interval:'1w'}, scale:'interval', sourceField:'timestamp' },
-            'col-count': countCol('PRs Reviewed'),
-          },
-          incompleteColumns: {},
-        },
-      },
-      legend: { isVisible: false, position: 'right' },
-    }),
-  }, dvRef('indexpattern-datasource-layer-layer1'));
-
-  // lens-003: Total PRs this run — metric tile
-  await create('lens', 'lens-003', {
-    title: 'Total PRs This Run',
-    visualizationType: 'lnsMetric',
-    state: {
-      datasourceStates: {
-        formBased: {
-          layers: {
-            layer1: {
-              columnOrder: ['col-sum'],
-              columns: { 'col-sum': sumCol('PRs This Run', 'payload.prs_reviewed') },
-              incompleteColumns: {},
-            },
-          },
-        },
-      },
-      filters: eventTypeFilter('run_completed'),
-      query: { language: 'kuery', query: '' },
-      visualization: {
-        layers: [{
-          layerId: 'layer1',
-          layerType: 'data',
-          metricAccessor: 'col-sum',
-        }],
-      },
-    },
-  }, dvRef('indexpattern-datasource-layer-layer1'));
-
-  // lens-004: Recommendation distribution — donut
+  // ── lens-004: Recommendation distribution — donut ─────────────────────────
   await create('lens', 'lens-004', {
     title: 'Recommendation Distribution',
     visualizationType: 'lnsPie',
@@ -216,8 +173,8 @@ async function buildLensObjects() {
             layer1: {
               columnOrder: ['col-rec', 'col-count'],
               columns: {
-                'col-rec': { dataType:'string', isBucketed:true, label:'Recommendation', operationType:'terms', params:{missingBucket:false,orderBy:{columnId:'col-count',type:'column'},orderDirection:'desc',otherBucket:true,size:10}, scale:'ordinal', sourceField:'payload.recommendation.keyword' },
-                'col-count': countCol('Count'),
+                'col-rec':   { dataType:'string', isBucketed:true, label:'Recommendation', operationType:'terms', params:{missingBucket:false,orderBy:{columnId:'col-count',type:'column'},orderDirection:'desc',otherBucket:true,size:10}, scale:'ordinal', sourceField:'payload.recommendation.keyword' },
+                'col-count': countCol('Reviews'),
               },
               incompleteColumns: {},
             },
@@ -242,32 +199,61 @@ async function buildLensObjects() {
     },
   }, dvRef('indexpattern-datasource-layer-layer1'));
 
-  // lens-005: Findings by severity stacked bar
+  // ── lens-005: Findings by severity — shades of blue ───────────────────────
   await create('lens', 'lens-005', {
-    title: 'Findings per PR — Severity Breakdown',
+    title: 'Findings per PR — Severity',
     visualizationType: 'lnsXY',
-    state: xyState({
-      seriesType: 'bar_stacked',
-      filters: eventTypeFilter('pr_review_completed'),
-      layers: {
-        layer1: {
-          columnOrder: ['col-date', 'col-blocking', 'col-major', 'col-minor', 'col-nit'],
-          columns: {
-            'col-date': { dataType:'date', isBucketed:true, label:'timestamp', operationType:'date_histogram', params:{dropPartials:false,includeEmptyRows:true,interval:'1d'}, scale:'interval', sourceField:'timestamp' },
-            'col-blocking': sumCol('Blocking', 'payload.findings_blocking'),
-            'col-major':    sumCol('Major',    'payload.findings_major'),
-            'col-minor':    sumCol('Minor',    'payload.findings_minor'),
-            'col-nit':      sumCol('Nit',      'payload.findings_nit'),
+    state: {
+      datasourceStates: {
+        formBased: {
+          layers: {
+            layer1: {
+              columnOrder: ['col-date', 'col-blocking', 'col-major', 'col-minor', 'col-nit'],
+              columns: {
+                'col-date':     dateCol(),
+                'col-blocking': sumCol('Blocking', 'payload.findings_blocking'),
+                'col-major':    sumCol('Major',    'payload.findings_major'),
+                'col-minor':    sumCol('Minor',    'payload.findings_minor'),
+                'col-nit':      sumCol('Nit',      'payload.findings_nit'),
+              },
+              incompleteColumns: {},
+            },
           },
-          incompleteColumns: {},
         },
       },
-    }),
+      filters: eventTypeFilter('pr_review_completed'),
+      query: { language: 'kuery', query: '' },
+      visualization: {
+        axisTitlesVisibilitySettings: { x: true, yLeft: true, yRight: false },
+        fittingFunction: 'None',
+        gridlinesVisibilitySettings: { x: true, yLeft: true, yRight: true },
+        labelsOrientation: { x: 0, yLeft: 0, yRight: 0 },
+        layers: [{
+          accessors: ['col-blocking', 'col-major', 'col-minor', 'col-nit'],
+          layerId: 'layer1',
+          layerType: 'data',
+          seriesType: 'bar_stacked',
+          xAccessor: 'col-date',
+          yConfig: [
+            { forAccessor: 'col-blocking', color: '#002d9c' },
+            { forAccessor: 'col-major',    color: '#0f62fe' },
+            { forAccessor: 'col-minor',    color: '#78a9ff' },
+            { forAccessor: 'col-nit',      color: '#d0e2ff' },
+          ],
+        }],
+        legend: { isVisible: true, position: 'bottom' },
+        preferredSeriesType: 'bar_stacked',
+        tickLabelsVisibilitySettings: { x: true, yLeft: true, yRight: true },
+        valueLabels: 'hide',
+        yTitle: 'Findings',
+        xTitle: 'Date',
+      },
+    },
   }, dvRef('indexpattern-datasource-layer-layer1'));
 
-  // lens-006: Cat1 vs Cat2 findings stacked bar
+  // ── lens-006: Carbon Findings vs General Findings ─────────────────────────
   await create('lens', 'lens-006', {
-    title: 'Carbon API Verification — Cat1 vs Cat2 Findings',
+    title: 'Carbon API Verification',
     visualizationType: 'lnsXY',
     state: xyState({
       seriesType: 'bar_stacked',
@@ -276,40 +262,21 @@ async function buildLensObjects() {
         layer1: {
           columnOrder: ['col-date', 'col-cat1', 'col-cat2'],
           columns: {
-            'col-date': { dataType:'date', isBucketed:true, label:'timestamp', operationType:'date_histogram', params:{dropPartials:false,includeEmptyRows:true,interval:'1d'}, scale:'interval', sourceField:'timestamp' },
-            'col-cat1': sumCol('Cat1 (Carbon-specific)', 'payload.cat1_findings'),
-            'col-cat2': sumCol('Cat2 (Non-Carbon)',      'payload.cat2_findings'),
+            'col-date': dateCol(),
+            'col-cat1': sumCol('Carbon Findings', 'payload.cat1_findings'),
+            'col-cat2': sumCol('General Findings', 'payload.cat2_findings'),
           },
           incompleteColumns: {},
         },
       },
+      yTitle: 'Findings',
+      xTitle: 'Date',
     }),
   }, dvRef('indexpattern-datasource-layer-layer1'));
 
-  // lens-007: Agent reliability — catalogue present vs missing
-  await create('lens', 'lens-007', {
-    title: 'Agent Reliability — Catalogue Present vs Missing',
-    visualizationType: 'lnsXY',
-    state: xyState({
-      seriesType: 'bar_stacked',
-      filters: eventTypeFilter('pr_review_completed'),
-      layers: {
-        layer1: {
-          columnOrder: ['col-date', 'col-reliable', 'col-unreliable'],
-          columns: {
-            'col-date': { dataType:'date', isBucketed:true, label:'timestamp', operationType:'date_histogram', params:{dropPartials:false,includeEmptyRows:true,interval:'1d'}, scale:'interval', sourceField:'timestamp' },
-            'col-reliable':   filteredCountCol('Reliable (catalogue present)', 'payload.catalogue_present: true'),
-            'col-unreliable': filteredCountCol('Unreliable (no catalogue)',    'payload.catalogue_present: false'),
-          },
-          incompleteColumns: {},
-        },
-      },
-    }),
-  }, dvRef('indexpattern-datasource-layer-layer1'));
-
-  // lens-008: Token cost — avg input & output per day (line)
+  // ── lens-008: Input & Output tokens per review (line) ─────────────────────
   await create('lens', 'lens-008', {
-    title: 'Token Cost — Avg Input & Output Tokens per Review',
+    title: 'Input & Output Tokens per Review',
     visualizationType: 'lnsXY',
     state: xyState({
       seriesType: 'line',
@@ -318,20 +285,22 @@ async function buildLensObjects() {
         layer1: {
           columnOrder: ['col-date', 'col-input', 'col-output'],
           columns: {
-            'col-date':   { dataType:'date', isBucketed:true, label:'timestamp', operationType:'date_histogram', params:{dropPartials:false,includeEmptyRows:true,interval:'1d'}, scale:'interval', sourceField:'timestamp' },
-            'col-input':  avgCol('Avg Input Tokens',  'payload.token_input'),
-            'col-output': avgCol('Avg Output Tokens', 'payload.token_output'),
+            'col-date':   dateCol(),
+            'col-input':  avgCol('Input Tokens',  'payload.token_input'),
+            'col-output': avgCol('Output Tokens', 'payload.token_output'),
           },
           incompleteColumns: {},
         },
       },
-      legend: { isVisible: true, position: 'right' },
+      legend: { isVisible: true, position: 'bottom' },
+      yTitle: 'Tokens',
+      xTitle: 'Date',
     }),
   }, dvRef('indexpattern-datasource-layer-layer1'));
 
-  // lens-009: Run health — event type distribution (horizontal bar)
+  // ── lens-009: Run health — event type distribution (horizontal bar) ────────
   await create('lens', 'lens-009', {
-    title: 'Run Health — Event Type Distribution',
+    title: 'Run Health — Event Breakdown',
     visualizationType: 'lnsXY',
     state: {
       datasourceStates: {
@@ -340,7 +309,7 @@ async function buildLensObjects() {
             layer1: {
               columnOrder: ['col-event', 'col-count'],
               columns: {
-                'col-event': { dataType:'string', isBucketed:true, label:'Event Type', operationType:'terms', params:{missingBucket:false,orderBy:{columnId:'col-count',type:'column'},orderDirection:'desc',otherBucket:false,size:20}, scale:'ordinal', sourceField:'event_type.keyword' },
+                'col-event': { dataType:'string', isBucketed:true, label:'Event', operationType:'terms', params:{missingBucket:false,orderBy:{columnId:'col-count',type:'column'},orderDirection:'desc',otherBucket:false,size:20}, scale:'ordinal', sourceField:'event_type.keyword' },
                 'col-count': countCol('Count'),
               },
               incompleteColumns: {},
@@ -351,7 +320,7 @@ async function buildLensObjects() {
       filters: [],
       query: { language: 'kuery', query: '' },
       visualization: {
-        axisTitlesVisibilitySettings: { x: false, yLeft: true, yRight: true },
+        axisTitlesVisibilitySettings: { x: false, yLeft: true, yRight: false },
         fittingFunction: 'None',
         gridlinesVisibilitySettings: { x: true, yLeft: true, yRight: true },
         labelsOrientation: { x: 0, yLeft: 0, yRight: 0 },
@@ -360,23 +329,51 @@ async function buildLensObjects() {
         preferredSeriesType: 'bar_horizontal',
         tickLabelsVisibilitySettings: { x: true, yLeft: true, yRight: true },
         valueLabels: 'show',
+        yTitle: 'Count',
       },
     },
   }, dvRef('indexpattern-datasource-layer-layer1'));
+
+  // ── lens-010: Total tokens per review (single line) ───────────────────────
+  await create('lens', 'lens-010', {
+    title: 'Total Token Usage per Review',
+    visualizationType: 'lnsXY',
+    state: xyState({
+      seriesType: 'line',
+      filters: eventTypeFilter('pr_review_completed'),
+      layers: {
+        layer1: {
+          columnOrder: ['col-date', 'col-total'],
+          columns: {
+            'col-date':  dateCol(),
+            'col-total': avgCol('Total Tokens', 'payload.token_total'),
+          },
+          incompleteColumns: {},
+        },
+      },
+      legend: { isVisible: false, position: 'right' },
+      yTitle: 'Tokens',
+      xTitle: 'Date',
+    }),
+  }, dvRef('indexpattern-datasource-layer-layer1'));
+
 }
 
 // ── Build the dashboard ───────────────────────────────────────────────────────
 async function buildDashboard() {
   const panels = [
-    { i:'p1',  x:0,  y:0,  w:24, h:10, id:'lens-001', title:'PRs Reviewed per Day' },
-    { i:'p2',  x:24, y:0,  w:24, h:10, id:'lens-002', title:'PRs Reviewed per Week' },
-    { i:'p3',  x:0,  y:10, w:12, h:8,  id:'lens-003', title:'Total PRs This Run' },
-    { i:'p4',  x:12, y:10, w:36, h:8,  id:'lens-004', title:'Recommendation Distribution' },
-    { i:'p5',  x:0,  y:18, w:16, h:12, id:'lens-005', title:'Findings per PR — Severity' },
-    { i:'p6',  x:16, y:18, w:16, h:12, id:'lens-006', title:'Carbon API Verification' },
-    { i:'p7',  x:32, y:18, w:16, h:12, id:'lens-007', title:'Agent Reliability' },
-    { i:'p8',  x:0,  y:30, w:24, h:10, id:'lens-008', title:'Token Cost' },
-    { i:'p9',  x:24, y:30, w:24, h:10, id:'lens-009', title:'Run Health' },
+    // Row 1 — throughput (full width)
+    { i:'p1', x:0,  y:0,  w:48, h:10, id:'lens-001', title:'PRs Reviewed per Day' },
+    // Row 2 — recommendation (full width)
+    { i:'p4', x:0,  y:10, w:48, h:10, id:'lens-004', title:'Recommendation Distribution' },
+    // Row 3 — finding quality, side by side
+    { i:'p5', x:0,  y:20, w:24, h:12, id:'lens-005', title:'Findings per PR — Severity' },
+    { i:'p6', x:24, y:20, w:24, h:12, id:'lens-006', title:'Carbon API Verification' },
+    // Row 4 — token usage, side by side
+    { i:'p8', x:0,  y:32, w:24, h:12, id:'lens-008', title:'Input & Output Tokens per Review' },
+    { i:'p10',x:24, y:32, w:24, h:12, id:'lens-010', title:'Total Token Usage per Review' },
+    // Row 5 — run health (full width)
+    { i:'p9', x:0,  y:44, w:48, h:12, id:'lens-009', title:'Run Health — Event Breakdown' },
   ];
 
   const panelsJSON = JSON.stringify(panels.map(p => ({
@@ -396,7 +393,7 @@ async function buildDashboard() {
 
   await create('dashboard', 'carbon-monitor-dashboard', {
     title: 'Carbon Monitor — PR Review Metrics',
-    description: 'Review throughput, finding quality, Carbon API verification, agent reliability, token cost, recommendation distribution, run health.',
+    description: 'Review throughput, recommendation distribution, finding quality, Carbon API verification, token usage, run health.',
     panelsJSON,
     optionsJSON: JSON.stringify({ useMargins: true, syncColors: false, syncCursor: true, syncTooltips: false, hidePanelTitles: false }),
     kibanaSavedObjectMeta: { searchSourceJSON: JSON.stringify({ query: { query: '', language: 'kuery' }, filter: [] }) },
@@ -412,7 +409,6 @@ async function buildDashboard() {
 async function main() {
   console.log('\n── Carbon Monitor — Rebuild Kibana Dashboard ────────────────\n');
 
-  // Confirm Kibana is reachable
   const status = await kReq('GET', '/api/status', null);
   if (status.status !== 200) {
     console.error('❌ Cannot reach Kibana at localhost:5601. Is it running?');
@@ -421,7 +417,8 @@ async function main() {
   console.log(`✅ Kibana ${status.body?.version?.number} reachable\n`);
 
   console.log('Deleting stale Lens objects...');
-  for (let i = 1; i <= 9; i++) await del('lens', `lens-00${i}`);
+  for (let i = 1; i <= 9; i++)   await del('lens', `lens-00${i}`);
+  for (let i = 10; i <= 13; i++) await del('lens', `lens-0${i}`);
   await del('dashboard', 'carbon-monitor-dashboard');
   console.log();
 

@@ -19,13 +19,8 @@
  *   pr_review_started   — per-PR processing began
  *   pr_review_completed — review posted, label added
  *   pr_review_failed    — per-PR catch block fired
- *   pr_review_cost      — Bobcoins spent by one review (emitted on success AND
- *                         failure, since a timed-out run still costs money)
  *   agent_timeout       — agent process killed by timeout
  *   parse_failed        — parseReviewOutput returned null
- *   catalogue_missing   — review.hasCatalogue === false
- *   skill_unavailable   — no carbon-builder skill read_file calls in output
- *   inline_post_failed  — one or more inline comments failed to post
  */
 
 'use strict';
@@ -41,7 +36,6 @@ const ERROR_EVENTS = new Set([
   'parse_failed',
 ]);
 const WARN_EVENTS = new Set([
-  'catalogue_missing',
   'skill_unavailable',
   'inline_post_failed',
 ]);

@@ -61,7 +61,7 @@ const {
 const GITHUB_TOKEN = process.env.GITHUB_AI_AGENT_TOKEN;
 
 /**
- * Record what a single review cost, to the local ledger and to Elasticsearch.
+ * Record what a single review cost to the local ledger.
  *
  * Called from a `finally`, including on the failure path — a run that timed out
  * after nine minutes is the most expensive kind there is, and omitting it would
@@ -74,20 +74,16 @@ const GITHUB_TOKEN = process.env.GITHUB_AI_AGENT_TOKEN;
  * @param {Object} opts
  * @param {string} opts.correlationId
  * @param {Object} opts.pr
- * @param {Object|null} opts.before - Balance snapshot taken before the run
  * @param {Object|null} opts.after  - Balance snapshot taken after the run
  * @param {number|null} opts.coinsSpent
- * @param {boolean} opts.succeeded
  * @param {number} opts.durationMs
  * @param {string} [opts.source='balance-delta'] - How coinsSpent was derived
  */
 async function recordReviewCost({
   correlationId,
   pr,
-  before,
   after,
   coinsSpent,
-  succeeded,
   durationMs,
   source = 'balance-delta',
 }) {
@@ -102,37 +98,7 @@ async function recordReviewCost({
       coinsSpent,
       remainingAfter: balance ? balance.remaining : null,
       durationMs,
-      // Names how the figure was derived, so a consumer can tell an exact
-      // per-run cost from one inferred by diffing account totals, and both from
-      // a review whose cost was never measured at all.
       source,
-    });
-
-    await emitEvent({
-      event_type: 'pr_review_cost',
-      correlation_id: correlationId,
-      repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
-      pr_number: pr.number,
-      agent: REVIEW_AGENT,
-      commit_sha: pr.head.sha,
-      // Flat scalars only, matching pr_review_completed: Kibana can Sum or
-      // Average each independently, and nesting would need dynamic sub-keys.
-      payload: {
-        bobcoins_spent: coinsSpent,
-        bobcoins_usage_before: before && before.available ? before.usage : null,
-        bobcoins_usage_after: balance ? balance.usage : null,
-        budget_limit: balance ? balance.budgetLimit : null,
-        budget_remaining: balance ? balance.remaining : null,
-        budget_pct_remaining: balance ? balance.percentRemaining : null,
-        plan: balance ? balance.plan : null,
-        plan_display: balance ? balance.planName : null,
-        refresh_at: balance ? balance.refreshAt : null,
-        balance_source: balance ? 'gateway' : 'unavailable',
-        balance_reason: after ? after.reason : 'not-checked',
-        attribution: source === 'balance-delta' ? 'delta-snapshot' : source,
-        review_succeeded: succeeded,
-        duration_ms: durationMs,
-      },
     });
   } catch (error) {
     console.warn(`⚠️  Could not record review cost: ${error.message}`);
@@ -628,15 +594,9 @@ async function reviewPRs(options = {}) {
             await recordReviewCost({
               correlationId,
               pr,
-              before: coinsBefore,
               after: coinsAfter,
               coinsSpent,
-              succeeded: agentSucceeded,
               durationMs: Date.now() - prStartedAt,
-              // The review still happened and is still counted, but with no
-              // measured cost it must not enter the average. 'unknown' is the
-              // contract's word for that; 'balance-delta' would claim a figure
-              // that was never taken.
               source: tracksBobcoins ? 'balance-delta' : 'unknown',
             });
           } catch (costErr) {
@@ -681,20 +641,10 @@ async function reviewPRs(options = {}) {
         console.log(`✅ Parsed: ${review.findings.length} findings`);
         console.log(`✅ Recommendation: ${review.recommendation} — ${review.recommendationRationale}`);
 
-        // Warn when the agent skipped its catalogue step. The warning text is
-        // now in review.catalogueWarning (set by the parser) and rendered by
-        // formatSummaryComment — summaryMarkdown is never mutated here.
+        // Warn when the agent skipped its catalogue step.
         if (!review.hasCatalogue) {
           console.warn('⚠️  No visible catalogue in agent output — agent may have skipped Step 1');
           console.warn('   Zero findings from this run should be treated as unreliable');
-          await emitEvent({
-            event_type: 'catalogue_missing',
-            correlation_id: correlationId,
-            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
-            pr_number: pr.number,
-            agent: REVIEW_AGENT,
-            commit_sha: pr.head.sha,
-          });
         }
 
         // Emit skill_unavailable when carbon-builder was never read
@@ -771,40 +721,25 @@ async function reviewPRs(options = {}) {
         console.log(`✅ Estimated tokens: ~${tokenUsage.total.toLocaleString()} (input: ~${tokenUsage.input.toLocaleString()}, output: ~${tokenUsage.output.toLocaleString()})`);
 
         // ── Emit metrics event for this review ──────────────────────────────
-        const prDurationMs = Date.now() - prStartedAt;
         await emitEvent({
-          event_type: 'pr_review_completed',
+          event_type:     'pr_review_completed',
           correlation_id: correlationId,
-          repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
-          pr_number: pr.number,
-          agent: REVIEW_AGENT,
-          commit_sha: pr.head.sha,
+          repo:           `${GITHUB_OWNER}/${GITHUB_REPO}`,
+          pr_number:      pr.number,
+          agent:          REVIEW_AGENT,
+          commit_sha:     pr.head.sha,
           payload: {
             recommendation: review.recommendation,
-            findings_total: review.findings.length,
-            // Flat severity counts — one numeric field per level so Kibana can
-            // Sum/Average each independently without dynamic-object sub-key issues.
-            // Mirrors Carbon Migrate's pattern of storing outcomes as individual fields.
+            findings_total:    review.findings.length,
             findings_blocking: review.findings.filter(f => f.severity === 'blocking').length,
             findings_major:    review.findings.filter(f => f.severity === 'major').length,
             findings_minor:    review.findings.filter(f => f.severity === 'minor').length,
             findings_nit:      review.findings.filter(f => f.severity === 'nit').length,
             cat1_findings: review.findings.filter(f => f.verificationSource !== 'not-carbon-specific').length,
             cat2_findings: review.findings.filter(f => f.verificationSource === 'not-carbon-specific').length,
-            verification_source_breakdown: _countBy(review.findings, 'verificationSource'),
-            catalogue_present: review.hasCatalogue,
-            skill_activated: skillFilesRead.length > 0,
-            skill_files_read: skillFilesRead.length,
-            inline_comments_posted: inlineFindings.length,
-            summary_findings: summaryFindings.length,
-            token_input: tokenUsage.input,
+            token_input:  tokenUsage.input,
             token_output: tokenUsage.output,
-            token_total: tokenUsage.total,
-            // Repeated from pr_review_cost so a single document joins what a
-            // review found to what it cost, without a Kibana-side join.
-            bobcoins_spent: coinsSpent,
-            bobcoins_remaining: coinsAfter && coinsAfter.available ? coinsAfter.remaining : null,
-            duration_ms: prDurationMs,
+            token_total:  tokenUsage.total,
           },
         });
 
