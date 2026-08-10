@@ -780,6 +780,9 @@ async function reviewPRs(options = {}) {
           agent: REVIEW_AGENT,
           commit_sha: pr.head.sha,
           payload: {
+            // pr_title is stored so Kibana runtime fields can extract any embedded
+            // identifiers (e.g. original Carbon PR numbers in test PR titles).
+            pr_title: pr.title,
             recommendation: review.recommendation,
             findings_total: review.findings.length,
             // Flat severity counts — one numeric field per level so Kibana can

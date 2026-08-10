@@ -11,12 +11,14 @@ After every `code_search` or `docs_search` response:
 5. **Variant selection:**
    - If the user specified a variant → match by `variant_id`
    - If no variant specified → prefer `variant_is_default: true`
-6. **Props validation** — validate props against `props_schema` before using in generated code
-7. **Freshness** — prefer results with more recent `last_crawled_at` or `last_updated`
-8. **AI Chat topic** — for AI Chat doc queries, validate the returned chunk references
-   the intended symbol or topic (e.g., `PublicChatState`, `migration-1.0.0`)
-9. **AI Chat code** — validate the intended `example_root` and framework before using snippets
-10. **File completeness** — for AI Chat code, confirm required source files are present;
+6. **Code field** — use `example_clean` (not `example`) for component JSX; use `example` for icon results
+7. **Props validation** — use `props_used[]` and `props_literal{}` from the variant; `props_schema` is stripped server-side and will not be present
+8. **Imports** — always use the verbatim import statements from `source.imports[]`; never construct imports manually unless no result was returned
+9. **Freshness** — prefer results with more recent `last_crawled_at` or `last_updated`
+10. **AI Chat topic** — for AI Chat doc queries, validate the returned chunk references
+    the intended symbol or topic (e.g., `PublicChatState`, `migration-1.0.0`)
+11. **AI Chat code** — validate the intended `example_root` and framework before using snippets
+12. **File completeness** — for AI Chat code, confirm required source files are present;
     look for `is_complete_file: true` indicating server-side reconstruction
 
 ---
@@ -25,11 +27,10 @@ After every `code_search` or `docs_search` response:
 
 After every `get_charts` response:
 
-1. **Check `status`** — the response carries one of four values:
-   - `ok` — full code returned; proceed normally
-   - `partial` — code returned but `incomplete: true` on one or more `source_files`; warn the user
-   - `schema_only` — `mode:"schema"` was used; do not treat the schema doc as runnable code
-   - `empty` — no chart found; trigger error recovery (see `error-recovery.md`)
+1. **Check `status`** — the response carries one of three values:
+   - `complete` — full source code returned; proceed with code generation
+   - `incomplete_example` — variant lacks concrete data/options; inspect `incomplete` object; suggest a different variant
+   - `schema_only` — `mode:"schema"` was used; schema docs only — never emit as runnable code
 
 2. **Check `buildable`** — if `false`, surface this explicitly before generating code;
    never silently produce code that the server has flagged as unbuildable
@@ -132,25 +133,35 @@ When the user asks about accessibility (a11y) for a component:
 ## Response Composition Guidelines
 
 ### Imports
-Always include the exact import statement from the result's `imports` field.
-Do not construct imports manually unless no result was returned.
+
+Always use the verbatim import statements from `source.imports[]`. The field contains
+the exact import line from the story file — including package name, named exports, and
+any required subpath. Do not construct imports manually unless no result was returned.
+If both `imports[]` and a variant's `example_clean` contain import lines, prefer `imports[]`
+as the canonical source — it represents the full component import, not just the usage example.
 
 ### Props
+
 - Use `props_used` from the matched variant as the starting point
-- Cross-validate against `props_schema` to ensure correctness
-- Include prop types and default values where relevant
+- Cross-validate with `props_literal` (hard-coded values) and `imports[]` from the same result
+- `props_schema` is stripped server-side and will never be present — do not look for it
 
 ### Storybook Links
+
 Always include `storybook_url` when available — it lets the user explore variants interactively.
 
 ### Accessibility Integration
+
 Include relevant accessibility guidance inline with code examples when:
+
 - The component has interactive elements (buttons, links, modals, menus)
 - The user asked about accessibility
 - The docs_search result contains a11y guidance for the component
 
 ### IBM Products vs Carbon Core Separation
+
 When both IBM Products and Carbon Core results are returned:
+
 - Clearly label which is which
 - Do not mix imports from `@carbon/ibm-products` with imports from `@carbon/react`
 - IBM Products components are in `@carbon/ibm-products`; Carbon Core components are in `@carbon/react`

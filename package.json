@@ -4,6 +4,7 @@
   "description": "AI-powered PR review agent for Carbon Design System",
   "main": "src/index.js",
   "scripts": {
+    "postinstall": "node scripts/install-carbon-builder-skill.js",
     "start": "node src/index.js",
     "api": "node src/api/server.js",
     "fonts": "node scripts/copy-plex-fonts.js",
