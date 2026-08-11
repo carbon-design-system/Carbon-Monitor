@@ -537,15 +537,19 @@ async function checkElasticsearch() {
 
     return {
       id: 'elasticsearch',
-      label: 'Elasticsearch',
+      label: 'ElasticDB',
       status: clusterStatus === 'red' ? WARNING : OK,
       detail: `Cluster ${clusterStatus}`,
-      hint: process.env.ES_URL,
+      // Deliberately not the cluster endpoint. The URL exposes internal IBM
+      // Cloud infrastructure and is noise on the tile — a healthy connection
+      // only needs to say it is up and what it is for. The failure paths below
+      // still surface the actual error message so a broken tile stays diagnosable.
+      hint: 'Connected for Telemetry',
     };
   } catch (error) {
     return {
       id: 'elasticsearch',
-      label: 'Elasticsearch',
+      label: 'ElasticDB',
       status: FAILED,
       detail: 'Unreachable',
       hint: error.message,
