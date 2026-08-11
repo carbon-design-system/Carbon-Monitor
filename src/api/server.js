@@ -688,12 +688,37 @@ const ROUTES = {
   'POST /api/review/logs/clear': handleReviewLogsClear,
 };
 
+/**
+ * High-frequency routes polled automatically by the console or the Code Engine
+ * health probe. Logging them produces hundreds of identical lines per review run
+ * with no diagnostic value. All other routes — POSTs, the OAuth callback, auth
+ * events, 404s — are still logged.
+ *
+ * Set LOG_LEVEL=debug to disable the filter and log everything (useful when
+ * diagnosing a polling-related problem). deploy_ce.sh already injects
+ * LOG_LEVEL=info, which keeps the filter active in production.
+ */
+const SILENT_GET_ROUTES = new Set([
+  '/api/health',          // CE health probe every 30 s + console on mount
+  '/api/status',          // console status panel, every 30 s
+  '/api/mcp/status',      // same 30 s batch
+  '/api/review/status',   // same 30 s batch
+  '/api/review/logs',     // log tail every 2 s while a review is running
+  '/api/credits',         // same 30 s batch
+  '/api/credits/history', // same 30 s batch
+  '/api/auth/status',     // App.jsx on mount + after every 401
+  '/api/config',          // Console.jsx once on mount
+]);
+
 async function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = url.pathname;
   const method = req.method;
 
-  console.log(`${method} ${pathname}`);
+  const silenced =
+    process.env.LOG_LEVEL !== 'debug' &&
+    (method === 'OPTIONS' || (method === 'GET' && SILENT_GET_ROUTES.has(pathname)));
+  if (!silenced) console.log(`${method} ${pathname}`);
 
   // The console is served from this same origin, so CORS is only needed for
   // local development against a separate Vite dev server.

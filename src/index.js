@@ -356,8 +356,6 @@ async function reviewPRs(options = {}) {
     console.error(`   Please install ${agent} CLI tool`);
     return;
   }
-  
-  console.log(`✅ Agent '${agent}' is available\n`);
 
   // Bobcoins are Bob's currency, and BOB_API_KEY stays configured whichever CLI
   // is selected (checkBob and the MCP config both need it). Bracketing the Bob
@@ -448,8 +446,6 @@ async function reviewPRs(options = {}) {
       }
     }
 
-    console.log(`Found ${prs.length} PR(s) to review\n`);
-    
     // Review each PR
     for (const pr of prs) {
       const prStartedAt = Date.now();
@@ -474,7 +470,6 @@ async function reviewPRs(options = {}) {
         
         // Fetch PR diff — prefer ORIGINAL_DIFF.patch if present (test PRs created
         // by create-test-pr.js embed the real Carbon diff there to preserve - lines)
-        console.log('📄 Fetching PR diff...');
         let diff;
         try {
           const { data: patchFile } = await octokit.rest.repos.getContent({
@@ -496,7 +491,6 @@ async function reviewPRs(options = {}) {
         
         // Fetch changed files — prefer ORIGINAL_FILES.json if present (test PRs
         // created by create-test-pr.js store the real Carbon file list there)
-        console.log('📁 Fetching changed files...');
         let files;
         try {
           const { data: filesFile } = await octokit.rest.repos.getContent({
@@ -518,7 +512,6 @@ async function reviewPRs(options = {}) {
         files.forEach(f => console.log(`   - ${f.filename} (+${f.additions}/-${f.deletions})`));
         
         // Build review bundle
-        console.log('\n📦 Creating review bundle...');
         bundle = await buildReviewBundle({
           owner: GITHUB_OWNER,
           repo: GITHUB_REPO,
@@ -528,8 +521,7 @@ async function reviewPRs(options = {}) {
           client
         });
         console.log(`✅ Bundle: ${bundle.dir}`);
-        console.log(`✅ mdDiffStartLine: ${bundle.mdDiffStartLine}`);
-        
+
         // Run agent review
         console.log(`\n🤖 Running ${agent} review...`);
         console.log('This may take 30-60 seconds...\n');
@@ -620,7 +612,6 @@ async function reviewPRs(options = {}) {
         // ─────────────────────────────────────────────────────────────────
 
         // Parse review output
-        console.log('🔍 Parsing review output...');
         const review = parseReviewOutput(agentOutput);
         
         if (!review) {
@@ -660,7 +651,6 @@ async function reviewPRs(options = {}) {
         }
         
         // Split findings into inline-able and summary-only
-        console.log('\n🔍 Mapping findings to diff positions...');
         const { inlineFindings, summaryFindings } = splitFindings(
           review.findings,
           diff,
@@ -672,8 +662,6 @@ async function reviewPRs(options = {}) {
         // Post inline review comments if any (check env flag)
         const postInline = process.env.GITHUB_AI_AGENT_POST_INLINE_COMMENTS !== 'false';
         if (inlineFindings.length > 0 && review.shouldPostInlineComments !== false && postInline) {
-          console.log('\n💬 Posting inline review comments...');
-          
           const inlineComments = inlineFindings.map(finding => ({
             path: finding.diffPosition.path,
             position: finding.diffPosition.position,
@@ -712,7 +700,6 @@ async function reviewPRs(options = {}) {
         }
         
         // Calculate token usage estimate
-        console.log('\n📊 Calculating token usage...');
         const tokenUsage = estimateTokenUsage({
           prompt: bundle.prompt,
           diff: diff,
@@ -752,7 +739,6 @@ async function reviewPRs(options = {}) {
         // Format and post summary comment (check env flag)
         const postSummary = process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
         if (postSummary) {
-          console.log('\n📝 Posting summary comment...');
           const commentBody = formatSummaryComment({
             agent,
             summaryMarkdown: review.summaryMarkdown,
@@ -779,7 +765,6 @@ async function reviewPRs(options = {}) {
         }
         
         // Add AIReviewed label
-        console.log('🏷️  Adding review label...');
         await client.addReviewedLabel({
           owner: GITHUB_OWNER,
           repo: GITHUB_REPO,
