@@ -32,11 +32,33 @@
 'use strict';
 
 require('dotenv').config();
-const http = require('http');
+const http  = require('http');
+const https = require('https');
 
-const AUTH = Buffer.from(
-  `${process.env.ES_USERNAME || 'elastic'}:${process.env.ES_PASSWORD || ''}`
-).toString('base64');
+// ── Config from env ───────────────────────────────────────────────────────────
+const KIBANA_URL  = (process.env.KIBANA_URL  || '').trim();
+const ES_API_KEY  = (process.env.ES_API_KEY  || '').trim();
+const ES_USERNAME = (process.env.ES_USERNAME || 'elastic').trim();
+const ES_PASSWORD = (process.env.ES_PASSWORD || '').trim();
+
+if (!KIBANA_URL) {
+  console.error('❌  KIBANA_URL is not set in .env');
+  console.error('    Example: KIBANA_URL=http://localhost:5601');
+  console.error('    For IBM Cloud: KIBANA_URL=https://<your-kibana-host>:<port>');
+  process.exit(1);
+}
+
+const parsed    = new URL(KIBANA_URL);
+const useHttps  = parsed.protocol === 'https:';
+const transport = useHttps ? https : http;
+const hostname  = parsed.hostname;
+const port      = parseInt(parsed.port) || (useHttps ? 443 : 80);
+
+// API key preferred over basic auth (mirrors esClient.js)
+const AUTH_HEADER = ES_API_KEY
+  ? `ApiKey ${ES_API_KEY}`
+  : `Basic ${Buffer.from(`${ES_USERNAME}:${ES_PASSWORD}`).toString('base64')}`;
+
 const DV_ID = 'carbon-monitor-index-pattern';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -44,15 +66,17 @@ function kReq(method, path, body) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
     const opts = {
-      hostname: 'localhost', port: 5601, method, path,
+      hostname, port, method, path,
       headers: {
-        'Authorization': `Basic ${AUTH}`,
+        'Authorization': AUTH_HEADER,
         'kbn-xsrf': 'true',
         'Content-Type': 'application/json',
         ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
       },
+      ...(useHttps && (hostname === 'localhost' || hostname === '127.0.0.1')
+        ? { rejectUnauthorized: false } : {}),
     };
-    const req = http.request(opts, res => {
+    const req = transport.request(opts, res => {
       let d = '';
       res.on('data', c => d += c);
       res.on('end', () => {
@@ -82,54 +106,6 @@ async function create(type, id, attributes, references = []) {
 }
 
 // ── Column helpers ────────────────────────────────────────────────────────────
-<<<<<<< HEAD
-// customLabel: true is required in Kibana 8.15 to make the legend display the
-// column's label property instead of auto-generating "Sum of payload.field_name".
-function countCol(label) {
-  return { dataType: 'number', isBucketed: false, label, customLabel: true, operationType: 'count', scale: 'ratio', sourceField: '___records___' };
-}
-function sumCol(label, field) {
-  return { dataType: 'number', isBucketed: false, label, customLabel: true, operationType: 'sum', scale: 'ratio', sourceField: field };
-}
-function filteredCountCol(label, query) {
-  return { dataType: 'number', isBucketed: false, label, customLabel: true, operationType: 'count', scale: 'ratio', sourceField: '___records___', filter: { query, language: 'kuery' } };
-}
-
-// Date histogram bucket column
-function dateCol(label, interval) {
-  return {
-    dataType: 'date', isBucketed: true, label,
-    operationType: 'date_histogram',
-    params: { dropPartials: false, includeEmptyRows: false, interval },
-    scale: 'interval', sourceField: 'timestamp',
-  };
-}
-
-// Terms bucket on the pr_label runtime field — one slot per Carbon PR label,
-// ordered chronologically via min(timestamp).
-// pr_label is a runtime keyword that maps test repo PR numbers to Carbon PR labels
-// e.g. test PR 157 → '#864', unmapped PRs fall back to '#<pr_number>'.
-function prNumberCol() {
-  return {
-    dataType: 'string', isBucketed: true, label: 'Carbon PR', customLabel: true,
-    operationType: 'terms',
-    params: {
-      size: 100,
-      orderBy: { type: 'column', columnId: 'col-ts-order' },
-      orderDirection: 'asc',
-      missingBucket: false, otherBucket: false,
-    },
-    scale: 'ordinal', sourceField: 'pr_label',
-  };
-}
-
-// Hidden sort column — min(timestamp) per PR bucket, used only for ordering
-function tsOrderCol() {
-  return {
-    dataType: 'number', isBucketed: false, label: 'Time (sort)',
-    operationType: 'min', scale: 'ratio', sourceField: 'timestamp', params: {},
-  };
-=======
 // label is what shows in legends and tooltips — keep it short and human-readable.
 // field is the ES field path — never shown to the user.
 
@@ -152,7 +128,6 @@ function avgCol(label, field) {
 }
 function filteredCountCol(label, query) {
   return { dataType: 'number', isBucketed: false, label, operationType: 'count', scale: 'ratio', sourceField: '___records___', filter: { query, language: 'kuery' } };
->>>>>>> carbon-org/wills-branch
 }
 
 function eventTypeFilter(et) {
@@ -163,31 +138,6 @@ function eventTypeFilter(et) {
   }];
 }
 
-<<<<<<< HEAD
-// Standard XY visualization wrapper
-function xyViz({ seriesType, layerId, xAccessor, accessors, splitAccessor, legend, yLeftTitle, xTitle, rotateX = false }) {
-  return {
-    axisTitlesVisibilitySettings: { x: !!xTitle, yLeft: !!yLeftTitle, yRight: false },
-    axisExtentsConfig: { yLeftExtent: { mode: 'full' }, yRightExtent: { mode: 'full' } },
-    yTitle: yLeftTitle || '',
-    xTitle: xTitle || '',
-    fittingFunction: 'None',
-    gridlinesVisibilitySettings: { x: true, yLeft: true, yRight: false },
-    labelsOrientation: { x: rotateX ? -45 : 0, yLeft: 0, yRight: 0 },
-    layers: [{
-      accessors,
-      layerId,
-      layerType: 'data',
-      seriesType,
-      xAccessor,
-      ...(splitAccessor ? { splitAccessor } : {}),
-      yConfig: accessors.map(a => ({ forAccessor: a, axisMode: 'left' })),
-    }],
-    legend: legend ?? { isVisible: true, position: 'right', showSingleSeries: true },
-    preferredSeriesType: seriesType,
-    tickLabelsVisibilitySettings: { x: true, yLeft: true, yRight: false },
-    valueLabels: 'hide',
-=======
 // ── Full XY state builder ─────────────────────────────────────────────────────
 // yTitle:  label shown on the left Y axis (replaces the raw field path Kibana
 //          would otherwise auto-generate from the column definition)
@@ -219,7 +169,6 @@ function xyState({ seriesType, layers, filters = [], legend = { isVisible: true,
       yTitle,
       xTitle,
     },
->>>>>>> carbon-org/wills-branch
   };
 }
 
@@ -228,62 +177,10 @@ const dvRef = (name) => [{ id: DV_ID, name, type: 'index-pattern' }];
 // ── Build all lens objects ────────────────────────────────────────────────────
 async function buildLensObjects() {
 
-<<<<<<< HEAD
-  // ── lens-001: PRs AI Reviewed per Day ──────────────────────────────────────
-  // X = date (day), Y = "PRs AI Reviewed" count
-=======
   // ── lens-001: PRs reviewed per day (bar) ─────────────────────────────────
->>>>>>> carbon-org/wills-branch
   await create('lens', 'lens-001', {
     title: 'PRs AI Reviewed per Day',
     visualizationType: 'lnsXY',
-<<<<<<< HEAD
-    state: {
-      datasourceStates: {
-        formBased: {
-          layers: {
-            layer1: {
-              columnOrder: ['col-date', 'col-count'],
-              columns: {
-                'col-date': dateCol('Date', '1d'),
-                'col-count': countCol('PRs AI Reviewed'),
-              },
-              incompleteColumns: {},
-            },
-          },
-        },
-      },
-      filters: eventTypeFilter('pr_review_completed'),
-      query: { language: 'kuery', query: '' },
-      visualization: xyViz({
-        seriesType: 'bar',
-        layerId: 'layer1',
-        xAccessor: 'col-date',
-        accessors: ['col-count'],
-        xTitle: 'Date',
-        yLeftTitle: 'PRs AI Reviewed',
-        legend: { isVisible: false, position: 'right' },
-      }),
-    },
-  }, dvRef('indexpattern-datasource-layer-layer1'));
-
-  // ── lens-004: AI Recommendation Summary — donut ─────────────────────────────
-  // Renamed values via a runtime field that maps raw ES values to display labels.
-  // We use a Kibana runtime field (scripted) approach: add a formula column that
-  // maps the raw recommendation string to the friendly label, then bucket on that.
-  // Kibana Lens doesn't support value renaming natively, so we use the 'formula'
-  // operationType which evaluates a Painless-like expression per bucket.
-  // Simplest working approach: bucket on raw field, rely on Kibana's display name
-  // feature via the terms column label override. The actual slice labels in the
-  // donut come from the bucket key. We use a scripted_metric approach via a
-  // runtime_field registered on the data view — but that requires a PUT to the
-  // data view API. Easier: just use a scripted label column via Lens 'static_value'
-  // — not supported. Correct approach: use the Kibana runtime fields API to add
-  // a computed field, or use a terms column with a 'missing' fallback.
-  //
-  // ✅ Actual supported method: add a runtime field to the data view that maps
-  // the raw recommendation to the display label, then bucket on that field.
-=======
     state: xyState({
       seriesType: 'bar',
       filters: eventTypeFilter('pr_review_completed'),
@@ -304,7 +201,6 @@ async function buildLensObjects() {
   }, dvRef('indexpattern-datasource-layer-layer1'));
 
   // ── lens-004: Recommendation distribution — donut ─────────────────────────
->>>>>>> carbon-org/wills-branch
   await create('lens', 'lens-004', {
     title: 'AI Recommendation Summary',
     visualizationType: 'lnsPie',
@@ -315,24 +211,7 @@ async function buildLensObjects() {
             layer1: {
               columnOrder: ['col-rec', 'col-count'],
               columns: {
-<<<<<<< HEAD
-                'col-rec': {
-                  dataType: 'string', isBucketed: true, label: 'Recommendation',
-                  operationType: 'terms',
-                  params: {
-                    missingBucket: false,
-                    orderBy: { columnId: 'col-count', type: 'column' },
-                    orderDirection: 'desc',
-                    otherBucket: false,
-                    size: 10,
-                  },
-                  scale: 'ordinal',
-                  // Runtime keyword fields don't get a .keyword sub-field — they ARE keyword
-                  sourceField: 'payload.recommendation_label',
-                },
-=======
                 'col-rec':   { dataType:'string', isBucketed:true, label:'Recommendation', operationType:'terms', params:{missingBucket:false,orderBy:{columnId:'col-count',type:'column'},orderDirection:'desc',otherBucket:true,size:10}, scale:'ordinal', sourceField:'payload.recommendation.keyword' },
->>>>>>> carbon-org/wills-branch
                 'col-count': countCol('Reviews'),
               },
               incompleteColumns: {},
@@ -358,14 +237,6 @@ async function buildLensObjects() {
     },
   }, dvRef('indexpattern-datasource-layer-layer1'));
 
-<<<<<<< HEAD
-  // ── lens-005: Findings by Severity — vertical stacked bar, X = PR number ───
-  // Colors: Carbon Design System IBM Blue scale — darkest = most severe
-  // Blocking: Blue 60 (#0f62fe) → Major: Blue 50 (#4589ff)
-  // Minor:    Blue 40 (#78a9ff) → Nit:   Blue 30 (#a6c8ff)
-  await create('lens', 'lens-005', {
-    title: 'Findings by Severity',
-=======
   // ── lens-005: Findings by severity — shades of blue ───────────────────────
   await create('lens', 'lens-005', {
     title: 'Findings per PR — Severity',
@@ -468,7 +339,6 @@ async function buildLensObjects() {
   // ── lens-009: Run health — event type distribution (horizontal bar) ────────
   await create('lens', 'lens-009', {
     title: 'Run Health — Event Breakdown',
->>>>>>> carbon-org/wills-branch
     visualizationType: 'lnsXY',
     state: {
       datasourceStates: {
@@ -477,17 +347,8 @@ async function buildLensObjects() {
             layer1: {
               columnOrder: ['col-pr', 'col-ts-order', 'col-blocking', 'col-major', 'col-minor', 'col-nit'],
               columns: {
-<<<<<<< HEAD
-                'col-pr':       prNumberCol(),
-                'col-ts-order': tsOrderCol(),
-                'col-blocking': sumCol('Blocking', 'payload.findings_blocking'),
-                'col-major':    sumCol('Major',    'payload.findings_major'),
-                'col-minor':    sumCol('Minor',    'payload.findings_minor'),
-                'col-nit':      sumCol('Nit',      'payload.findings_nit'),
-=======
                 'col-event': { dataType:'string', isBucketed:true, label:'Event', operationType:'terms', params:{missingBucket:false,orderBy:{columnId:'col-count',type:'column'},orderDirection:'desc',otherBucket:false,size:20}, scale:'ordinal', sourceField:'event_type.keyword' },
                 'col-count': countCol('Count'),
->>>>>>> carbon-org/wills-branch
               },
               incompleteColumns: {},
             },
@@ -497,159 +358,16 @@ async function buildLensObjects() {
       filters: eventTypeFilter('pr_review_completed'),
       query: { language: 'kuery', query: '' },
       visualization: {
-<<<<<<< HEAD
-        axisTitlesVisibilitySettings: { x: true, yLeft: true, yRight: false },
-        yTitle: 'Findings', xTitle: 'PR Tag',
-=======
         axisTitlesVisibilitySettings: { x: false, yLeft: true, yRight: false },
->>>>>>> carbon-org/wills-branch
         fittingFunction: 'None',
         gridlinesVisibilitySettings: { x: true, yLeft: true, yRight: false },
         labelsOrientation: { x: 0, yLeft: 0, yRight: 0 },
-<<<<<<< HEAD
-        layers: [{
-          accessors: ['col-blocking', 'col-major', 'col-minor', 'col-nit'],
-          layerId: 'layer1', layerType: 'data', seriesType: 'bar_stacked',
-          xAccessor: 'col-pr',
-          yConfig: [
-            { forAccessor: 'col-blocking', axisMode: 'left', color: '#0f62fe' }, // IBM Blue 60
-            { forAccessor: 'col-major',    axisMode: 'left', color: '#4589ff' }, // IBM Blue 50
-            { forAccessor: 'col-minor',    axisMode: 'left', color: '#78a9ff' }, // IBM Blue 40
-            { forAccessor: 'col-nit',      axisMode: 'left', color: '#a6c8ff' }, // IBM Blue 30
-          ],
-        }],
-        legend: { isVisible: true, position: 'right' },
-        preferredSeriesType: 'bar_stacked',
-        tickLabelsVisibilitySettings: { x: true, yLeft: true, yRight: false },
-        valueLabels: 'hide',
-      },
-    },
-  }, dvRef('indexpattern-datasource-layer-layer1'));
-
-  // ── lens-006: Carbon vs Non-Carbon Issue Detection ──────────────────────────
-  // X = PR number, Y = Findings, series = Carbon / Non-Carbon
-  await create('lens', 'lens-006', {
-    title: 'Carbon vs Non-Carbon Issue Detection',
-    visualizationType: 'lnsXY',
-    state: {
-      datasourceStates: {
-        formBased: {
-          layers: {
-            layer1: {
-              columnOrder: ['col-pr', 'col-ts-order', 'col-carbon', 'col-noncarbbon'],
-              columns: {
-                'col-pr':        prNumberCol(),
-                'col-ts-order':  tsOrderCol(),
-                'col-carbon':    sumCol('Carbon Findings',     'payload.cat1_findings'),
-                'col-noncarbbon': sumCol('Non-Carbon Findings', 'payload.cat2_findings'),
-              },
-              incompleteColumns: {},
-            },
-          },
-        },
-      },
-      filters: eventTypeFilter('pr_review_completed'),
-      query: { language: 'kuery', query: '' },
-      visualization: xyViz({
-        seriesType: 'bar_stacked',
-        layerId: 'layer1',
-        xAccessor: 'col-pr',
-        accessors: ['col-carbon', 'col-noncarbbon'],
-        xTitle: 'PR Tag',
-        yLeftTitle: 'Findings',
-        legend: { isVisible: true, position: 'right' },
-      }),
-    },
-  }, dvRef('indexpattern-datasource-layer-layer1'));
-
-  // ── lens-008: Token Cost — Input & Output per PR ────────────────────────────
-  // Grouped bar chart — each PR gets two side-by-side bars (input / output).
-  // Bar is intentional: each PR is independent, no trend is implied.
-  await create('lens', 'lens-008', {
-    title: 'Token Cost — Input & Output per PR',
-    visualizationType: 'lnsXY',
-    state: {
-      datasourceStates: {
-        formBased: {
-          layers: {
-            layer1: {
-              columnOrder: ['col-pr', 'col-ts-order', 'col-input', 'col-output'],
-              columns: {
-                'col-pr':       prNumberCol(),
-                'col-ts-order': tsOrderCol(),
-                'col-input':    sumCol('Input Tokens',  'payload.token_input'),
-                'col-output':   sumCol('Output Tokens', 'payload.token_output'),
-              },
-              incompleteColumns: {},
-            },
-          },
-        },
-      },
-      filters: eventTypeFilter('pr_review_completed'),
-      query: { language: 'kuery', query: '' },
-      visualization: {
-        axisTitlesVisibilitySettings: { x: true, yLeft: true, yRight: false },
-        yTitle: 'Token Count', xTitle: 'Carbon PR',
-        fittingFunction: 'None',
-        gridlinesVisibilitySettings: { x: true, yLeft: true, yRight: false },
-        labelsOrientation: { x: -30, yLeft: 0, yRight: 0 },
-        layers: [{ accessors: ['col-input', 'col-output'], layerId: 'layer1', layerType: 'data',
-          seriesType: 'bar', xAccessor: 'col-pr',
-          yConfig: [{ forAccessor:'col-input', axisMode:'left' }, { forAccessor:'col-output', axisMode:'left' }],
-        }],
-        legend: { isVisible: true, position: 'right', showSingleSeries: true },
-        preferredSeriesType: 'bar',
-        tickLabelsVisibilitySettings: { x: true, yLeft: true, yRight: false },
-        valueLabels: 'hide',
-      },
-    },
-  }, dvRef('indexpattern-datasource-layer-layer1'));
-
-  // ── lens-010: Token Cost — Total Tokens per PR ──────────────────────────────
-  // Single bar per PR — total = input + output.
-  await create('lens', 'lens-010', {
-    title: 'Token Cost — Total Tokens per PR',
-    visualizationType: 'lnsXY',
-    state: {
-      datasourceStates: {
-        formBased: {
-          layers: {
-            layer1: {
-              columnOrder: ['col-pr', 'col-ts-order', 'col-total'],
-              columns: {
-                'col-pr':       prNumberCol(),
-                'col-ts-order': tsOrderCol(),
-                'col-total':    sumCol('Total Tokens', 'payload.token_total'),
-              },
-              incompleteColumns: {},
-            },
-          },
-        },
-      },
-      filters: eventTypeFilter('pr_review_completed'),
-      query: { language: 'kuery', query: '' },
-      visualization: {
-        axisTitlesVisibilitySettings: { x: true, yLeft: true, yRight: false },
-        yTitle: 'Token Count', xTitle: 'Carbon PR',
-        fittingFunction: 'None',
-        gridlinesVisibilitySettings: { x: true, yLeft: true, yRight: false },
-        labelsOrientation: { x: -30, yLeft: 0, yRight: 0 },
-        layers: [{ accessors: ['col-total'], layerId: 'layer1', layerType: 'data',
-          seriesType: 'bar', xAccessor: 'col-pr',
-          yConfig: [{ forAccessor:'col-total', axisMode:'left' }],
-        }],
-        legend: { isVisible: true, position: 'right', showSingleSeries: true },
-        preferredSeriesType: 'bar',
-        tickLabelsVisibilitySettings: { x: true, yLeft: true, yRight: false },
-        valueLabels: 'hide',
-=======
         layers: [{ accessors:['col-count'], layerId:'layer1', layerType:'data', seriesType:'bar_horizontal', xAccessor:'col-event', yConfig:[] }],
         legend: { isVisible: false, position: 'right' },
         preferredSeriesType: 'bar_horizontal',
         tickLabelsVisibilitySettings: { x: true, yLeft: true, yRight: true },
         valueLabels: 'show',
         yTitle: 'Count',
->>>>>>> carbon-org/wills-branch
       },
     },
   }, dvRef('indexpattern-datasource-layer-layer1'));
@@ -732,14 +450,6 @@ async function registerRuntimeFields() {
 async function buildDashboard() {
   // 6 panels — lens-002, lens-003, lens-007, lens-009 removed
   const panels = [
-<<<<<<< HEAD
-    { i:'p1', x:0,  y:0,  w:48, h:10, id:'lens-001', title:'PRs AI Reviewed per Day' },
-    { i:'p4', x:0,  y:10, w:48, h:10, id:'lens-004', title:'AI Recommendation Summary' },
-    { i:'p5', x:0,  y:20, w:24, h:12, id:'lens-005', title:'Findings by Severity' },
-    { i:'p6', x:24, y:20, w:24, h:12, id:'lens-006', title:'Carbon vs Non-Carbon Issue Detection' },
-    { i:'p8', x:0,  y:32, w:24, h:10, id:'lens-008', title:'Token Cost — Input & Output per PR' },
-    { i:'p10',x:24, y:32, w:24, h:10, id:'lens-010', title:'Token Cost — Total Tokens per PR' },
-=======
     // Row 1 — throughput (full width)
     { i:'p1', x:0,  y:0,  w:48, h:10, id:'lens-001', title:'PRs Reviewed per Day' },
     // Row 2 — recommendation (full width)
@@ -752,7 +462,6 @@ async function buildDashboard() {
     { i:'p10',x:24, y:32, w:24, h:12, id:'lens-010', title:'Total Token Usage per Review' },
     // Row 5 — run health (full width)
     { i:'p9', x:0,  y:44, w:48, h:12, id:'lens-009', title:'Run Health — Event Breakdown' },
->>>>>>> carbon-org/wills-branch
   ];
 
   const panelsJSON = JSON.stringify(panels.map(p => ({
@@ -772,11 +481,7 @@ async function buildDashboard() {
 
   await create('dashboard', 'carbon-monitor-dashboard', {
     title: 'Carbon Monitor — PR Review Metrics',
-<<<<<<< HEAD
-    description: 'Review throughput, finding quality, Carbon vs Non-Carbon issue detection, agent reliability, token cost, recommendation distribution.',
-=======
     description: 'Review throughput, recommendation distribution, finding quality, Carbon API verification, token usage, run health.',
->>>>>>> carbon-org/wills-branch
     panelsJSON,
     optionsJSON: JSON.stringify({ useMargins: true, syncColors: false, syncCursor: true, syncTooltips: false, hidePanelTitles: false }),
     kibanaSavedObjectMeta: { searchSourceJSON: JSON.stringify({ query: { query: '', language: 'kuery' }, filter: [] }) },
@@ -794,22 +499,14 @@ async function main() {
 
   const status = await kReq('GET', '/api/status', null);
   if (status.status !== 200) {
-    console.error('❌ Cannot reach Kibana at localhost:5601. Is it running?');
+    console.error(`❌ Cannot reach Kibana at ${KIBANA_URL}. Is it running?`);
     process.exit(1);
   }
   console.log(`✅ Kibana ${status.body?.version?.number} reachable\n`);
 
-<<<<<<< HEAD
-  console.log('Deleting stale objects...');
-  // Delete all lens IDs we have ever used (including lens-010 new one)
-  for (let i = 1; i <= 10; i++) {
-    await del('lens', `lens-0${String(i).padStart(2, '0')}`);
-  }
-=======
   console.log('Deleting stale Lens objects...');
   for (let i = 1; i <= 9; i++)   await del('lens', `lens-00${i}`);
   for (let i = 10; i <= 13; i++) await del('lens', `lens-0${i}`);
->>>>>>> carbon-org/wills-branch
   await del('dashboard', 'carbon-monitor-dashboard');
   console.log();
 
@@ -824,11 +521,16 @@ async function main() {
   console.log('Creating dashboard...');
   await buildDashboard();
 
-  const now = new Date();
-  const from = new Date(now - 30 * 86400e3).toISOString();
+  // ISO timestamps inside a RISON string must have : and . percent-encoded,
+  // otherwise Kibana's RISON parser throws "missing ':'".
+  const now  = new Date();
+  const from = new Date(now - 30 * 86400e3).toISOString()
+                 .replace(/:/g, '%3A').replace(/\./g, '%2E');
+  const to   = now.toISOString()
+                 .replace(/:/g, '%3A').replace(/\./g, '%2E');
   console.log(`
 ✅ Done. Open:
-   http://localhost:5601/app/dashboards#/view/carbon-monitor-dashboard?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${from}',to:'${now.toISOString()}'))
+   ${KIBANA_URL}/app/dashboards#/view/carbon-monitor-dashboard?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${from}',to:'${to}'))
 `);
 }
 

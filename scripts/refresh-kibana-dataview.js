@@ -4,6 +4,13 @@
  * that the dashboard Lens panels reference.
  *
  * Usage:  node scripts/refresh-kibana-dataview.js
+ *
+ * Required env var:
+ *   KIBANA_URL — e.g. http://localhost:5601  or  https://your-kibana.cloud.ibm.com
+ *
+ * Auth (same priority as esClient.js):
+ *   ES_API_KEY   — preferred; set in Kibana → Stack Management → API Keys
+ *   ES_USERNAME / ES_PASSWORD — fallback basic auth
  */
 
 'use strict';
@@ -13,29 +20,53 @@ require('dotenv').config();
 const http  = require('http');
 const https = require('https');
 
-const ES_USERNAME = process.env.ES_USERNAME || 'elastic';
-const ES_PASSWORD = process.env.ES_PASSWORD || '';
-const AUTH        = Buffer.from(`${ES_USERNAME}:${ES_PASSWORD}`).toString('base64');
+// ── Config from env ───────────────────────────────────────────────────────────
+const KIBANA_URL   = (process.env.KIBANA_URL   || '').trim();
+const ES_API_KEY   = (process.env.ES_API_KEY   || '').trim();
+const ES_USERNAME  = (process.env.ES_USERNAME  || 'elastic').trim();
+const ES_PASSWORD  = (process.env.ES_PASSWORD  || '').trim();
+
+if (!KIBANA_URL) {
+  console.error('❌  KIBANA_URL is not set in .env');
+  console.error('    Example: KIBANA_URL=http://localhost:5601');
+  console.error('    For IBM Cloud: KIBANA_URL=https://<your-kibana-host>:<port>');
+  process.exit(1);
+}
+
+const parsed    = new URL(KIBANA_URL);
+const useHttps  = parsed.protocol === 'https:';
+const transport = useHttps ? https : http;
+const hostname  = parsed.hostname;
+const port      = parseInt(parsed.port) || (useHttps ? 443 : 80);
+
+// Build the Authorization header — API key preferred
+const AUTH_HEADER = ES_API_KEY
+  ? `ApiKey ${ES_API_KEY}`
+  : `Basic ${Buffer.from(`${ES_USERNAME}:${ES_PASSWORD}`).toString('base64')}`;
 
 // The ID that all 9 Lens panels reference
 const DATA_VIEW_ID = 'carbon-monitor-index-pattern';
-const KIBANA_PORT  = 5601;
 
 function kRequest({ method = 'GET', path, body } = {}) {
   return new Promise((resolve, reject) => {
+    const payload = body ? JSON.stringify(body) : null;
     const opts = {
-      hostname: 'localhost',
-      port: KIBANA_PORT,
+      hostname,
+      port,
       path,
       method,
       headers: {
-        'Authorization': `Basic ${AUTH}`,
+        'Authorization': AUTH_HEADER,
         'kbn-xsrf': 'true',
         'Content-Type': 'application/json',
+        ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
       },
+      // Skip TLS verification for localhost (self-signed Kibana dev certs)
+      ...(useHttps && (hostname === 'localhost' || hostname === '127.0.0.1')
+        ? { rejectUnauthorized: false } : {}),
     };
 
-    const req = http.request(opts, res => {
+    const req = transport.request(opts, res => {
       let data = '';
       res.on('data', d => data += d);
       res.on('end', () => {
@@ -44,13 +75,15 @@ function kRequest({ method = 'GET', path, body } = {}) {
       });
     });
     req.on('error', reject);
-    if (body) req.write(JSON.stringify(body));
+    if (payload) req.write(payload);
     req.end();
   });
 }
 
 async function run() {
   console.log('\n── Kibana data view field refresh ──────────────────');
+  console.log(`   Kibana: ${KIBANA_URL}`);
+  console.log(`   Auth:   ${ES_API_KEY ? 'API key (ES_API_KEY)' : `basic (${ES_USERNAME})`}`);
 
   // 1. Confirm the data view exists
   console.log(`\n[1] Fetching data view: ${DATA_VIEW_ID}`);
@@ -118,11 +151,15 @@ async function run() {
   }
 
   // 4. Print dashboard link with correct absolute time range
-  const now = new Date();
-  const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const to   = now.toISOString();
+  // ISO timestamps inside a RISON string must have : and . percent-encoded,
+  // otherwise Kibana's RISON parser throws "missing ':'".
+  const now  = new Date();
+  const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+                 .replace(/:/g, '%3A').replace(/\./g, '%2E');
+  const to   = now.toISOString()
+                 .replace(/:/g, '%3A').replace(/\./g, '%2E');
   console.log(`\n[4] Dashboard link (last 7 days, absolute range):`);
-  console.log(`    http://localhost:5601/app/dashboards#/view/carbon-monitor-dashboard?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${from}',to:'${to}'))`);
+  console.log(`    ${KIBANA_URL}/app/dashboards#/view/carbon-monitor-dashboard?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${from}',to:'${to}'))`);
 
   console.log('\n────────────────────────────────────────────────────\n');
 }
