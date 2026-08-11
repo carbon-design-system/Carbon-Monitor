@@ -32,33 +32,11 @@
 'use strict';
 
 require('dotenv').config();
-const http  = require('http');
-const https = require('https');
+const http = require('http');
 
-// ── Config from env ───────────────────────────────────────────────────────────
-const KIBANA_URL  = (process.env.KIBANA_URL  || '').trim();
-const ES_API_KEY  = (process.env.ES_API_KEY  || '').trim();
-const ES_USERNAME = (process.env.ES_USERNAME || 'elastic').trim();
-const ES_PASSWORD = (process.env.ES_PASSWORD || '').trim();
-
-if (!KIBANA_URL) {
-  console.error('❌  KIBANA_URL is not set in .env');
-  console.error('    Example: KIBANA_URL=http://localhost:5601');
-  console.error('    For IBM Cloud: KIBANA_URL=https://<your-kibana-host>:<port>');
-  process.exit(1);
-}
-
-const parsed    = new URL(KIBANA_URL);
-const useHttps  = parsed.protocol === 'https:';
-const transport = useHttps ? https : http;
-const hostname  = parsed.hostname;
-const port      = parseInt(parsed.port) || (useHttps ? 443 : 80);
-
-// API key preferred over basic auth (mirrors esClient.js)
-const AUTH_HEADER = ES_API_KEY
-  ? `ApiKey ${ES_API_KEY}`
-  : `Basic ${Buffer.from(`${ES_USERNAME}:${ES_PASSWORD}`).toString('base64')}`;
-
+// Kibana always authenticates with ES username/password regardless of whether
+// ES_API_KEY is set — API keys are for direct ES access, not the Kibana API.
+const AUTH = `Basic ${Buffer.from(`${process.env.ES_USERNAME || 'elastic'}:${process.env.ES_PASSWORD || ''}`).toString('base64')}`;
 const DV_ID = 'carbon-monitor-index-pattern';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -66,17 +44,15 @@ function kReq(method, path, body) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
     const opts = {
-      hostname, port, method, path,
+      hostname: 'localhost', port: 5601, method, path,
       headers: {
-        'Authorization': AUTH_HEADER,
+        'Authorization': AUTH,
         'kbn-xsrf': 'true',
         'Content-Type': 'application/json',
         ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
       },
-      ...(useHttps && (hostname === 'localhost' || hostname === '127.0.0.1')
-        ? { rejectUnauthorized: false } : {}),
     };
-    const req = transport.request(opts, res => {
+    const req = http.request(opts, res => {
       let d = '';
       res.on('data', c => d += c);
       res.on('end', () => {
@@ -211,7 +187,7 @@ async function buildLensObjects() {
             layer1: {
               columnOrder: ['col-rec', 'col-count'],
               columns: {
-                'col-rec':   { dataType:'string', isBucketed:true, label:'Recommendation', operationType:'terms', params:{missingBucket:false,orderBy:{columnId:'col-count',type:'column'},orderDirection:'desc',otherBucket:true,size:10}, scale:'ordinal', sourceField:'payload.recommendation.keyword' },
+                'col-rec':   { dataType:'string', isBucketed:true, label:'Recommendation', operationType:'terms', params:{missingBucket:false,orderBy:{columnId:'col-count',type:'column'},orderDirection:'desc',otherBucket:true,size:10}, scale:'ordinal', sourceField:'payload.recommendation' },
                 'col-count': countCol('Reviews'),
               },
               incompleteColumns: {},
@@ -345,9 +321,9 @@ async function buildLensObjects() {
         formBased: {
           layers: {
             layer1: {
-              columnOrder: ['col-pr', 'col-ts-order', 'col-blocking', 'col-major', 'col-minor', 'col-nit'],
+              columnOrder: ['col-event', 'col-count'],
               columns: {
-                'col-event': { dataType:'string', isBucketed:true, label:'Event', operationType:'terms', params:{missingBucket:false,orderBy:{columnId:'col-count',type:'column'},orderDirection:'desc',otherBucket:false,size:20}, scale:'ordinal', sourceField:'event_type.keyword' },
+                'col-event': { dataType:'string', isBucketed:true, label:'Event', operationType:'terms', params:{missingBucket:false,orderBy:{columnId:'col-count',type:'column'},orderDirection:'desc',otherBucket:false,size:20}, scale:'ordinal', sourceField:'event_type' },
                 'col-count': countCol('Count'),
               },
               incompleteColumns: {},
@@ -355,7 +331,7 @@ async function buildLensObjects() {
           },
         },
       },
-      filters: eventTypeFilter('pr_review_completed'),
+      filters: [],
       query: { language: 'kuery', query: '' },
       visualization: {
         axisTitlesVisibilitySettings: { x: false, yLeft: true, yRight: false },
@@ -422,9 +398,10 @@ async function registerRuntimeFields() {
   `.trim();
 
   // payload.recommendation_label — friendly donut slice labels
+  // payload.recommendation is mapped as pure keyword (no .keyword sub-field)
   const recLabelScript = `
-    def raw = doc['payload.recommendation.keyword'].size() > 0
-      ? doc['payload.recommendation.keyword'].value : '';
+    def raw = doc['payload.recommendation'].size() > 0
+      ? doc['payload.recommendation'].value : '';
     if (raw == 'looks-good') { emit('No Intervention Needed'); }
     else if (raw == 'suggested-improvements') { emit('AI Suggested Improvements'); }
     else if (raw == 'consider-revising') { emit('Significant Rework Required'); }
@@ -499,7 +476,7 @@ async function main() {
 
   const status = await kReq('GET', '/api/status', null);
   if (status.status !== 200) {
-    console.error(`❌ Cannot reach Kibana at ${KIBANA_URL}. Is it running?`);
+    console.error('❌ Cannot reach Kibana at localhost:5601. Is it running?');
     process.exit(1);
   }
   console.log(`✅ Kibana ${status.body?.version?.number} reachable\n`);
@@ -521,16 +498,11 @@ async function main() {
   console.log('Creating dashboard...');
   await buildDashboard();
 
-  // ISO timestamps inside a RISON string must have : and . percent-encoded,
-  // otherwise Kibana's RISON parser throws "missing ':'".
-  const now  = new Date();
-  const from = new Date(now - 30 * 86400e3).toISOString()
-                 .replace(/:/g, '%3A').replace(/\./g, '%2E');
-  const to   = now.toISOString()
-                 .replace(/:/g, '%3A').replace(/\./g, '%2E');
+  const now = new Date();
+  const from = new Date(now - 30 * 86400e3).toISOString();
   console.log(`
 ✅ Done. Open:
-   ${KIBANA_URL}/app/dashboards#/view/carbon-monitor-dashboard?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${from}',to:'${to}'))
+   http://localhost:5601/app/dashboards#/view/carbon-monitor-dashboard?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${from}',to:'${now.toISOString()}'))
 `);
 }
 

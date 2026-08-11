@@ -32,14 +32,10 @@ const DRY = process.argv.includes('--dry-run');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const ES_URL      = (process.env.ES_URL      || '').trim();
-const ES_API_KEY  = (process.env.ES_API_KEY  || '').trim();
 const ES_USERNAME = (process.env.ES_USERNAME || 'elastic').trim();
 const ES_PASSWORD = (process.env.ES_PASSWORD || '').trim();
 const ES_CA_CERT  = (process.env.ES_CA_CERT_PATH || '').trim();
 const RETENTION   = Math.max(90, parseInt(process.env.EVENTS_RETENTION_DAYS || '180', 10));
-// Set ES_TLS_REJECT_UNAUTHORIZED=false in .env to disable TLS verification
-// for local Docker clusters that use self-signed certificates.
-const TLS_REJECT  = (process.env.ES_TLS_REJECT_UNAUTHORIZED || '').trim().toLowerCase() !== 'false';
 
 const ALIAS    = 'carbon-monitor-events';
 const TEMPLATE = 'carbon-monitor-events-template';
@@ -68,39 +64,19 @@ if (!ES_URL) {
 
 const clientOpts = {
   node: ES_URL,
+  auth: { username: ES_USERNAME, password: ES_PASSWORD },
   requestTimeout: 15_000,
   maxRetries: 0,
 };
 
-// API key preferred over username/password (mirrors carbon-mcp-internal pattern)
-if (ES_API_KEY) {
-  clientOpts.auth = { apiKey: ES_API_KEY };
-  console.log('ℹ️   Auth: API key (ES_API_KEY)');
-} else if (ES_PASSWORD) {
-  clientOpts.auth = { username: ES_USERNAME, password: ES_PASSWORD };
-  console.log('ℹ️   Auth: basic (ES_USERNAME / ES_PASSWORD)');
-} else {
-  clientOpts.auth = { username: ES_USERNAME, password: ES_PASSWORD };
-  console.warn('⚠️   No auth credentials set — ES calls may fail with 401');
-}
-
-if (!TLS_REJECT) {
-  // Explicit opt-out — covers any local hostname (Docker service names, etc.)
-  clientOpts.tls = { rejectUnauthorized: false };
-  console.log('ℹ️   TLS verification disabled (ES_TLS_REJECT_UNAUTHORIZED=false)');
-} else if (ES_CA_CERT) {
+if (ES_CA_CERT) {
   try {
     clientOpts.tls = { ca: fs.readFileSync(path.resolve(ES_CA_CERT)) };
     console.log('ℹ️   CA cert loaded from', ES_CA_CERT);
   } catch (e) {
     console.warn('⚠️   Could not read ES_CA_CERT_PATH:', e.message);
   }
-} else if (
-  ES_URL.startsWith('https://localhost') ||
-  ES_URL.startsWith('https://127.')      ||
-  ES_URL.startsWith('https://0.0.0.0')  ||
-  ES_URL.startsWith('https://[::1]')
-) {
+} else if (ES_URL.startsWith('https://localhost') || ES_URL.startsWith('https://127.')) {
   clientOpts.tls = { rejectUnauthorized: false };
   console.log('ℹ️   Local HTTPS — TLS verification disabled');
 }

@@ -18,8 +18,7 @@
 'use strict';
 
 require('dotenv').config();
-const fs   = require('fs');
-const path = require('path');
+const fs = require('fs');
 
 // ── 0. Check env ──────────────────────────────────────────────────────────────
 console.log('\n──────────────────────────────────────────────');
@@ -27,16 +26,15 @@ console.log('  Carbon Monitor — ES connectivity diagnostic');
 console.log('──────────────────────────────────────────────\n');
 
 const ES_URL      = process.env.ES_URL;
-const ES_API_KEY  = (process.env.ES_API_KEY  || '').trim();
 const ES_USERNAME = process.env.ES_USERNAME || 'elastic';
 const ES_PASSWORD = process.env.ES_PASSWORD || '';
 const ES_CA_CERT  = process.env.ES_CA_CERT_PATH;
 
 console.log('ENV CHECK');
 console.log('  ES_URL     :', ES_URL      || '(not set — ES is DISABLED)');
-console.log('  Auth       :', ES_API_KEY  ? 'API key (ES_API_KEY)' : `basic (${ES_USERNAME} / ${ES_PASSWORD ? 'password set' : 'NO PASSWORD'})`);
+console.log('  ES_USERNAME:', ES_USERNAME);
+console.log('  ES_PASSWORD:', ES_PASSWORD ? '(set)' : '(not set / empty)');
 console.log('  ES_CA_CERT :', ES_CA_CERT  || '(not set)');
-console.log('  Index mode :', process.env.CARBON_MONITOR_INDEX_MODE || '(not set → auto-resolves: sandbox locally, prod in Code Engine)');
 console.log();
 
 if (!ES_URL) {
@@ -56,48 +54,31 @@ try {
 
 const opts = {
   node: ES_URL,
+  auth: { username: ES_USERNAME, password: ES_PASSWORD },
   requestTimeout: 10_000,
   maxRetries: 0,
 };
 
-// API key preferred over username/password (mirrors esClient.js)
-if (ES_API_KEY) {
-  opts.auth = { apiKey: ES_API_KEY };
-} else {
-  opts.auth = { username: ES_USERNAME, password: ES_PASSWORD };
-}
-
 if (ES_CA_CERT) {
-  // Try two candidate paths: as-is, then resolved from CWD
-  const candidates = [ES_CA_CERT, path.resolve(process.cwd(), ES_CA_CERT)];
-  for (const candidate of candidates) {
-    try {
-      opts.tls = { ca: fs.readFileSync(candidate) };
-      console.log('ℹ️   Using CA cert from', candidate);
-      break;
-    } catch (_) { /* try next */ }
+  try {
+    opts.tls = { ca: fs.readFileSync(ES_CA_CERT) };
+    console.log('ℹ️   Using CA cert from', ES_CA_CERT);
+  } catch (e) {
+    console.warn('⚠️   Could not read ES_CA_CERT_PATH:', e.message);
   }
-  if (!opts.tls) console.warn('⚠️   Could not read ES_CA_CERT_PATH from either path — TLS may fail');
-} else if (
-  ES_URL.startsWith('https://localhost') || ES_URL.startsWith('https://127.') ||
-  ES_URL.startsWith('https://0.0.0.0')  || ES_URL.startsWith('https://[::1]')
-) {
+} else if (ES_URL.startsWith('https://localhost') || ES_URL.startsWith('https://127.')) {
   opts.tls = { rejectUnauthorized: false };
   console.log('ℹ️   Local HTTPS — TLS verification disabled');
 }
 
 const client = new Client(opts);
 
-// ── Index name (mirrors eventService.js + indexEnv.js) ───────────────────────
+// ── Index name (mirrors eventService.js) ─────────────────────────────────────
 function currentIndex() {
   const now  = new Date();
   const yyyy = now.getUTCFullYear();
   const mm   = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const base = `carbon-monitor-events-${yyyy}.${mm}`;
-  // Honour CARBON_MONITOR_INDEX_MODE the same way indexEnv.js does at runtime
-  const mode = (process.env.CARBON_MONITOR_INDEX_MODE || '').trim().toLowerCase();
-  if (mode === 'prod' || process.env.NODE_ENV === 'production') return base;
-  return `${base}_sandbox`;  // default: sandbox (safe)
+  return `carbon-monitor-events-${yyyy}.${mm}`;
 }
 
 const INDEX = currentIndex();

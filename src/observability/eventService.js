@@ -2,21 +2,15 @@
  * Event Service — append-only event log to Elasticsearch
  *
  * Writes structured documents to a time-partitioned index:
- *   carbon-monitor-events-YYYY.MM          (production)
- *   carbon-monitor-events-YYYY.MM_sandbox  (local dev / sandbox)
+ *   carbon-monitor-events-YYYY.MM
  *
- * Architecture matches carbon-migrate/agent-dispatcher/src/services/eventService.js
- * and incorporates the METRICS_ENABLED + index-mode pattern from carbon-mcp-internal:
+ * Architecture matches carbon-migrate/agent-dispatcher/src/services/eventService.js:
  *   - Every document has a unique event_id (crypto.randomUUID)
  *   - level is resolved automatically from event_type — no need to pass it
  *   - Error details are scrubbed before writing to ES (no stack traces or
  *     internal paths in the data store — those stay in console logs only)
  *   - If ES is absent or the circuit breaker is OPEN, events are console-only.
  *     The review run is never blocked.
- *   - METRICS_ENABLED=false disables all ES writes (default: true).
- *     Set METRICS_ENABLED=false locally to skip ES entirely.
- *   - Index names are routed through resolveIndexName() so local dev writes
- *     land in _sandbox indices and never pollute the production index.
  *
  * Event types tracked:
  *   run_started         — reviewPRs() invocation began
@@ -32,16 +26,7 @@
 'use strict';
 
 const { randomUUID } = require('crypto');
-const { esCall }           = require('./esClient');
-const { resolveIndexName } = require('../config/indexEnv');
-
-// ── METRICS_ENABLED guard (mirrors carbon-mcp-internal metricsService.js) ────
-// Master switch: set METRICS_ENABLED=false locally to skip all ES writes.
-// Defaults to true so production deployments are on without extra config.
-const METRICS_ENABLED = (process.env.METRICS_ENABLED || 'true').trim().toLowerCase() !== 'false';
-if (!METRICS_ENABLED) {
-  console.log('[eventService] METRICS_ENABLED=false — ES writes are disabled (console-only)');
-}
+const { esCall } = require('./esClient');
 
 // ── Level resolution (mirrors Carbon Migrate ERROR_EVENT_TYPES / WARN_EVENT_TYPES)
 const ERROR_EVENTS = new Set([
@@ -62,14 +47,11 @@ function resolveLevel(event_type) {
 }
 
 // ── Index name ────────────────────────────────────────────────────────────────
-// resolveIndexName() appends _sandbox in local dev / sandbox mode so events
-// never pollute the production index. Set CARBON_MONITOR_INDEX_MODE=prod to
-// write to the bare index name.
 function currentIndex() {
   const now = new Date();
   const yyyy = now.getUTCFullYear();
   const mm   = String(now.getUTCMonth() + 1).padStart(2, '0');
-  return resolveIndexName(`carbon-monitor-events-${yyyy}.${mm}`);
+  return `carbon-monitor-events-${yyyy}.${mm}`;
 }
 
 // ── Payload scrubbing ─────────────────────────────────────────────────────────
@@ -148,11 +130,9 @@ async function emitEvent({
   // ES receives a scrubbed copy — no raw stack traces or internal paths
   const esDoc = { ...doc, payload: scrubPayload(payload) };
 
-  if (METRICS_ENABLED) {
-    await esCall(
-      (client) => client.index({ index: currentIndex(), document: esDoc }),
-    );
-  }
+  await esCall(
+    (client) => client.index({ index: currentIndex(), document: esDoc }),
+  );
 }
 
 module.exports = { emitEvent };
