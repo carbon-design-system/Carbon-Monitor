@@ -457,6 +457,7 @@ async function reviewPRs(options = {}) {
         console.log(`📌 Reviewing PR #${pr.number}: ${pr.title}`);
         console.log(`   Author: @${pr.user.login}`);
         console.log(`   Created: ${new Date(pr.created_at).toLocaleDateString()}`);
+        console.log(`   URL: ${pr.html_url}`);
         console.log(`${'='.repeat(80)}\n`);
 
         await emitEvent({
@@ -604,10 +605,15 @@ async function reviewPRs(options = {}) {
         // tool with skill_name: carbon-builder).
         const skillFilesRead = extractCarbonBuilderSkillReads(agentOutput);
         if (skillFilesRead.length > 0) {
-          console.log(`\n🔬 Carbon Builder skill activated — ${skillFilesRead.length} evidence signal(s):`);
-          skillFilesRead.forEach(f => console.log(`   📄 ${f}`));
+          // v2 leaves a single "use_skill:carbon-builder" signal; v1 leaves one
+          // entry per skill file the agent read. Either form means the agent
+          // loaded the skill before reviewing.
+          const how = skillFilesRead.includes('use_skill:carbon-builder')
+            ? 'invoked it via the use_skill tool'
+            : `read ${skillFilesRead.length} skill file(s): ${skillFilesRead.join(', ')}`;
+          console.log(`\n🔬 Carbon Builder skill: ✅ loaded and used by the agent — ${how}`);
         } else {
-          console.log('\n🔬 Carbon Builder skill: not detected in agent output');
+          console.log('\n🔬 Carbon Builder skill: ⚠️  NOT loaded — the agent transcript shows no use_skill call and no read of .bob/skills/carbon-builder/. Carbon claims in this review are unverified by the skill.');
         }
         // ─────────────────────────────────────────────────────────────────
 

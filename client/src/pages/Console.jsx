@@ -16,12 +16,12 @@ import {
   InlineNotification,
   Loading,
 } from '@carbon/react';
-// The one icon this project imports. Every other affordance is text-labelled,
-// because the Carbon icon index has repeatedly returned unusable results and
-// guessing an export name is not acceptable — so this one was checked twice:
-// against the icon index (which resolved "settings" -> Settings) and against the
-// exports of the installed @carbon/icons-react.
-import { Settings } from '@carbon/icons-react';
+// Icons are imported sparingly and only after the export name is verified against
+// the installed @carbon/icons-react — the icon index has returned unusable results
+// before, so a name is never guessed. Settings opens the connection panel;
+// Terminal marks the live review-output indicator, mirroring the agent-console
+// affordance in Carbon Migrate.
+import { Settings, Terminal } from '@carbon/icons-react';
 import { api } from '../api';
 import StatusTile from '../components/StatusTile';
 import McpConnectionPanel from '../components/McpConnectionPanel';
@@ -296,6 +296,30 @@ function Console({ authRequired = false, onSignOut }) {
           {version && <span className="cm-brand-version"> (v{version})</span>}
         </HeaderName>
         <HeaderGlobalBar>
+          {/*
+            Live review indicator, mirroring Carbon Migrate's supervisor status
+            dot: a Terminal glyph carrying a status dot at its corner — grey when
+            idle, green (and gently pulsing) while a review is running. It reads
+            the same Boolean(review?.running) that drives the Review-output spinner
+            below, so the two can never disagree. A status, not a control: it
+            reports state and is deliberately not clickable.
+          */}
+          <div
+            className="cm-review-status"
+            role="status"
+            aria-label={review?.running ? 'A review is running' : 'No review running'}
+            title={review?.running ? 'A review is running' : 'No review running'}
+          >
+            <span className="cm-review-status__icon" aria-hidden="true">
+              <Terminal size={20} />
+              <span
+                className={`cm-review-status__dot cm-review-status__dot--${
+                  review?.running ? 'running' : 'idle'
+                }`}
+              />
+            </span>
+          </div>
+
           {/*
             Connection settings live behind this rather than in a tile on the
             page. They are configured once — an IBMid sign-in at deploy time —

@@ -43,12 +43,15 @@ body {
   margin-bottom: $spacing-05;
 }
 
-// A tile heading with something beside it — currently the Bob mark on Reviews.
-// `center` rather than `baseline` because the mark has no baseline of its own;
-// centring it on the heading's line box is what makes it read as aligned.
+// A tile heading with a mark beside it — the "AI" label on Reviews, the Bob mark
+// on Bobcoins. `flex-start` (top), not `center`: the Bob mark is far taller than
+// the heading, so centring dropped the "Bobcoins" title to the middle of that
+// tall row while "Reviews" stayed at the top, and the two card titles no longer
+// lined up. Top-aligning pins every title and mark to the tile's top edge, so
+// both cards read consistently across the row.
 .cm-tile-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: $spacing-05;
   margin-bottom: $spacing-05;
@@ -63,12 +66,12 @@ body {
 // axes — or any square box — would squash it. `inline-size: auto` makes that
 // explicit against any inherited img sizing.
 //
-// 5.25rem is three times the 1.75rem it started at, which matched the heading's
-// line box and read as an afterthought. At this size the mark is a deliberate
-// piece of the tile rather than a stray glyph — it is the face of the agent
-// doing the work, and the tile is where that work is started.
+// 4.2rem — a fifth smaller than the 5.25rem it was, and still well above the
+// 1.75rem heading line box it started at, so the mark stays a deliberate piece
+// of the tile (the face of the agent doing the work) rather than the stray glyph
+// it read as when it merely matched the heading.
 .cm-bob-mark {
-  block-size: 5.25rem;
+  block-size: 4.2rem;
   inline-size: auto;
   // Stops a long heading squeezing the mark narrower than its aspect ratio.
   flex: 0 0 auto;
@@ -105,13 +108,85 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-// Centres the AI label in the 3rem header bar and keeps it off the edge. The
-// AILabel button is a small square with no padding of its own, so without this
-// it sits flush against the viewport's right edge.
+// Wraps the "AI" label beside the Reviews heading. No inline padding: it used to
+// live in the 3rem header bar and needed holding off the viewport edge, but it
+// now sits inside the Reviews tile, where the tile's own padding already spaces
+// it — extra here would inset it from the tile's right edge while the Bob mark on
+// the neighbouring card sits flush, breaking the alignment the pair should share.
 .cm-header-ai {
   display: flex;
   align-items: center;
+}
+
+// ── Header review-status indicator ─────────────────────────────────────────
+// A Terminal glyph carrying a status dot at its corner, left of the settings
+// gear — the same treatment as Carbon Migrate's supervisor indicator. Grey when
+// idle, green while a review runs. A status, not a control: it reports state and
+// is not clickable, so it is a labelled element rather than a HeaderGlobalAction.
+.cm-review-status {
+  display: flex;
+  align-items: center;
+  // Centres the glyph in the 3rem UI Shell header bar, with the same inline
+  // breathing room the gear beside it carries.
+  block-size: 3rem;
   padding-inline: $spacing-05;
+  // The Terminal glyph inherits currentColor; match the header's other icons.
+  color: $icon-secondary;
+}
+
+.cm-review-status__icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+
+.cm-review-status__dot {
+  position: absolute;
+  inset-block-start: -0.2rem;
+  inset-inline-end: -0.25rem;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 999px;
+  // A 2px ring in the header surface colour reads as a clean cutout between the
+  // dot and the glyph it overlays — the same trick Carbon Migrate uses.
+  box-shadow: 0 0 0 2px $background;
+}
+
+.cm-review-status__dot--idle {
+  background: $icon-disabled;
+}
+
+.cm-review-status__dot--running {
+  background: $support-success;
+}
+
+// Quietly alive while a run is in flight: a slow expanding halo, never a blink.
+// Gated on prefers-reduced-motion — the green colour alone still carries state.
+@media (prefers-reduced-motion: no-preference) {
+  .cm-review-status__dot--running::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: $support-success;
+    pointer-events: none;
+    animation: cm-status-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+}
+
+@keyframes cm-status-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  70%,
+  100% {
+    transform: scale(2.75);
+    opacity: 0;
+  }
 }
 
 // The AILabel callout is prose, not a caption: given no measure it stretches to

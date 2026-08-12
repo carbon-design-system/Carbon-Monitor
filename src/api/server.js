@@ -715,9 +715,17 @@ async function handleRequest(req, res) {
   const pathname = url.pathname;
   const method = req.method;
 
+  // Static font assets under /plex are fetched on every cold page load and tell
+  // an operator nothing — silence them the same way as the API polling routes.
+  const isSilentFont =
+    method === 'GET' &&
+    pathname.startsWith('/plex/') &&
+    (pathname.endsWith('.woff2') || pathname.endsWith('.woff'));
+
   const silenced =
     process.env.LOG_LEVEL !== 'debug' &&
-    (method === 'OPTIONS' || (method === 'GET' && SILENT_GET_ROUTES.has(pathname)));
+    (method === 'OPTIONS' ||
+      (method === 'GET' && (SILENT_GET_ROUTES.has(pathname) || isSilentFont)));
   if (!silenced) console.log(`${method} ${pathname}`);
 
   // The console is served from this same origin, so CORS is only needed for
