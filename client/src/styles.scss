@@ -27,6 +27,153 @@ body {
   margin-top: 3rem;
 }
 
+// The completion toast floats top-right, clear of the 3rem fixed header. Fixed
+// and outside the Grid so it overlays the console rather than shifting layout.
+.cm-toast-region {
+  position: fixed;
+  inset-block-start: calc(3rem + #{$spacing-05});
+  inset-inline-end: $spacing-05;
+  z-index: 9000;
+}
+
+// ── Review-complete success card ───────────────────────────────────────────
+.cm-success-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-05;
+  background: $overlay;
+
+  @media (prefers-reduced-motion: no-preference) {
+    animation: cm-overlay-in 0.2s ease-out both;
+  }
+}
+
+@keyframes cm-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.cm-success {
+  position: relative;
+  inline-size: 22rem;
+  max-inline-size: 100%;
+  padding: $spacing-06;
+  color: $text-primary;
+  // Carbon for AI aura: a soft glow gradient over the layer surface.
+  background:
+    radial-gradient(
+      130% 120% at 100% 0%,
+      var(--cds-ai-aura-start, rgba(69, 137, 255, 0.16)) 0%,
+      var(--cds-ai-aura-end, transparent) 55%
+    ),
+    $layer;
+  border: 1px solid var(--cds-ai-border-start, rgba(15, 98, 254, 0.32));
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.28);
+
+  @media (prefers-reduced-motion: no-preference) {
+    animation: cm-success-in 0.32s ease-out both;
+  }
+}
+
+@keyframes cm-success-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+// Plain ghost-style dismiss, pinned to the card's top-right corner. A native
+// button (not IconButton) so this absolute box anchors to the card rather than to
+// an IconButton tooltip wrapper.
+.cm-success__close {
+  position: absolute;
+  inset-block-start: $spacing-03;
+  inset-inline-end: $spacing-03;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2rem;
+  block-size: 2rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: $icon-primary;
+  cursor: pointer;
+
+  &:hover {
+    background: $layer-hover;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: -2px;
+  }
+}
+
+// The hero: a bold white check in a success-green disc that pops in.
+.cm-success__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 3rem;
+  block-size: 3rem;
+  border-radius: 50%;
+  background: $support-success;
+  color: $text-on-color;
+  margin-bottom: $spacing-05;
+
+  @media (prefers-reduced-motion: no-preference) {
+    animation: cm-success-pop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) 0.08s both;
+  }
+}
+
+@keyframes cm-success-pop {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.cm-success__title {
+  @include type-style('productive-heading-03');
+  margin: 0;
+}
+
+.cm-success__summary {
+  @include type-style('body-01');
+  color: $text-secondary;
+  margin-top: $spacing-02;
+}
+
+// The standing AI disclaimer: quiet, italic small print, set off by a hairline.
+.cm-success__disclaimer {
+  @include type-style('label-01');
+  color: $text-secondary;
+  font-style: italic;
+  margin-top: $spacing-05;
+  padding-top: $spacing-04;
+  border-block-start: 1px solid $border-subtle;
+}
+
 .cm-page-heading {
   @include type-style('productive-heading-04');
   margin-bottom: $spacing-03;
@@ -83,6 +230,12 @@ body {
 // declared by the grid that owns the rows rather than bolted onto it here.
 .cm-tile-grid {
   margin-bottom: $spacing-07;
+}
+
+// Fills the grid column it sits in, so two tiles sharing a row present as
+// equal-height enterprise cards rather than one ending in a well of empty page.
+.cm-fill {
+  block-size: 100%;
 }
 
 // The UI Shell header is a fixed 3rem tall, and a Carbon `lg` button is 3rem —
@@ -308,13 +461,29 @@ body {
 
 // ── Bobcoins ──────────────────────────────────────────────────────────────
 
-// No `height: 100%` on either of these any more, and it must not come back.
-// They used to share a row and stretch to the taller of the pair, which meant a
-// ledger holding a single review was drawn at the full height of the balance
-// tile beside it — a data row followed by several inches of white space that
-// read as a rendering fault. They now sit in different rows, each beside a panel
-// with far more content than they have, so stretching would be worse still.
-// Each tile is the height of what is in it.
+.cm-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-05 $spacing-07;
+  margin-bottom: $spacing-06;
+}
+
+.cm-stat {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-02;
+}
+
+.cm-stat__label {
+  @include type-style('label-01');
+  color: $text-secondary;
+}
+
+.cm-stat__value {
+  @include type-style('productive-heading-03');
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
 
 .cm-coins__label {
   @include type-style('label-01');
@@ -336,6 +505,24 @@ body {
   margin-top: $spacing-02;
 }
 
+.cm-coins__budget {
+  display: flex;
+  align-items: center;
+  gap: $spacing-05;
+  margin-block: $spacing-05;
+}
+
+.cm-coins__gauge {
+  flex: 0 0 auto;
+  inline-size: 11rem;
+  block-size: 9.5rem;
+}
+
+.cm-coins__figures {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
 .cm-coins__progress {
   margin: $spacing-06 0;
 }
@@ -350,6 +537,14 @@ body {
 .cm-coins__empty {
   @include type-style('body-01');
   color: $text-secondary;
+}
+
+// Explains the ledger's "Account balance after" column — why a per-review
+// snapshot won't match the live balance shown in the Bobcoins card.
+.cm-coins__caption {
+  @include type-style('label-01');
+  color: $text-helper;
+  margin-top: $spacing-05;
 }
 
 .cm-coins__numeric {
@@ -401,6 +596,15 @@ body {
   margin: 0;
 }
 
+// Groups the title and its inline "AI" marker so the header's space-between
+// keeps the pair on the left and the copy/download/clear toolbar on the right —
+// no corner decorator to collide with the toolbar.
+.cm-log__heading {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+}
+
 .cm-log__actions {
   display: flex;
   align-items: center;
@@ -411,6 +615,45 @@ body {
 // ragged gap under the title.
 .cm-log__spinner {
   min-block-size: auto;
+}
+
+// The per-PR progress list — one row per PR in the run, reconstructed from the
+// log. A quiet inset panel so it reads as a summary above the raw output rather
+// than as more chrome.
+.cm-pr-progress {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+  margin-bottom: $spacing-05;
+  padding: $spacing-04 $spacing-05;
+  background: $layer-02;
+  list-style: none;
+}
+
+.cm-pr-progress__row {
+  display: flex;
+  align-items: center;
+  gap: $spacing-05;
+  @include type-style('body-01');
+}
+
+// InlineLoading lays out for a form row; in a compact list row that leaves a gap.
+// The min width holds the column so a row does not jump as its PR moves from
+// queued to reviewing to reviewed.
+.cm-pr-progress__spinner {
+  min-block-size: auto;
+  min-inline-size: 7rem;
+}
+
+.cm-pr-progress__num {
+  font-variant-numeric: tabular-nums;
+}
+
+.cm-pr-progress__title {
+  color: $text-secondary;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cm-log__notice {

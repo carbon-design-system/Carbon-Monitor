@@ -12,10 +12,15 @@
  * an expired session (401) from a genuine failure.
  */
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, body = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    // The parsed error body, so a caller can read structured fields a plain
+    // message cannot carry — e.g. the 409 from POST /api/review/trigger names
+    // the in-flight run's startedAt / mode / prNumbers for the "already
+    // running" modal to show what is blocking the new run.
+    this.body = body;
   }
 }
 
@@ -34,7 +39,11 @@ async function request(path, options = {}) {
   }
 
   if (!res.ok) {
-    throw new ApiError(body?.error || `Request failed (${res.status})`, res.status);
+    throw new ApiError(
+      body?.error || body?.message || `Request failed (${res.status})`,
+      res.status,
+      body
+    );
   }
 
   return body;

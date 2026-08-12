@@ -605,7 +605,7 @@ modes. Malformed JSON, or a body over 256 KB, is also a `400`.
 }
 ```
 
-Only one review runs at a time. This is not a resource limit — it is there
+Only one review session runs at a time. This is not a resource limit — it is there
 because two agents reviewing the same PR would post the same findings twice:
 duplicate inline comments on the same diff lines, and two summary comments. The
 `409` carries the in-flight run's `startedAt`, `mode` and `prNumbers`, so a

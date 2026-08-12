@@ -1,7 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Tile,
-  ProgressBar,
   InlineNotification,
   StructuredListWrapper,
   StructuredListHead,
@@ -9,6 +8,7 @@ import {
   StructuredListRow,
   StructuredListCell,
 } from '@carbon/react';
+import { GaugeChart } from '@carbon/charts-react';
 // Vite resolves this to a hashed URL at build time. The vector is used rather
 // than the PNG so the mark stays sharp at any size and on any density.
 import bobMark from '../assets/bob.svg';
@@ -187,6 +187,55 @@ function CheckNotice({ check }) {
 }
 
 /**
+ * Animate a number toward its latest value, honouring reduced-motion.
+ *
+ * The balance changes after a run completes; counting to the new figure rather
+ * than snapping to it makes that change legible and a little satisfying. The
+ * first value shows immediately — only later changes animate — and a caller who
+ * has asked for reduced motion gets the value with no animation at all.
+ */
+function useAnimatedNumber(target, duration = 900) {
+  const [display, setDisplay] = useState(target);
+  const fromRef = useRef(target);
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    const reduce =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!Number.isFinite(target) || reduce) {
+      setDisplay(target);
+      fromRef.current = target;
+      return undefined;
+    }
+
+    const from = Number.isFinite(fromRef.current) ? fromRef.current : target;
+    if (from === target) {
+      setDisplay(target);
+      return undefined;
+    }
+
+    const start = performance.now();
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      setDisplay(from + (target - from) * eased);
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(step);
+      } else {
+        fromRef.current = target;
+      }
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target, duration]);
+
+  return display;
+}
+
+/**
  * The headline number, its context, and the proportion still available.
  *
  * `check` is the 'bobcoins' entry from GET /api/status, which this tile now
@@ -194,6 +243,7 @@ function CheckNotice({ check }) {
  */
 function BalanceTile({ balance, summary, check }) {
   const available = balance?.available === true;
+  const animatedRemaining = useAnimatedNumber(balance?.remaining);
   const { title, subtitle } = unavailableCopy(balance?.reason);
 
   // A budget of zero would divide by zero below, and an absent one (an
@@ -207,8 +257,27 @@ function BalanceTile({ balance, summary, check }) {
     ? Math.round(balance.percentRemaining)
     : null;
 
+  // Budget gauge: a semicircular arc filled to the percentage of budget 
+  const remaining = Number.isFinite(balance?.remaining) ? balance.remaining : null;
+  const gaugeValue =
+    percentRemaining !== null
+      ? percentRemaining
+      : budget
+        ? Math.round(((remaining ?? 0) / budget) * 100)
+        : 0;
+  const gaugeStatus = gaugeValue < 10 ? 'danger' : gaugeValue < 25 ? 'warning' : 'success';
+  const gaugeColor = gaugeValue < 10 ? '#da1e28' : gaugeValue < 25 ? '#ff832b' : '#0f62fe';
+  const gaugeData = [{ group: 'value', value: gaugeValue }];
+  const gaugeOptions = {
+    resizable: true,
+    height: '152px',
+    gauge: { type: 'semi', status: gaugeStatus },
+    color: { scale: { value: gaugeColor } },
+    toolbar: { enabled: false },
+  };
+
   return (
-    <Tile className="cm-coins">
+    <Tile className="cm-coins cm-fill">
       {/* Heading left, Bob right, on one row. Bobcoins are what Bob's work
           costs, so the mark sits with the balance it draws down. */}
       <div className="cm-tile-head">
@@ -244,42 +313,28 @@ function BalanceTile({ balance, summary, check }) {
 
       {available ? (
         <>
-          <p className="cm-coins__label">Remaining this month</p>
-          <p className="cm-coins__value"><CoinValue value={balance.remaining} /></p>
-          <p className="cm-coins__sub">
-            {budget === null
-              ? 'This plan has no monthly cap.'
-              : `of ${coins(budget)} monthly budget${
-                  percentRemaining === null ? '' : ` · ${percentRemaining}% left`
-                }`}
-          </p>
-
-          {budget !== null && used !== null && (
-            <div className="cm-coins__progress">
-              {/*
-                "finished" when the budget is spent, "active" otherwise.
-
-                status="error" is what zeroes the bar (`if (isError)
-                cappedValue = 0`) — the *next* branch, `else if (isFinished)
-                cappedValue = max`, draws it FULL, which is the truth for an
-                exhausted budget. It also adds a CheckmarkFilled, so the state
-                does not rest on colour alone.
-
-                The real cost of pinning this to "active" is announcement:
-                ProgressBar renders `aria-busy={!isFinished}` and, whenever
-                helperText is set, a visually hidden aria-live region reading
-                "Loading" until finished. A permanently "active" meter tells a
-                screen reader the budget gauge is still loading — including when
-                it is fully spent and nothing is in flight.
-              */}
-              <ProgressBar
-                label="Monthly budget used"
-                helperText={`${coins(used)} of ${coins(budget)} spent`}
-                value={Math.min(used, budget)}
-                max={budget}
-                status={exhausted ? 'finished' : 'active'}
-              />
+          {/* Capped budget → a semicircular gauge of the % still available, with
+              the exact figures beside it (the gauge is the glance, the numbers the
+              detail). Height-locked (see .cm-coins__gauge) so this card stays level
+              with the Reviews card. An uncapped plan has no percentage to gauge, so
+              it shows the figure plainly and keeps its count-up. */}
+          {budget !== null && used !== null ? (
+            <div className="cm-coins__budget">
+              <div className="cm-coins__gauge">
+                <GaugeChart data={gaugeData} options={gaugeOptions} />
+              </div>
+              <div className="cm-coins__figures">
+                <p className="cm-coins__value"><CoinValue value={animatedRemaining} /></p>
+                <p className="cm-coins__label">Bobcoins remaining</p>
+                <p className="cm-coins__sub">
+                  {`${coins(used)} used · ${coins(budget)} budget`}
+                </p>
+              </div>
             </div>
+          ) : (
+            <p className="cm-coins__value">
+              <CoinValue value={animatedRemaining} />
+            </p>
           )}
 
           {exhausted && (
@@ -304,32 +359,6 @@ function BalanceTile({ balance, summary, check }) {
         />
       )}
 
-      <dl className="cm-definition-list">
-        <dt>Spent here</dt>
-        <dd>
-          <CoinValue value={summary?.totalSpent} /> across {summary?.reviewCount ?? 0}{' '}
-          {summary?.reviewCount === 1 ? 'review' : 'reviews'}
-        </dd>
-
-        <dt>Average per review</dt>
-        <dd><CoinValue value={summary?.averagePerReview} /></dd>
-
-        <dt>Last 24 hours</dt>
-        <dd><CoinValue value={summary?.last24hSpent} /></dd>
-
-        <dt>Last 7 days</dt>
-        <dd><CoinValue value={summary?.last7dSpent} /></dd>
-
-        {available && (
-          <>
-            <dt>Plan</dt>
-            <dd>{planLabel(balance)}</dd>
-
-            <dt>Budget resets</dt>
-            <dd><TimeValue value={balance.refreshAt} /></dd>
-          </>
-        )}
-      </dl>
     </Tile>
   );
 }
@@ -342,14 +371,42 @@ function BalanceTile({ balance, summary, check }) {
  * where a balance snapshot succeeded, so nulls are expected and shown as such
  * rather than as zeros.
  */
-function LedgerTile({ entries, hasCredits }) {
+function LedgerTile({ entries, hasCredits, summary, balance }) {
   const rows = [...entries]
     .sort((a, b) => new Date(b.at) - new Date(a.at))
     .slice(0, 10);
 
+  const available = balance?.available === true;
+
+  // The spend summary that used to sit inside the balance card lives here now,
+  // where there is full width for it. Moving it out is what lets the balance card
+  // and the Reviews card sit at a matched height without a well of dead space
+  // beneath either — and a wide KPI row reads better than a stacked list anyway.
+  const stats = [
+    { label: 'Total recorded here', value: <CoinValue value={summary?.totalSpent} /> },
+    { label: 'Average per review', value: <CoinValue value={summary?.averagePerReview} /> },
+    { label: 'Last 24 hours', value: <CoinValue value={summary?.last24hSpent} /> },
+    { label: 'Last 7 days', value: <CoinValue value={summary?.last7dSpent} /> },
+    ...(available
+      ? [
+          { label: 'Plan', value: planLabel(balance) },
+          { label: 'Budget resets', value: <TimeValue value={balance.refreshAt} /> },
+        ]
+      : []),
+  ];
+
   return (
     <Tile className="cm-coins-ledger">
-      <h2 className="cm-section-heading">Recent reviews</h2>
+      <h2 className="cm-section-heading">Spend &amp; recent reviews</h2>
+
+      <dl className="cm-stat-row">
+        {stats.map((stat) => (
+          <div className="cm-stat" key={stat.label}>
+            <dt className="cm-stat__label">{stat.label}</dt>
+            <dd className="cm-stat__value">{stat.value}</dd>
+          </div>
+        ))}
+      </dl>
 
       {rows.length === 0 ? (
         <p className="cm-coins__empty">
@@ -364,7 +421,7 @@ function LedgerTile({ entries, hasCredits }) {
               <StructuredListCell head>Pull request</StructuredListCell>
               <StructuredListCell head>Finished</StructuredListCell>
               <StructuredListCell head>Spent</StructuredListCell>
-              <StructuredListCell head>Remaining after</StructuredListCell>
+              <StructuredListCell head>Account balance after</StructuredListCell>
             </StructuredListRow>
           </StructuredListHead>
           <StructuredListBody>
@@ -386,6 +443,14 @@ function LedgerTile({ entries, hasCredits }) {
             ))}
           </StructuredListBody>
         </StructuredListWrapper>
+      )}
+
+      {rows.length > 0 && (
+        <p className="cm-coins__caption">
+          “Account balance after” is the account balance snapshotted right after
+          each review, and it is unlikey to match the live “Remaining this month” balance,
+          which also reflects Bobcoins spent elsewhere on the account.
+        </p>
       )}
     </Tile>
   );
@@ -441,7 +506,14 @@ function BobcoinsLedger({ credits, history }) {
     );
   }
 
-  return <LedgerTile entries={history?.entries || []} hasCredits={Boolean(history)} />;
+  return (
+    <LedgerTile
+      entries={history?.entries || []}
+      hasCredits={Boolean(history)}
+      summary={credits.summary}
+      balance={credits.balance}
+    />
+  );
 }
 
 export { BobcoinsLedger };

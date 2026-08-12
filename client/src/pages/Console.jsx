@@ -11,23 +11,23 @@ import {
   Grid,
   Column,
   Button,
+  Tooltip,
   Tile,
   TextInput,
   InlineNotification,
   Loading,
+  ToastNotification,
 } from '@carbon/react';
 // Icons are imported sparingly and only after the export name is verified against
-// the installed @carbon/icons-react — the icon index has returned unusable results
-// before, so a name is never guessed. Settings opens the connection panel;
-// Terminal marks the live review-output indicator, mirroring the agent-console
-// affordance in Carbon Migrate.
-import { Settings, Terminal } from '@carbon/icons-react';
+// the installed @carbon/icons-react. Settings opens the connection panel; Terminal
+// marks the live review-output indicator; Checkmark and Close are the success glyph
+// and dismiss control of the review-complete card.
+import { Settings, Terminal, Checkmark, Close } from '@carbon/icons-react';
 import { api } from '../api';
 import StatusTile from '../components/StatusTile';
 import McpConnectionPanel from '../components/McpConnectionPanel';
 import BobcoinsPanel, { BobcoinsLedger } from '../components/BobcoinsPanel';
 import ReviewLog from '../components/ReviewLog';
-import AboutAi from '../components/AboutAi';
 
 /** How often the status panel re-polls, in milliseconds. */
 const POLL_INTERVAL_MS = 30_000;
@@ -133,12 +133,32 @@ function Console({ authRequired = false, onSignOut }) {
   // Kept separate from `error` so a failed trigger reports next to the control
   // that caused it rather than in the page-level banner three tiles away.
   const [triggerError, setTriggerError] = useState(null);
+  // Set from the 409 body when a trigger is refused because a run is already in
+  // flight — its own session's or, on this shared single-instance deployment,
+  // another operator's. Drives the "already running" modal so a second person
+  // gets an unmissable popup naming what is running rather than a terse inline
+  // line they might overlook. Holds { startedAt, mode, prNumbers } or null.
+  const [busyRun, setBusyRun] = useState(null);
   // Connection settings live in an off-canvas panel; closed by default because
   // they are configured once and then left alone.
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Focus returns here when the panel closes, so a keyboard user lands back on
   // the control they opened it from rather than at the top of the document.
   const settingsButtonRef = useRef(null);
+
+  // Completion toast: set once when a run transitions from running → finished
+  const [completion, setCompletion] = useState(null);
+  const prevRunningRef = useRef(false);
+
+  // The success card is dismissed manually — no timer.
+  useEffect(() => {
+    if (!completion) return undefined;
+    const onKey = (event) => {
+      if (event.key === 'Escape') setCompletion(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [completion]);
 
 
   const load = useCallback(async () => {
@@ -185,6 +205,24 @@ function Console({ authRequired = false, onSignOut }) {
     const timer = setInterval(load, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [load]);
+
+  // Announce the end of a run.
+  useEffect(() => {
+    const isRunning = Boolean(review?.running);
+    if (prevRunningRef.current && !isRunning) {
+      if (review?.error) {
+        setCompletion({ kind: 'error', title: 'Review run failed', subtitle: review.error });
+      } else {
+        const n = review?.prNumbers?.length;
+        setCompletion({
+          kind: 'success',
+          title: 'Review complete',
+          subtitle: n ? `Reviewed ${pluralPRs(n)}.` : 'The review run finished.',
+        });
+      }
+    }
+    prevRunningRef.current = isRunning;
+  }, [review]);
 
   const cfg = config?.config;
 
@@ -245,10 +283,20 @@ function Console({ authRequired = false, onSignOut }) {
       await load();
     } catch (err) {
       if (err.status === 401) return onSignOut();
+      if (err.status === 409) return handleAlreadyRunning(err);
       setTriggerError(err.message);
     } finally {
       setTriggering(false);
     }
+    return undefined;
+  }
+
+  /**
+   * Surface a 409 from a trigger as the "already running" modal.
+  */
+  async function handleAlreadyRunning(err) {
+    setBusyRun(err.body || { message: err.message });
+    await load();
     return undefined;
   }
 
@@ -264,6 +312,10 @@ function Console({ authRequired = false, onSignOut }) {
       await load();
     } catch (err) {
       if (err.status === 401) return onSignOut();
+      // A run is already in flight — modal, not inline, so a second operator
+      // cannot miss it. The field is left untouched so they can retry the same
+      // list once it clears.
+      if (err.status === 409) return handleAlreadyRunning(err);
       // The server re-validates and its message names the offending value, so
       // it is shown verbatim even when the checks above passed.
       setTriggerError(err.message);
@@ -296,29 +348,23 @@ function Console({ authRequired = false, onSignOut }) {
           {version && <span className="cm-brand-version"> (v{version})</span>}
         </HeaderName>
         <HeaderGlobalBar>
-          {/*
-            Live review indicator, mirroring Carbon Migrate's supervisor status
-            dot: a Terminal glyph carrying a status dot at its corner — grey when
-            idle, green (and gently pulsing) while a review is running. It reads
-            the same Boolean(review?.running) that drives the Review-output spinner
-            below, so the two can never disagree. A status, not a control: it
-            reports state and is deliberately not clickable.
-          */}
-          <div
-            className="cm-review-status"
-            role="status"
-            aria-label={review?.running ? 'A review is running' : 'No review running'}
-            title={review?.running ? 'A review is running' : 'No review running'}
-          >
-            <span className="cm-review-status__icon" aria-hidden="true">
-              <Terminal size={20} />
-              <span
-                className={`cm-review-status__dot cm-review-status__dot--${
-                  review?.running ? 'running' : 'idle'
-                }`}
-              />
-            </span>
-          </div>
+          <Tooltip label={review?.running ? 'Running' : 'Idle'} align="bottom" autoAlign>
+            <div
+              className="cm-review-status"
+              role="status"
+              aria-label={review?.running ? 'Review status: running' : 'Review status: idle'}
+              tabIndex={0}
+            >
+              <span className="cm-review-status__icon" aria-hidden="true">
+                <Terminal size={20} />
+                <span
+                  className={`cm-review-status__dot cm-review-status__dot--${
+                    review?.running ? 'running' : 'idle'
+                  }`}
+                />
+              </span>
+            </div>
+          </Tooltip>
 
           {/*
             Connection settings live behind this rather than in a tile on the
@@ -342,14 +388,6 @@ function Console({ authRequired = false, onSignOut }) {
             Rendered only when the AUTH_REQUIRED feature flag is on. With sign-in
             disabled — the default — there is no session to end, so the control
             would do nothing but imply the console is protected when it is not.
-
-            A real text button, not a HeaderGlobalAction. That component is
-            Carbon's ICON-only global action and is sized as a hard 3rem square
-            (`.cds--header__action { inline-size: 3rem; block-size: 3rem }`), so
-            a "Sign out" label — about 4.4rem of text — is compressed to
-            min-content inside it and renders broken. @carbon/icons-react is off
-            limits in this project, so the affordance stays textual and uses the
-            component built for text instead.
           */}
           {authRequired && (
             <Button kind="ghost" size="lg" onClick={signOut} className="cm-sign-out">
@@ -401,21 +439,9 @@ function Console({ authRequired = false, onSignOut }) {
             one can run. Reviews takes the wider column. */}
         <Grid narrow withRowGap className="cm-tile-grid">
           <Column sm={4} md={8} lg={10}>
-            <Tile>
-              {/* Heading left, mark right, on one row — the mark is optically
-                  aligned to the heading's line box rather than floated into the
-                  corner. h2, not h3: the page's only h1 is "Operations" above,
-                  and skipping a level breaks heading navigation (WCAG 1.3.1). */}
+            <Tile className="cm-fill">
               <div className="cm-tile-head">
                 <h2 className="cm-section-heading cm-tile-head__title">Reviews</h2>
-                {/*
-                  The AI disclosure sits with the thing it describes. In the
-                  header it labelled the whole console; here it labels the panel
-                  that actually produces AI output, which is what Carbon's AI
-                  guidance asks for — the marker belongs to the AI-generated
-                  content, not to the application chrome.
-                */}
-                <AboutAi />
               </div>
 
               <dl className="cm-definition-list">
@@ -541,19 +567,15 @@ function Console({ authRequired = false, onSignOut }) {
           </Column>
         </Grid>
 
-        {/* D. Live output — the answer to "is it actually doing anything?"
-            Full width, because stack frames and absolute paths are the whole
-            reason to read a log, and a half-width column wraps every one.
-
-            The Grid is always mounted so ReviewLog can keep polling; it renders
-            nothing until there is output or a run is active, and the row's
-            bottom margin is withheld until then so an empty row cannot open a
-            gap between the panels either side of it. */}
+        {/* D. Live output — the answer to "is it actually doing anything?"*/}
         <Grid narrow withRowGap className={logVisible ? 'cm-tile-grid' : undefined}>
           <Column sm={4} md={8} lg={16}>
             <ReviewLog
               running={Boolean(review?.running)}
               startedAt={review?.startedAt}
+              prNumbers={review?.prNumbers}
+              owner={cfg?.owner}
+              repo={cfg?.repo}
               onVisibilityChange={setLogVisible}
             />
           </Column>
@@ -570,26 +592,7 @@ function Console({ authRequired = false, onSignOut }) {
         </Grid>
       </Content>
 
-      {/*
-        Connection settings in a Modal rather than a drawer.
 
-        Two drawer components were tried and rejected on evidence. Carbon's
-        HeaderPanel is a switcher container: it has no dismiss of its own, and
-        widening it past its 16rem default means overriding the very inline-size
-        rule that COLLAPSES it — which shipped a 34rem, pointer-events:auto,
-        z-index:8000 slab permanently across a third of the page, swallowing
-        every click beneath it. Scoping the override to the expanded class fixed
-        the collapse but left the panel laying out at 2px wide with its content
-        overflowing. IBM Products' SidePanel is the right component in principle
-        — overlay, focus trap, focus return — but its exit animation never
-        completed here, so it opened and could not be closed at all.
-
-        A Modal is the honest fit for the content: connection settings are read
-        and changed roughly never, a focused overlay suits a once-a-deployment
-        task better than a persistent drawer, and Modal is already proven in this
-        app by the AI-label explainer. passiveModal because the panel's own
-        buttons are the actions — a modal footer would duplicate them.
-      */}
       <Modal
         open={settingsOpen}
         onRequestClose={() => setSettingsOpen(false)}
@@ -601,6 +604,105 @@ function Console({ authRequired = false, onSignOut }) {
       >
         <McpConnectionPanel status={mcpStatus} onChanged={load} inPanel />
       </Modal>
+
+      {/*
+        Already running. A trigger is refused with 409 while a review is in
+        flight — the app is single-flight by design, so two agents never review
+        the same PR and post duplicate comments. Shown as a Modal rather than the
+        inline triggerError notification because the person who most needs to see
+        it is a SECOND operator in another browser session, who did not start the
+        run and would otherwise be told only "Request failed". It names what is
+        running and since when, from the 409 body. Always mounted and driven by
+        `open` so it animates in and out; the fields read defensively because the
+        body is absent on a non-structured refusal.
+      */}
+      <Modal
+        open={Boolean(busyRun)}
+        onRequestClose={() => setBusyRun(null)}
+        onRequestSubmit={() => setBusyRun(null)}
+        modalHeading="A review is already in progress"
+        modalLabel="Reviews"
+        primaryButtonText="OK"
+      >
+        <p style={{ marginBottom: '1rem' }}>
+          Carbon Monitor runs one review at a time, so a new run can’t start until
+          the current one finishes. This is deliberate — it stops two agents
+          reviewing the same pull request and posting duplicate comments.
+        </p>
+        <dl className="cm-definition-list">
+          <dt>Started</dt>
+          <dd>
+            {busyRun?.startedAt
+              ? new Date(busyRun.startedAt).toLocaleString()
+              : 'Just now'}
+          </dd>
+          <dt>Reviewing</dt>
+          <dd>
+            {busyRun?.mode === 'explicit' && busyRun?.prNumbers?.length
+              ? busyRun.prNumbers.map((number) => `#${number}`).join(', ')
+              : 'Auto-selected pull requests'}
+          </dd>
+        </dl>
+        <p style={{ marginTop: '1rem' }}>
+          The live output below updates as it runs. Try again once it has finished.
+        </p>
+      </Modal>
+
+      {/*
+        Run finished. A clean run gets a celebratory success card dressed in Carbon
+        for AI's aura/gradient tokens (its own visual language for AI moments) —
+        far more of a payoff than the old growl — with the standing disclaimer as
+        italic small print at the foot. A failed run keeps a plain error toast.
+        Both are fixed and outside the Grid flow (Carbon guidance), so they float
+        over the console rather than shifting layout.
+      */}
+      {completion?.kind === 'success' && (
+        <div className="cm-success-overlay" onClick={() => setCompletion(null)}>
+          <div
+            className="cm-success"
+            role="status"
+            aria-live="polite"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="cm-success__close"
+              aria-label="Dismiss"
+              onClick={() => setCompletion(null)}
+            >
+              <Close size={20} />
+            </button>
+
+            <span className="cm-success__badge" aria-hidden="true">
+              <Checkmark size={24} />
+            </span>
+
+            <p className="cm-success__title">{completion.title}</p>
+            <p className="cm-success__summary">{completion.subtitle}</p>
+
+            <p className="cm-success__disclaimer">
+              AI-powered review can save time and increase productivity, but human
+              review is still required — AI can make mistakes.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {completion?.kind === 'error' && (
+        <div className="cm-toast-region">
+          <ToastNotification
+            kind="error"
+            title={completion.title}
+            subtitle={completion.subtitle}
+            lowContrast
+            timeout={8000}
+            onClose={() => {
+              setCompletion(null);
+              return true;
+            }}
+          />
+        </div>
+      )}
     </Theme>
   );
 }

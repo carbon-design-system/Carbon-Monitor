@@ -500,9 +500,20 @@ async function handleReviewTrigger(req, res) {
   // still being read, and two agents on one PR post duplicate comments. The
   // claim below is synchronous from here, so there is no window left.
   if (reviewState.running) {
+    // Single-flight by design: one review at a time across this instance, so two
+    // agents never review the same PR and post duplicate comments. The message is
+    // written to stand on its own — an API caller that prints only `.message`
+    // (curl, CI, another script) still learns what is running and since when. The
+    // structured fields below are what the console's "already running" modal reads.
+    const runningWhat =
+      reviewState.mode === 'explicit' && reviewState.prNumbers?.length
+        ? reviewState.prNumbers.map((n) => `#${n}`).join(', ')
+        : 'auto-selected PRs';
     return sendJSON(res, 409, {
       success: false,
-      message: 'A review is already running',
+      message:
+        `A review of ${runningWhat} is already running (started ${reviewState.startedAt}). ` +
+        'Carbon Monitor runs one review session at a time — wait for it to finish before starting another.',
       startedAt: reviewState.startedAt,
       mode: reviewState.mode,
       prNumbers: reviewState.prNumbers,
