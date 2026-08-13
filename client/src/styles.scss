@@ -1,0 +1,673 @@
+// Point Carbon's @font-face rules at fonts this server actually serves.
+//
+// The default is '~@ibm/plex' — webpack's node_modules syntax, which Vite does
+// not understand, so the URLs would ship unresolved and every glyph would fall
+// back to a system font. scripts/copy-plex-fonts.js stages the files under
+// client/public/plex to match. Must come before any other @carbon/react @use,
+// since Sass only accepts configuration on a module's first load.
+@use '@carbon/react/scss/config' with (
+  $font-path: '/plex'
+);
+
+// Carbon component styles. Without this every Carbon component renders unstyled.
+@use '@carbon/react';
+
+// Token modules, imported because the custom rules below use them.
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/theme' as *;
+@use '@carbon/react/scss/type' as *;
+
+body {
+  background: $background;
+}
+
+// Clears the fixed UI Shell header so page content is not hidden beneath it.
+.cm-content {
+  padding: $spacing-07 0 $spacing-09;
+  margin-top: 3rem;
+}
+
+// The completion toast floats top-right, clear of the 3rem fixed header. Fixed
+// and outside the Grid so it overlays the console rather than shifting layout.
+.cm-toast-region {
+  position: fixed;
+  inset-block-start: calc(3rem + #{$spacing-05});
+  inset-inline-end: $spacing-05;
+  z-index: 9000;
+}
+
+// ── Review-complete modal ──────────────────────────────────────────────────
+// The standing AI disclaimer, shown at the foot of the completion modal: quiet,
+// italic small print, set off by a hairline.
+.cm-modal__disclaimer {
+  @include type-style('label-01');
+  color: $text-secondary;
+  font-style: italic;
+  margin-top: $spacing-05;
+  padding-top: $spacing-04;
+  border-block-start: 1px solid $border-subtle;
+}
+
+.cm-page-heading {
+  @include type-style('productive-heading-04');
+  margin-bottom: $spacing-03;
+}
+
+.cm-page-caption {
+  @include type-style('body-01');
+  color: $text-secondary;
+  margin-bottom: $spacing-06;
+}
+
+.cm-section-heading {
+  @include type-style('productive-heading-03');
+  margin-bottom: $spacing-05;
+}
+
+// A tile heading with a mark beside it — the "AI" label on Reviews, the Bob mark
+// on Bobcoins. `flex-start` (top), not `center`: the Bob mark is far taller than
+// the heading, so centring dropped the "Bobcoins" title to the middle of that
+// tall row while "Reviews" stayed at the top, and the two card titles no longer
+// lined up. Top-aligning pins every title and mark to the tile's top edge, so
+// both cards read consistently across the row.
+.cm-tile-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-05;
+  margin-bottom: $spacing-05;
+}
+
+// The margin belongs to the row, not to the heading inside it.
+.cm-tile-head__title {
+  margin-bottom: 0;
+}
+
+// The Bob mark. Height only: the artwork is a 512x341 viewBox, so setting both
+// axes — or any square box — would squash it. `inline-size: auto` makes that
+// explicit against any inherited img sizing.
+//
+// 4.2rem — a fifth smaller than the 5.25rem it was, and still well above the
+// 1.75rem heading line box it started at, so the mark stays a deliberate piece
+// of the tile (the face of the agent doing the work) rather than the stray glyph
+// it read as when it merely matched the heading.
+.cm-bob-mark {
+  block-size: 4.2rem;
+  inline-size: auto;
+  // Stops a long heading squeezing the mark narrower than its aspect ratio.
+  flex: 0 0 auto;
+}
+
+// Vertical rhythm BETWEEN tile groups. The gap between rows WITHIN a group is
+// Carbon's own `withRowGap` prop on <Grid>: in narrow mode it resolves to half
+// the gutter, i.e. the same 16px this class used to hardcode as `row-gap`, but
+// declared by the grid that owns the rows rather than bolted onto it here.
+.cm-tile-grid {
+  margin-bottom: $spacing-07;
+}
+
+// Fills the grid column it sits in, so two tiles sharing a row present as
+// equal-height enterprise cards rather than one ending in a well of empty page.
+.cm-fill {
+  block-size: 100%;
+}
+
+// The UI Shell header is a fixed 3rem tall, and a Carbon `lg` button is 3rem —
+// so it fills the bar exactly. `max-inline-size: none` overrides the 20rem cap
+// Buttons carry for form layouts, which would otherwise let the label wrap.
+.cm-sign-out {
+  max-inline-size: none;
+}
+
+// ── Header brand ──────────────────────────────────────────────────────────
+
+.cm-brand-thin {
+  font-weight: 100;
+}
+
+// The build version. Deliberately quieter than the name it follows — smaller,
+// secondary text — so it reads as a fact about the deployment rather than as
+// part of what the product is called. $text-secondary on the inverse header
+// background is Carbon's own pairing for de-emphasised UI Shell text.
+.cm-brand-version {
+  @include type-style('label-01');
+  color: $text-secondary;
+  font-variant-numeric: tabular-nums;
+}
+
+// Wraps the "AI" label beside the Reviews heading. No inline padding: it used to
+// live in the 3rem header bar and needed holding off the viewport edge, but it
+// now sits inside the Reviews tile, where the tile's own padding already spaces
+// it — extra here would inset it from the tile's right edge while the Bob mark on
+// the neighbouring card sits flush, breaking the alignment the pair should share.
+.cm-header-ai {
+  display: flex;
+  align-items: center;
+}
+
+// ── Header review-status indicator ─────────────────────────────────────────
+// A Terminal glyph carrying a status dot at its corner, left of the settings
+// gear — the same treatment as Carbon Migrate's supervisor indicator. Grey when
+// idle, green while a review runs. A status, not a control: it reports state and
+// is not clickable, so it is a labelled element rather than a HeaderGlobalAction.
+.cm-review-status {
+  display: flex;
+  align-items: center;
+  // Centres the glyph in the 3rem UI Shell header bar, with the same inline
+  // breathing room the gear beside it carries.
+  block-size: 3rem;
+  padding-inline: $spacing-05;
+  // The Terminal glyph inherits currentColor; match the header's other icons.
+  color: $icon-secondary;
+}
+
+.cm-review-status__icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+
+.cm-review-status__dot {
+  position: absolute;
+  inset-block-start: -0.2rem;
+  inset-inline-end: -0.25rem;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 999px;
+  // A 2px ring in the header surface colour reads as a clean cutout between the
+  // dot and the glyph it overlays — the same trick Carbon Migrate uses.
+  box-shadow: 0 0 0 2px $background;
+}
+
+.cm-review-status__dot--idle {
+  background: $icon-disabled;
+}
+
+.cm-review-status__dot--running {
+  background: $support-success;
+}
+
+// Quietly alive while a run is in flight: a slow expanding halo, never a blink.
+// Gated on prefers-reduced-motion — the green colour alone still carries state.
+@media (prefers-reduced-motion: no-preference) {
+  .cm-review-status__dot--running::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: $support-success;
+    pointer-events: none;
+    animation: cm-status-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+}
+
+@keyframes cm-status-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  70%,
+  100% {
+    transform: scale(2.75);
+    opacity: 0;
+  }
+}
+
+// The AILabel callout is prose, not a caption: given no measure it stretches to
+// the popover's full width and the lines run too long to scan.
+.cm-ai-callout__title {
+  @include type-style('productive-heading-01');
+  margin-bottom: $spacing-03;
+}
+
+// Modal body copy. Carbon already caps the content column at 80% of the modal,
+// so this only supplies the rhythm between paragraphs and the step list.
+.cm-modal__para + .cm-modal__steps,
+.cm-modal__steps + .cm-modal__para {
+  margin-top: $spacing-05;
+}
+
+.cm-modal__steps {
+  // The default list marker is suppressed by Carbon's reset, so the numbering
+  // has to be asked for explicitly — and here the numbers are the content: each
+  // step consumes what the one before it produced.
+  list-style: decimal;
+  padding-inline-start: $spacing-06;
+  // Carbon insets `.cds--modal-content > p` by 20% on the trailing side to hold
+  // the measure. A list is not a `p`, so it escapes that rule and would run 70px
+  // wider than the paragraphs above and below it — one ragged right edge inside
+  // a single block of prose. Matched rather than removed: the inset is the spec.
+  padding-inline-end: 20%;
+
+  li + li {
+    margin-top: $spacing-03;
+  }
+}
+
+.cm-status-tile {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+}
+
+// IconIndicator renders its `label` as the visible text beside the icon, so the
+// tile's name is carried by the indicator itself rather than repeated under it.
+// The heavier treatment the tile wants is applied to that text here.
+.cm-status-tile .cds--icon-indicator {
+  @include type-style('productive-heading-01');
+}
+
+.cm-status-tile__detail {
+  @include type-style('body-01');
+  color: $text-secondary;
+  // Pulls the detail under the indicator's text rather than under its icon.
+  margin-top: -$spacing-02;
+}
+
+.cm-status-tile__hint {
+  @include type-style('label-01');
+  color: $text-helper;
+  // Long hints (URLs, error strings) must wrap rather than widen the tile.
+  overflow-wrap: anywhere;
+}
+
+// Sits inside the definition list as one value among several, so it takes the
+// same body-01 as its neighbours — at productive-heading-05 it read as an alarm
+// clock bolted to a status table. Tabular numerals stay: without them the digits
+// change width on every tick and the value jitters sideways once a second.
+.cm-countdown {
+  @include type-style('body-01');
+  font-variant-numeric: tabular-nums;
+}
+
+.cm-countdown--expired {
+  color: $text-error;
+}
+
+.cm-field-stack > * + * {
+  margin-top: $spacing-05;
+}
+
+.cm-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-03;
+  margin-top: $spacing-06;
+}
+
+// Explains a destructive confirmation, directly under the buttons it belongs to.
+.cm-confirm-hint {
+  margin-top: $spacing-03;
+  max-width: 30rem;
+}
+
+// The PR-number field, separated from the status list it follows.
+.cm-review-field {
+  margin-top: $spacing-06;
+}
+
+// Notifications inside a tile. Carbon sizes them for page-level messages with a
+// fixed max-width, which leaves a ragged gap against the tile's edge.
+.cm-tile-notification {
+  margin-top: $spacing-05;
+  max-width: 100%;
+}
+
+.cm-definition-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: $spacing-03 $spacing-05;
+  @include type-style('body-01');
+
+  dt {
+    color: $text-secondary;
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+// ── Bobcoins ──────────────────────────────────────────────────────────────
+
+.cm-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-05 $spacing-07;
+  margin-bottom: $spacing-06;
+}
+
+.cm-stat {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-02;
+}
+
+.cm-stat__label {
+  @include type-style('label-01');
+  color: $text-secondary;
+}
+
+.cm-stat__value {
+  @include type-style('productive-heading-03');
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+.cm-coins__label {
+  @include type-style('label-01');
+  color: $text-secondary;
+  margin-bottom: $spacing-02;
+}
+
+// The headline figure. Tabular numerals stop the balance jittering sideways as
+// digits change on each 30-second poll.
+.cm-coins__value {
+  @include type-style('productive-heading-05');
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.cm-coins__sub {
+  @include type-style('body-01');
+  color: $text-secondary;
+  margin-top: $spacing-02;
+}
+
+.cm-coins__budget {
+  display: flex;
+  align-items: center;
+  gap: $spacing-05;
+  margin-block: $spacing-05;
+}
+
+.cm-coins__gauge {
+  flex: 0 0 auto;
+  inline-size: 11rem;
+  block-size: 9.5rem;
+}
+
+.cm-coins__figures {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.cm-coins__progress {
+  margin: $spacing-06 0;
+}
+
+.cm-coins__notification {
+  margin-bottom: $spacing-05;
+  // Notifications default to a fixed max-width sized for page-level messages,
+  // which leaves a ragged gap inside a tile.
+  max-width: 100%;
+}
+
+.cm-coins__empty {
+  @include type-style('body-01');
+  color: $text-secondary;
+}
+
+// Explains the ledger's "Account balance after" column — why a per-review
+// snapshot won't match the live balance shown in the Bobcoins card.
+.cm-coins__caption {
+  @include type-style('label-01');
+  color: $text-helper;
+  margin-top: $spacing-05;
+}
+
+.cm-coins__numeric {
+  font-variant-numeric: tabular-nums;
+}
+
+// Separates the summary list from the balance above it. Only applied inside the
+// Bobcoins tile so the shared definition-list style stays untouched elsewhere.
+.cm-coins .cm-definition-list {
+  margin-top: $spacing-05;
+}
+
+//
+// No width rule here, deliberately. The previous implementation used Carbon's
+// HeaderPanel and set `inline-size: 34rem` to stop the content scrunching —
+// which silently overrode the `.cds--header-panel { inline-size: 0 }` rule
+// that HIDES the panel when collapsed, leaving a 544px, pointer-events:auto,
+// z-index:8000 slab permanently across a third of the page and swallowing every
+// click beneath it. SidePanel takes a `size` PROP instead, so the width is the
+// component's business and there is nothing here to fight it.
+
+// The connection tile inside the panel already sits on the panel's own surface,
+// so its tile chrome would be a box within a box.
+.cm-settings-panel-body .cds--tile {
+  background: transparent;
+  padding: 0;
+}
+
+// ── Review output ─────────────────────────────────────────────────────────
+// The live log of a running review. Monospaced and inset so it reads as machine
+// output rather than as more of the page's prose.
+//
+// No margin-top: this is a Tile in a row of its own now, not a strip appended
+// to the bottom of the Reviews tile, so the grid's row spacing already places
+// it.
+
+// Carbon for AI presence. This panel is entirely agent-produced, so it carries
+// the soft blue aura Carbon draws on a decorator-bearing tile — but WITHOUT a
+// second AILabel: the panel already discloses its AI origin in the header
+// (AboutAi), and Carbon's `decorator` prop would render another label. Uses
+// Carbon's own --cds-ai-* tokens, so the aura and border track the theme
+// (including dark mode) rather than a hardcoded blue. Glow anchored top-right, the
+// conventional corner for Carbon's AI aura.
+.cm-log {
+  position: relative;
+  background:
+    radial-gradient(
+      60% 60% at 100% 0%,
+      var(--cds-ai-aura-start, rgba(69, 137, 255, 0.16)) 0%,
+      var(--cds-ai-aura-end, transparent) 60%
+    ),
+    $layer;
+  border: 1px solid var(--cds-ai-border-start, rgba(15, 98, 254, 0.32));
+}
+
+.cm-log__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-03;
+  margin-bottom: $spacing-03;
+}
+
+// An h2 now, matching the other panel headings on the page. The margin is
+// dropped because the flex header row owns the spacing beneath it.
+.cm-log__title {
+  @include type-style('productive-heading-03');
+  margin: 0;
+}
+
+// Groups the title and its inline "AI" marker so the header's space-between
+// keeps the pair on the left and the copy/download/clear toolbar on the right —
+// no corner decorator to collide with the toolbar.
+.cm-log__heading {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.cm-log__actions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+// Carbon's CopyButton hard-codes `background-color: $layer`. That blended into
+// the plain tile, but against the AI aura it reads as a solid white box — unlike
+// the ghost Download button beside it, which is transparent. Neutralise the fill
+// so the aura shows through, and mirror the ghost button's translucent
+// hover/active overlays (they sit correctly over the gradient). Scoped to this
+// toolbar so no other CopyButton is affected.
+.cm-log__actions .cds--copy-btn {
+  background-color: transparent;
+
+  &:hover {
+    background-color: $background-hover;
+  }
+
+  &:active {
+    background-color: $background-active;
+  }
+}
+
+// The per-PR progress list — one row per PR in the run, reconstructed from the
+// log. A quiet inset panel so it reads as a summary above the raw output rather
+// than as more chrome.
+.cm-pr-progress {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+  margin-bottom: $spacing-05;
+  padding: $spacing-04 $spacing-05;
+  background: $layer-02;
+  list-style: none;
+}
+
+.cm-pr-progress__row {
+  display: flex;
+  align-items: center;
+  gap: $spacing-05;
+  @include type-style('body-01');
+}
+
+// Carbon's InlineLoading is inline-size:100% — built to fill a form field. In
+// this flex row that makes it eat the whole width and shove the PR number and
+// title to the far edge, where the title clips. Size it to its content so the
+// blue #number link and the title sit immediately after "Reviewing", left
+// aligned and uncut — matching the reviewed (IconIndicator) row. Scoped under the
+// row to outrank Carbon's single-class rule regardless of stylesheet order.
+.cm-pr-progress__row .cm-pr-progress__spinner {
+  min-block-size: auto;
+  inline-size: auto;
+  flex: 0 0 auto;
+}
+
+.cm-pr-progress__num {
+  font-variant-numeric: tabular-nums;
+}
+
+.cm-pr-progress__title {
+  color: $text-secondary;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  // A nowrap flex item will not shrink below its content width without this, so a
+  // long title would overflow the tile edge instead of ellipsising within the row.
+  min-inline-size: 0;
+}
+
+.cm-log__notice {
+  @include type-style('label-01');
+  color: $text-helper;
+  margin-bottom: $spacing-03;
+}
+
+// A failed clear. $text-error carries the colour, but the notice is a full
+// sentence naming what failed and why, so nothing here depends on seeing it.
+.cm-log__notice--error {
+  color: $text-error;
+}
+
+.cm-log__body {
+  // Tall enough to show the shape of a run, bounded so the log never pushes the
+  // rest of the console off screen.
+  max-block-size: 18rem;
+  overflow-y: auto;
+  padding: $spacing-04;
+  background: $layer-02;
+  border-left: 2px solid $border-interactive;
+
+  // The scroll container is focusable so keyboard users can reach and scroll it;
+  // a visible ring is what makes that discoverable.
+  &:focus-visible {
+    outline: 2px solid $focus;
+    outline-offset: -2px;
+  }
+}
+
+.cm-log__line {
+  @include type-style('code-01');
+  color: $text-primary;
+  white-space: pre-wrap;
+  // Long paths and diff lines wrap instead of forcing the tile to scroll
+  // sideways.
+  overflow-wrap: anywhere;
+}
+
+.cm-log__line--err {
+  color: $text-error;
+}
+
+.cm-log__line--muted {
+  color: $text-secondary;
+}
+
+// ── Login ─────────────────────────────────────────────────────────────────
+// Kept visually consistent with Carbon Migrate's sign-in page, which operators
+// see alongside this one.
+
+.cm-login {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background-color: $background;
+  padding: $spacing-07 $spacing-05;
+  gap: $spacing-07;
+}
+
+.cm-login__hero {
+  margin: 0;
+  text-align: center;
+  @include type-style('heading-06');
+  font-weight: 600;
+  color: $text-primary;
+}
+
+.cm-login__hero-thin {
+  font-weight: 300;
+}
+
+.cm-login__hero-light {
+  font-weight: 100;
+}
+
+.cm-login__tile {
+  width: 100%;
+  max-width: 25rem;
+}
+
+.cm-login__title {
+  @include type-style('productive-heading-03');
+  margin-bottom: $spacing-02;
+}
+
+.cm-login__subtitle {
+  @include type-style('body-01');
+  color: $text-secondary;
+  margin-bottom: $spacing-06;
+}
+
+.cm-login__notification {
+  margin-bottom: $spacing-05;
+  max-width: 100%;
+}
+
+.cm-login__submit {
+  margin-top: $spacing-06;
+  width: 100%;
+  max-width: 100%;
+}

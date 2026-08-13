@@ -21,9 +21,6 @@
  *   pr_review_failed    — per-PR catch block fired
  *   agent_timeout       — agent process killed by timeout
  *   parse_failed        — parseReviewOutput returned null
- *   catalogue_missing   — review.hasCatalogue === false
- *   skill_unavailable   — no carbon-builder skill read_file calls in output
- *   inline_post_failed  — one or more inline comments failed to post
  */
 
 'use strict';
@@ -39,7 +36,6 @@ const ERROR_EVENTS = new Set([
   'parse_failed',
 ]);
 const WARN_EVENTS = new Set([
-  'catalogue_missing',
   'skill_unavailable',
   'inline_post_failed',
 ]);
@@ -111,11 +107,25 @@ async function emitEvent({
     payload,  // full payload goes to console
   };
 
-  // Console always receives the full payload (including raw error text)
+  // Console: one compact line per event. The full document (including raw
+  // error text) goes to Elasticsearch; the terminal line is for operators
+  // watching live logs. Key fields only — nothing that needs a JSON parser.
   const label = `[metrics:${event_type}]`;
-  if      (level === 'error') console.error(label, JSON.stringify(doc));
-  else if (level === 'warn')  console.warn(label,  JSON.stringify(doc));
-  else                        console.log(label,   JSON.stringify(doc));
+  const parts = [`correlationId=${correlation_id}`];
+  if (repo)      parts.push(`repo=${repo}`);
+  if (pr_number) parts.push(`pr=${pr_number}`);
+  if (agent)     parts.push(`agent=${agent}`);
+  // Surface the most useful payload fields when present.
+  if (payload.recommendation) parts.push(`recommendation=${payload.recommendation}`);
+  if (payload.findings_total  != null) parts.push(`findings=${payload.findings_total}`);
+  if (payload.token_total     != null) parts.push(`tokens=${payload.token_total.toLocaleString()}`);
+  if (payload.duration_ms     != null) parts.push(`duration=${Math.round(payload.duration_ms / 1000)}s`);
+  if (payload.prs_reviewed    != null) parts.push(`prsReviewed=${payload.prs_reviewed}`);
+  if (payload.error)                   parts.push(`error=${payload.error.split('\n')[0].substring(0, 120)}`);
+  const summary = parts.join(' ');
+  if      (level === 'error') console.error(`${label} ${summary}`);
+  else if (level === 'warn')  console.warn(`${label} ${summary}`);
+  else                        console.log(`${label} ${summary}`);
 
   // ES receives a scrubbed copy — no raw stack traces or internal paths
   const esDoc = { ...doc, payload: scrubPayload(payload) };

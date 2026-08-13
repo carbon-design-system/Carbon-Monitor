@@ -216,19 +216,22 @@ function filterUnverifiedCarbonFindings(findings, transcriptMetadata = {}) {
     return false;
   });
 
-  // Log summary only when there are Carbon-specific findings
+  // Log summary only when there are Carbon-specific findings.
+  //
+  // Carbon MCP is always the evidence source: every kept Carbon finding quotes an
+  // MCP tool response. The Carbon Builder skill is the guidance layer that governs
+  // those MCP calls — it does not independently verify anything — so the summary
+  // does NOT split "verified" into skill-vs-MCP. Whether the skill was engaged is
+  // reported once at the run level (the "🔬 loaded and used" line above).
   if (carbonSpecificCount > 0) {
-    console.log(`\n📊 Carbon Verification Summary:`);
-    console.log(`   Total findings: ${findings.length}`);
-    console.log(`   Carbon-specific: ${carbonSpecificCount}`);
-    console.log(`   MCP-verified: ${carbonVerifiedCount}`);
-    console.log(`   Carbon Builder transcript-backed: ${carbonBuilderVerifiedCount}`);
-    console.log(`   Carbon Builder rejected (no skill reads): ${carbonBuilderRejectedCount}`);
-    console.log(`   Filtered (unverified): ${filteredCount}`);
+    console.log(`\n📊 Carbon verification (claims checked against Carbon MCP, the evidence source):`);
+    console.log(`   Findings in this review: ${findings.length}`);
+    // One breakdown line — claims = kept + dropped — rather than separate "claims"
+    // and "kept" lines that read as identical whenever nothing is dropped.
+    console.log(`   Carbon-specific claims: ${carbonSpecificCount} — ${carbonVerifiedCount} verified & kept, ${filteredCount} dropped`);
 
     if (filteredCount > 0) {
-      console.log(`\n❌ ${filteredCount} Carbon finding(s) filtered — missing or hallucinated MCP verification`);
-      console.log(`   To fix: Ensure agent uses Carbon Builder skill + Carbon MCP tools and quotes tool response in mcpEvidence`);
+      console.log(`   ${filteredCount} dropped for missing or unconvincing evidence — to fix, verify Carbon claims via Carbon MCP and quote the tool response as evidence.`);
     }
   }
 

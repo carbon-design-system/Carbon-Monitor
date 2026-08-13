@@ -4,15 +4,24 @@
   "description": "AI-powered PR review agent for Carbon Design System",
   "main": "src/index.js",
   "scripts": {
-    "postinstall": "node scripts/install-carbon-builder-skill.js",
+    "postinstall": "node scripts/install-carbon-builder-skill.js 2>/dev/null || true",
     "start": "node src/index.js",
     "api": "node src/api/server.js",
+    "fonts": "node scripts/copy-plex-fonts.js",
+    "dev:client": "npm run fonts && vite",
+    "build:client": "npm run fonts && vite build",
+    "preview:client": "vite preview",
     "test": "node tests/test-agent.js",
     "test:parser": "node tests/test-parser.js",
     "test:diff": "node tests/test-diff-mapper.js",
     "test:authority": "node tests/carbonBuilderAuthority.test.js",
     "test:linked": "node tests/linkedIssue.test.js",
-    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js && node tests/linkedIssue.test.js && node tests/prTargeting.test.js"
+    "test:session": "node tests/sessionAuth.test.js",
+    "test:targeting": "node tests/reviewTargeting.test.js",
+    "test:apiauth": "node tests/apiAuth.test.js",
+    "test:mcp": "node tests/mcpConnection.test.js",
+    "test:credits": "node tests/bobCredits.test.js",
+    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js && node tests/linkedIssue.test.js && node tests/prTargeting.test.js && node tests/sessionAuth.test.js && node tests/apiAuth.test.js && node tests/mcpConnection.test.js && node tests/bobCredits.test.js && node tests/reviewTargeting.test.js"
   },
   "keywords": [
     "carbon",
@@ -24,11 +33,21 @@
   "author": "IBM",
   "license": "Apache-2.0",
   "dependencies": {
+    "@carbon/charts": "^1.27.18",
+    "@carbon/charts-react": "^1.27.18",
     "@elastic/elasticsearch": "^8.19.2",
     "@octokit/rest": "^20.0.2",
     "dotenv": "^16.3.1"
   },
+  "devDependencies": {
+    "@carbon/react": "^1.113.0",
+    "@vitejs/plugin-react": "^6.0.5",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "sass": "^1.102.0",
+    "vite": "^8.2.1"
+  },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.15.0"
   }
 }

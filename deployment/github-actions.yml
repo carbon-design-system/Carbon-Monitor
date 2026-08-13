@@ -39,29 +39,35 @@ jobs:
       run: npm ci
     
     - name: Install Bob Shell CLI
-      if: ${{ secrets.GITHUB_AI_AGENT_CLI == 'bob' }}
+      if: ${{ (vars.GITHUB_AI_AGENT_CLI || 'bob') == 'bob' }}
       run: npm install -g @ibm/bob-shell
-    
+
     - name: Install Claude CLI
-      if: ${{ secrets.GITHUB_AI_AGENT_CLI == 'claude' }}
+      if: ${{ vars.GITHUB_AI_AGENT_CLI == 'claude' }}
       run: npm install -g @anthropic-ai/claude-cli
-    
+
     - name: Install Codex CLI
-      if: ${{ secrets.GITHUB_AI_AGENT_CLI == 'codex' }}
+      if: ${{ vars.GITHUB_AI_AGENT_CLI == 'codex' }}
       run: npm install -g openai-codex-cli
     
     - name: Run PR Review Agent
       working-directory: carbon-pr-review
+      # Only the token and API keys are true secrets. The review-tuning knobs are
+      # non-secret config, so they read from GitHub Actions *Variables* — the CI
+      # equivalent of .env, since runners cannot read your gitignored .env. Set
+      # them under Settings → Secrets and variables → Actions → Variables to
+      # mirror .env (e.g. GITHUB_AI_AGENT_MAX_PRS=10). The `||` fallbacks match
+      # src/constants.js, so an unset Variable behaves exactly like local defaults.
       env:
         GITHUB_AI_AGENT_TOKEN: ${{ secrets.GITHUB_AI_AGENT_TOKEN }}
-        GITHUB_AI_AGENT_CLI: ${{ secrets.GITHUB_AI_AGENT_CLI }}
         BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        GITHUB_AI_AGENT_OWNER: ${{ secrets.GITHUB_AI_AGENT_OWNER || 'carbon-design-system' }}
-        GITHUB_AI_AGENT_REPO: ${{ secrets.GITHUB_AI_AGENT_REPO || 'carbon' }}
-        GITHUB_AI_AGENT_MAX_PRS: ${{ secrets.GITHUB_AI_AGENT_MAX_PRS || '5' }}
-        GITHUB_AI_AGENT_DAYS_BACK: ${{ secrets.GITHUB_AI_AGENT_DAYS_BACK || '21' }}
-        GITHUB_AI_AGENT_REVIEW_LABEL: ${{ secrets.GITHUB_AI_AGENT_REVIEW_LABEL || 'AIReviewed' }}
+        GITHUB_AI_AGENT_CLI: ${{ vars.GITHUB_AI_AGENT_CLI || 'bob' }}
+        GITHUB_AI_AGENT_OWNER: ${{ vars.GITHUB_AI_AGENT_OWNER || 'carbon-design-system' }}
+        GITHUB_AI_AGENT_REPO: ${{ vars.GITHUB_AI_AGENT_REPO || 'carbon' }}
+        GITHUB_AI_AGENT_MAX_PRS: ${{ vars.GITHUB_AI_AGENT_MAX_PRS || '5' }}
+        GITHUB_AI_AGENT_DAYS_BACK: ${{ vars.GITHUB_AI_AGENT_DAYS_BACK || '21' }}
+        GITHUB_AI_AGENT_REVIEW_LABEL: ${{ vars.GITHUB_AI_AGENT_REVIEW_LABEL || 'AIReviewed' }}
       run: npm start
     
     - name: Upload logs

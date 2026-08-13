@@ -142,6 +142,21 @@ function formatSummaryComment({
   // ── Findings table (rendered from typed array — no Markdown in agent JSON) ──
   if (findingsTable && findingsTable.length > 0) {
     comment += `<details>\n<summary>Findings (${findingsTable.length})</summary>\n\n`;
+
+    // Legend for the Category column.
+    //
+    // "Cat 1" and "Cat 2" are internal shorthand: they tell a reader HOW a
+    // finding was established, which is the difference between a claim checked
+    // against Carbon's own source and one inferred from the diff. Without this
+    // the column is an unexplained label on a comment posted to contributors
+    // who have never seen this agent before.
+    //
+    // Placed above the table rather than below it, because the distinction
+    // changes how much weight to give each row while reading them.
+    comment += `**Category** — how each finding was established:\n\n`;
+    comment += `- **Cat 1** — a Carbon-specific claim (does this component accept this prop, attribute or variant?), verified against the Carbon Builder skill or Carbon MCP.\n`;
+    comment += `- **Cat 2** — generic correctness, accessibility or duplication, established from the diff alone.\n\n`;
+
     comment += `| Area | Category | Severity | Finding | File |\n`;
     comment += `|------|----------|----------|---------|------|\n`;
     for (const row of findingsTable) {

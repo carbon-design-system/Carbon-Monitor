@@ -1,0 +1,49 @@
+# Build context exclusions.
+#
+# NOTE: dist/ is deliberately NOT excluded. It is gitignored, but the image
+# copies it in — the console bundle is built on the host by `npm run build:client`
+# so the runtime image carries no Vite, Sass or React.
+
+# Dependencies are reinstalled inside the image against the public registry.
+# Excluding them also keeps ~200MB of @ibm/plex out of the build context.
+node_modules/
+client/public/plex/
+
+# Never ship real credentials into an image layer.
+.env
+.env.local
+.env.*.local
+.npmrc
+
+# Source-only assets with no runtime role.
+client/
+vite.config.mjs
+scripts/
+tests/
+.git/
+.github/
+deployment/
+kibana/
+
+# NOTE: .bob/ is deliberately NOT excluded.
+#
+# reviewBundle.js copies .bob/skills/carbon-builder into every review bundle,
+# because Bob resolves skills from the workspace's own .bob/skills directory.
+# Excluding it produced a container where that copy failed with ENOENT, the
+# skill never loaded, and every Carbon claim fell back to MCP — reviews still
+# completed, and silently lost their primary source of truth.
+#
+# Bob's own transient state is excluded instead, since none of it belongs in an
+# image and the cache can be large.
+.bob/cache/
+.bob/sessions/
+.bob/tmp/
+.bob/logs/
+.bob/db/
+
+# Local noise
+*.log
+.DS_Store
+.vscode/
+.idea/
+docker-compose.yml

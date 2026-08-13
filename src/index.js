@@ -11,7 +11,7 @@
  * - Spec-compliant comments with Carbon verification
  *****************************************************************************/
 
-require('dotenv').config();
+require('./loadEnv');
 
 // Resolve target PR: CLI flag --pr takes precedence over env var
 const _cliPrIdx = process.argv.indexOf('--pr');
@@ -46,6 +46,8 @@ const { parseReviewOutput, extractCarbonBuilderSkillReads } = require('./reviewP
 const { formatSummaryComment, formatInlineComment, estimateTokenUsage } = require('./reviewPrompt');
 const { splitFindings } = require('./diffMapper');
 const { emitEvent } = require('./observability/eventService');
+const bobCredits = require('./api/bobCredits');
+const creditLedger = require('./api/creditLedger');
 const {
   GITHUB_OWNER,
   GITHUB_REPO,
@@ -59,11 +61,257 @@ const {
 const GITHUB_TOKEN = process.env.GITHUB_AI_AGENT_TOKEN;
 
 /**
- * Main function to review PRs in the Carbon repository
+ * Record what a single review cost to the local ledger.
+ *
+ * Called from a `finally`, including on the failure path — a run that timed out
+ * after nine minutes is the most expensive kind there is, and omitting it would
+ * make the ledger read as if failures were free.
+ *
+ * Swallows everything. An exception raised inside that `finally` would REPLACE
+ * the agent's real error as it propagates, so a billing hiccup would erase the
+ * reason the review actually failed.
+ *
+ * @param {Object} opts
+ * @param {string} opts.correlationId
+ * @param {Object} opts.pr
+ * @param {Object|null} opts.after  - Balance snapshot taken after the run
+ * @param {number|null} opts.coinsSpent
+ * @param {number} opts.durationMs
+ * @param {string} [opts.source='balance-delta'] - How coinsSpent was derived
  */
-async function reviewPRs() {
+async function recordReviewCost({
+  correlationId,
+  pr,
+  after,
+  coinsSpent,
+  durationMs,
+  source = 'balance-delta',
+}) {
+  try {
+    const balance = after && after.available ? after : null;
+
+    await creditLedger.record({
+      at: new Date().toISOString(),
+      prNumber: pr.number,
+      repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+      correlationId,
+      coinsSpent,
+      remainingAfter: balance ? balance.remaining : null,
+      durationMs,
+      source,
+    });
+  } catch (error) {
+    console.warn(`⚠️  Could not record review cost: ${error.message}`);
+  }
+}
+
+/**
+ * Delete a review bundle, whatever the outcome of the review.
+ *
+ * Called from the per-PR `finally` rather than repeated on each success path,
+ * because the failure paths are the ones that matter: reviewBundle writes the
+ * live BOB_API_KEY into `<bundle>/.env`, so a run that throws — an agent timeout
+ * above all, the single most likely failure — would otherwise leave a plaintext
+ * copy of the key on a container filesystem that lives for months, alongside
+ * half a megabyte of diff, and add another on every subsequent failure.
+ *
+ * Swallows its own errors: raised from a `finally`, they would REPLACE the error
+ * that actually ended the review.
+ *
+ * @param {Object|null} bundle
+ */
+async function cleanupBundle(bundle) {
+  if (!bundle) return;
+
+  if (process.env.GITHUB_AI_AGENT_KEEP_ARTIFACTS === 'true') {
+    console.log('📦 Keeping artifacts for debugging:', bundle.dir);
+    return;
+  }
+
+  try {
+    console.log('🧹 Cleaning up...');
+    await bundle.cleanup();
+  } catch (error) {
+    console.warn(`⚠️  Could not remove review bundle ${bundle.dir}: ${error.message}`);
+  }
+}
+
+// ── Review targeting ────────────────────────────────────────────────────────
+
+/**
+ * Render a rejected value for an error message without ever throwing.
+ *
+ * These strings go straight into an HTTP 400 body, so the formatter itself must
+ * be total — a crash while explaining a bad input would turn a 400 into a 500.
+ *
+ * @param {*} value
+ * @returns {string}
+ */
+function describeValue(value) {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  try {
+    const text = JSON.stringify(value);
+    return text === undefined ? String(value) : text;
+  } catch (_) {
+    return String(value);
+  }
+}
+
+/**
+ * Parse and validate an operator-supplied PR list.
+ *
+ * Exported and used by BOTH callers — POST /api/review/trigger, which turns a
+ * rejection into a 400, and reviewPRs itself. A second copy of these rules in
+ * the route is the copy that would drift from what actually runs.
+ *
+ * Deliberately pure and TOTAL: it never throws, and above all it never exits.
+ * The TARGET_PR resolution at the top of this module calls process.exit(1) on a
+ * bad value, which is right for a CLI and catastrophic for a request handler —
+ * one malformed body would take down the single instance, console and review
+ * loop together. Every rejection here is a returned string instead.
+ *
+ * An absent, blank or empty list is not an error: it means AUTO mode, which is
+ * exactly what an empty input box in the console posts.
+ *
+ * @param {Array|string|null|undefined} input - PR numbers, or a comma-separated string
+ * @param {number} [maxPRs=MAX_PRS_PER_RUN] - Most PRs one run may review
+ * @returns {{ok: boolean, prNumbers: number[]|null, error?: string}}
+ *          `ok: true` with `prNumbers: null` means auto-select.
+ */
+function parsePrNumbers(input, maxPRs = MAX_PRS_PER_RUN) {
+  if (input === undefined || input === null) return { ok: true, prNumbers: null };
+
+  let entries;
+  if (Array.isArray(input)) {
+    entries = input;
+  } else if (typeof input === 'string') {
+    if (input.trim() === '') return { ok: true, prNumbers: null };
+    entries = input.split(',');
+  } else {
+    return {
+      ok: false,
+      prNumbers: null,
+      error:
+        'prNumbers must be an array of numbers or a comma-separated string, ' +
+        `but received ${typeof input}: ${describeValue(input)}`,
+    };
+  }
+
+  if (entries.length === 0) return { ok: true, prNumbers: null };
+
+  const prNumbers = [];
+
+  for (const entry of entries) {
+    // Anything that is not a number or a string is rejected before String()
+    // touches it: Number(true) is 1 and Number(null) is 0, so coercing first
+    // would quietly turn junk into a PR number.
+    if (typeof entry !== 'number' && typeof entry !== 'string') {
+      return {
+        ok: false,
+        prNumbers: null,
+        error: `Invalid PR number ${describeValue(entry)} — every entry must be a positive integer.`,
+      };
+    }
+
+    const text = String(entry).trim();
+
+    if (text === '') {
+      return {
+        ok: false,
+        prNumbers: null,
+        error: 'The PR list contains an empty value — remove the stray comma.',
+      };
+    }
+
+    const value = Number(text);
+
+    // Digits only. Number() alone accepts "0x10", "1e3" and "22971.0", so a
+    // fat-fingered entry would silently review a PR the operator never named.
+    if (!/^\d+$/.test(text) || !Number.isSafeInteger(value) || value <= 0) {
+      return {
+        ok: false,
+        prNumbers: null,
+        error: `Invalid PR number ${describeValue(entry)} — must be a positive integer.`,
+      };
+    }
+
+    // Deduplicated, order preserved: reviewing the same PR twice in one run
+    // posts two summary comments on it.
+    if (!prNumbers.includes(value)) prNumbers.push(value);
+  }
+
+  if (prNumbers.length > maxPRs) {
+    return {
+      ok: false,
+      prNumbers: null,
+      error:
+        `Too many PRs: ${prNumbers.length} requested, but at most ${maxPRs} may be ` +
+        'reviewed in one run (GITHUB_AI_AGENT_MAX_PRS).',
+    };
+  }
+
+  return { ok: true, prNumbers };
+}
+
+/**
+ * Decide which PRs a run will actually review.
+ *
+ * Precedence, strongest first:
+ *   1. an explicit `prNumbers` argument — someone just asked for these
+ *   2. TARGET_PR — the --pr flag or GITHUB_AI_AGENT_PR_NUMBER this process started with
+ *   3. auto-select the most recent reviewable PRs
+ *
+ * The argument outranks TARGET_PR because containers are routinely deployed with
+ * GITHUB_AI_AGENT_PR_NUMBER pinned for debugging. If the environment won, every
+ * trigger from the console would silently re-review that one pinned PR and post
+ * a second comment on it, while reporting the numbers the operator typed.
+ *
+ * @param {Object} [options]
+ * @param {number[]|string|null} [options.prNumbers] - Re-validated here
+ * @param {number|null} [targetPr=TARGET_PR] - This process's --pr/env target, read
+ *        at call time. Injectable so precedence can be tested without reloading
+ *        the module under a different environment.
+ * @returns {{ok: boolean, mode: 'explicit'|'auto', prNumbers: number[]|null, source: string, error?: string}}
+ */
+function resolveReviewTargets(options = {}, targetPr = TARGET_PR) {
+  const parsed = parsePrNumbers(options.prNumbers);
+  if (!parsed.ok) {
+    return { ok: false, mode: 'auto', prNumbers: null, source: 'argument', error: parsed.error };
+  }
+
+  if (parsed.prNumbers) {
+    return { ok: true, mode: 'explicit', prNumbers: parsed.prNumbers, source: 'argument' };
+  }
+  if (targetPr) {
+    return { ok: true, mode: 'explicit', prNumbers: [targetPr], source: 'cli-env' };
+  }
+  return { ok: true, mode: 'auto', prNumbers: null, source: 'auto' };
+}
+
+/**
+ * Main function to review PRs in the Carbon repository
+ *
+ * @param {Object} [options] - Omitted (the CLI path) falls back to --pr / the env
+ *        var, and then to auto-select — exactly as it behaved before options existed
+ * @param {number[]|string|null} [options.prNumbers] - Review exactly these PRs,
+ *        outranking --pr and GITHUB_AI_AGENT_PR_NUMBER
+ */
+async function reviewPRs(options = {}) {
   // CI/CD safety check - only run on main branch in Travis CI
   if (process.env.TRAVIS_BRANCH && process.env.TRAVIS_BRANCH !== 'main') {
+    return;
+  }
+
+  // Decided before anything expensive happens, and reported like every other
+  // run parameter — "which PRs" is the first question asked of a run's logs.
+  //
+  // A rejection here is logged and returned, never thrown and never exited on:
+  // reviewPRs runs detached in the API server's background, where an escaping
+  // error becomes an unhandled rejection.
+  const target = resolveReviewTargets(options);
+  if (!target.ok) {
+    console.error(`❌ ${target.error}`);
     return;
   }
 
@@ -77,6 +325,13 @@ async function reviewPRs() {
   console.log(`[Carbon-Monitor] selectedAgent=${REVIEW_AGENT}`);
   console.log(`[Carbon-Monitor] label=${REVIEW_LABEL}`);
   console.log(`[Carbon-Monitor] correlationId=${correlationId}`);
+  console.log(
+    `[Carbon-Monitor] target=${
+      target.mode === 'explicit'
+        ? `${target.prNumbers.map((n) => `#${n}`).join(', ')} (${target.source})`
+        : `auto (max ${MAX_PRS_PER_RUN}, last ${N_DAYS_SINCE_PR_CREATED} days)`
+    }`
+  );
   
   // Validate environment
   if (!GITHUB_TOKEN) {
@@ -101,8 +356,18 @@ async function reviewPRs() {
     console.error(`   Please install ${agent} CLI tool`);
     return;
   }
-  
-  console.log(`✅ Agent '${agent}' is available\n`);
+
+  // Bobcoins are Bob's currency, and BOB_API_KEY stays configured whichever CLI
+  // is selected (checkBob and the MCP config both need it). Bracketing the Bob
+  // gateway around a claude or codex run would therefore attribute whatever
+  // else touched the account in that window to this review — and, with nothing
+  // else touching it, record a hard 0 that drags averagePerReview toward zero
+  // for every review. Two gateway round-trips on the review's critical path for
+  // a figure that is structurally always zero, at that.
+  const tracksBobcoins = agent === 'bob';
+  if (!tracksBobcoins) {
+    console.log(`ℹ️  Bobcoins accounting skipped — '${agent}' does not spend them\n`);
+  }
   
   // Create GitHub client
   const { Octokit } = await import('@octokit/rest');
@@ -119,17 +384,52 @@ async function reviewPRs() {
     agent: REVIEW_AGENT,
   });
 
+  // PRs named explicitly but not fetchable. Counted rather than thrown so the
+  // run still closes out with a run_completed event.
+  const fetchFailures = [];
+
   try {
-    // Fetch PRs — targeted (--pr / env var) or auto-select
+    // Fetch PRs — targeted (API request / --pr / env var) or auto-select
     let prs;
-    if (TARGET_PR) {
-      console.log(`🎯 Targeting specific PR #${TARGET_PR} (skipping auto-selection)`);
-      const pr = await client.fetchSinglePR({
-        owner: GITHUB_OWNER,
-        repo: GITHUB_REPO,
-        pullNumber: TARGET_PR
-      });
-      prs = [pr];
+    if (target.mode === 'explicit') {
+      console.log(
+        `🎯 Targeting ${target.prNumbers.length} specific PR(s) ` +
+          `(skipping auto-selection): ${target.prNumbers.map((n) => `#${n}`).join(', ')}`
+      );
+
+      // fetchSinglePR deliberately applies no label, draft or age filtering —
+      // an explicitly named PR is reviewed on the operator's authority, exactly
+      // as --pr has always behaved.
+      prs = [];
+      for (const pullNumber of target.prNumbers) {
+        try {
+          prs.push(
+            await client.fetchSinglePR({
+              owner: GITHUB_OWNER,
+              repo: GITHUB_REPO,
+              pullNumber
+            })
+          );
+        } catch (fetchError) {
+          // One bad number — a typo, a PR from another repo, one since deleted —
+          // must not cost the operator the rest of the list. Naming several PRs
+          // is a request for one pass over all of them, not an all-or-nothing bet.
+          console.error(`❌ Could not fetch PR #${pullNumber}: ${fetchError.message}`);
+          fetchFailures.push(pullNumber);
+          await emitEvent({
+            event_type: 'pr_review_failed',
+            correlation_id: correlationId,
+            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            pr_number: pullNumber,
+            agent: REVIEW_AGENT,
+            payload: { error: `Could not fetch PR: ${fetchError.message}` },
+          });
+        }
+      }
+
+      if (prs.length === 0) {
+        console.error('❌ None of the requested PRs could be fetched');
+      }
     } else {
       console.log('📥 Fetching reviewable PRs...');
       prs = await client.fetchReviewablePRs({
@@ -146,16 +446,18 @@ async function reviewPRs() {
       }
     }
 
-    console.log(`Found ${prs.length} PR(s) to review\n`);
-    
     // Review each PR
     for (const pr of prs) {
       const prStartedAt = Date.now();
+      // Declared outside the try so the `finally` below can remove it however
+      // the review ends — the bundle holds a plaintext copy of BOB_API_KEY.
+      let bundle = null;
       try {
         console.log(`\n${'='.repeat(80)}`);
         console.log(`📌 Reviewing PR #${pr.number}: ${pr.title}`);
         console.log(`   Author: @${pr.user.login}`);
         console.log(`   Created: ${new Date(pr.created_at).toLocaleDateString()}`);
+        console.log(`   URL: ${pr.html_url}`);
         console.log(`${'='.repeat(80)}\n`);
 
         await emitEvent({
@@ -169,7 +471,6 @@ async function reviewPRs() {
         
         // Fetch PR diff — prefer ORIGINAL_DIFF.patch if present (test PRs created
         // by create-test-pr.js embed the real Carbon diff there to preserve - lines)
-        console.log('📄 Fetching PR diff...');
         let diff;
         try {
           const { data: patchFile } = await octokit.rest.repos.getContent({
@@ -191,7 +492,6 @@ async function reviewPRs() {
         
         // Fetch changed files — prefer ORIGINAL_FILES.json if present (test PRs
         // created by create-test-pr.js store the real Carbon file list there)
-        console.log('📁 Fetching changed files...');
         let files;
         try {
           const { data: filesFile } = await octokit.rest.repos.getContent({
@@ -213,8 +513,7 @@ async function reviewPRs() {
         files.forEach(f => console.log(`   - ${f.filename} (+${f.additions}/-${f.deletions})`));
         
         // Build review bundle
-        console.log('\n📦 Creating review bundle...');
-        const bundle = await buildReviewBundle({
+        bundle = await buildReviewBundle({
           owner: GITHUB_OWNER,
           repo: GITHUB_REPO,
           pr,
@@ -223,12 +522,25 @@ async function reviewPRs() {
           client
         });
         console.log(`✅ Bundle: ${bundle.dir}`);
-        console.log(`✅ mdDiffStartLine: ${bundle.mdDiffStartLine}`);
-        
+
         // Run agent review
         console.log(`\n🤖 Running ${agent} review...`);
-        console.log('This may take 30-60 seconds...\n');
-        
+        console.log('This may take a few minutes...\n');
+
+        // ── Bobcoins accounting ─────────────────────────────────────────────
+        // Bob only reports a run's own cost in stream-json output, and this app
+        // must keep the pretty format that reviewParser reads. The account's
+        // running usage total is bracketed around the run instead. Both reads
+        // bypass the cache: a stale "before" would silently report zero spend.
+        let coinsBefore = null;
+        let coinsAfter = null;
+        let coinsSpent = null;
+        let agentSucceeded = false;
+
+        if (tracksBobcoins) {
+          coinsBefore = await bobCredits.getBalance({ force: true }).catch(() => null);
+        }
+
         let agentOutput;
         try {
           agentOutput = await runAgent({
@@ -237,6 +549,7 @@ async function reviewPRs() {
             prompt: bundle.prompt,
             timeout: 10 * 60 * 1000 // 10 minutes per spec
           });
+          agentSucceeded = true;
         } catch (agentErr) {
           const isTimeout = /timeout/i.test(agentErr.message);
           if (isTimeout) {
@@ -251,8 +564,39 @@ async function reviewPRs() {
             });
           }
           throw agentErr;
+        } finally {
+          // `finally` runs before the rethrow above propagates, so a failed or
+          // timed-out run — which still burned coins — is recorded too, and the
+          // original error still reaches the per-PR catch block below.
+          //
+          // Everything here is wrapped: an exception thrown from a `finally`
+          // REPLACES the in-flight error, so an unguarded billing failure would
+          // erase the reason the review actually failed.
+          try {
+            if (tracksBobcoins) {
+              coinsAfter = await bobCredits.getBalance({ force: true });
+              coinsSpent = bobCredits.computeSpend(coinsBefore, coinsAfter);
+
+              if (coinsSpent !== null) {
+                console.log(`\n🪙 Bobcoins spent: ${coinsSpent}`);
+              } else if (coinsAfter && !coinsAfter.available) {
+                console.log(`\n🪙 Bobcoins: balance unavailable (${coinsAfter.reason})`);
+              }
+            }
+
+            await recordReviewCost({
+              correlationId,
+              pr,
+              after: coinsAfter,
+              coinsSpent,
+              durationMs: Date.now() - prStartedAt,
+              source: tracksBobcoins ? 'balance-delta' : 'unknown',
+            });
+          } catch (costErr) {
+            console.warn(`⚠️  Bobcoins accounting failed: ${costErr.message}`);
+          }
         }
-        
+
         console.log(`\n✅ ${agent} review received`);
 
         // ── Carbon Builder skill activation observability ─────────────────
@@ -261,15 +605,19 @@ async function reviewPRs() {
         // tool with skill_name: carbon-builder).
         const skillFilesRead = extractCarbonBuilderSkillReads(agentOutput);
         if (skillFilesRead.length > 0) {
-          console.log(`\n🔬 Carbon Builder skill activated — ${skillFilesRead.length} evidence signal(s):`);
-          skillFilesRead.forEach(f => console.log(`   📄 ${f}`));
+          // v2 leaves a single "use_skill:carbon-builder" signal; v1 leaves one
+          // entry per skill file the agent read. Either form means the agent
+          // loaded the skill before reviewing.
+          const how = skillFilesRead.includes('use_skill:carbon-builder')
+            ? 'invoked it via the use_skill tool'
+            : `read ${skillFilesRead.length} skill file(s): ${skillFilesRead.join(', ')}`;
+          console.log(`\n🔬 Carbon Builder skill: ✅ loaded and used by the agent — ${how}`);
         } else {
-          console.log('\n🔬 Carbon Builder skill: not detected in agent output');
+          console.log('\n🔬 Carbon Builder skill: ⚠️  NOT loaded — the agent transcript shows no use_skill call and no read of .bob/skills/carbon-builder/. Carbon claims in this review are unverified by the skill.');
         }
         // ─────────────────────────────────────────────────────────────────
 
         // Parse review output
-        console.log('🔍 Parsing review output...');
         const review = parseReviewOutput(agentOutput);
         
         if (!review) {
@@ -283,31 +631,17 @@ async function reviewPRs() {
             agent: REVIEW_AGENT,
             commit_sha: pr.head.sha,
           });
-          if (process.env.GITHUB_AI_AGENT_KEEP_ARTIFACTS !== 'true') {
-            await bundle.cleanup();
-          } else {
-            console.error('📦 Keeping artifacts for debugging:', bundle.dir);
-          }
+          // The `finally` below removes the bundle on the way out.
           continue;
         }
         
         console.log(`✅ Parsed: ${review.findings.length} findings`);
         console.log(`✅ Recommendation: ${review.recommendation} — ${review.recommendationRationale}`);
 
-        // Warn when the agent skipped its catalogue step. The warning text is
-        // now in review.catalogueWarning (set by the parser) and rendered by
-        // formatSummaryComment — summaryMarkdown is never mutated here.
+        // Warn when the agent skipped its catalogue step.
         if (!review.hasCatalogue) {
           console.warn('⚠️  No visible catalogue in agent output — agent may have skipped Step 1');
           console.warn('   Zero findings from this run should be treated as unreliable');
-          await emitEvent({
-            event_type: 'catalogue_missing',
-            correlation_id: correlationId,
-            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
-            pr_number: pr.number,
-            agent: REVIEW_AGENT,
-            commit_sha: pr.head.sha,
-          });
         }
 
         // Emit skill_unavailable when carbon-builder was never read
@@ -323,7 +657,6 @@ async function reviewPRs() {
         }
         
         // Split findings into inline-able and summary-only
-        console.log('\n🔍 Mapping findings to diff positions...');
         const { inlineFindings, summaryFindings } = splitFindings(
           review.findings,
           diff,
@@ -335,8 +668,6 @@ async function reviewPRs() {
         // Post inline review comments if any (check env flag)
         const postInline = process.env.GITHUB_AI_AGENT_POST_INLINE_COMMENTS !== 'false';
         if (inlineFindings.length > 0 && review.shouldPostInlineComments !== false && postInline) {
-          console.log('\n💬 Posting inline review comments...');
-          
           const inlineComments = inlineFindings.map(finding => ({
             path: finding.diffPosition.path,
             position: finding.diffPosition.position,
@@ -375,7 +706,6 @@ async function reviewPRs() {
         }
         
         // Calculate token usage estimate
-        console.log('\n📊 Calculating token usage...');
         const tokenUsage = estimateTokenUsage({
           prompt: bundle.prompt,
           diff: diff,
@@ -384,39 +714,28 @@ async function reviewPRs() {
         console.log(`✅ Estimated tokens: ~${tokenUsage.total.toLocaleString()} (input: ~${tokenUsage.input.toLocaleString()}, output: ~${tokenUsage.output.toLocaleString()})`);
 
         // ── Emit metrics event for this review ──────────────────────────────
-        const prDurationMs = Date.now() - prStartedAt;
         await emitEvent({
-          event_type: 'pr_review_completed',
+          event_type:     'pr_review_completed',
           correlation_id: correlationId,
-          repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
-          pr_number: pr.number,
-          agent: REVIEW_AGENT,
-          commit_sha: pr.head.sha,
+          repo:           `${GITHUB_OWNER}/${GITHUB_REPO}`,
+          pr_number:      pr.number,
+          agent:          REVIEW_AGENT,
+          commit_sha:     pr.head.sha,
           payload: {
             // pr_title is stored so Kibana runtime fields can extract any embedded
             // identifiers (e.g. original Carbon PR numbers in test PR titles).
             pr_title: pr.title,
             recommendation: review.recommendation,
-            findings_total: review.findings.length,
-            // Flat severity counts — one numeric field per level so Kibana can
-            // Sum/Average each independently without dynamic-object sub-key issues.
-            // Mirrors Carbon Migrate's pattern of storing outcomes as individual fields.
+            findings_total:    review.findings.length,
             findings_blocking: review.findings.filter(f => f.severity === 'blocking').length,
             findings_major:    review.findings.filter(f => f.severity === 'major').length,
             findings_minor:    review.findings.filter(f => f.severity === 'minor').length,
             findings_nit:      review.findings.filter(f => f.severity === 'nit').length,
             cat1_findings: review.findings.filter(f => f.verificationSource !== 'not-carbon-specific').length,
             cat2_findings: review.findings.filter(f => f.verificationSource === 'not-carbon-specific').length,
-            verification_source_breakdown: _countBy(review.findings, 'verificationSource'),
-            catalogue_present: review.hasCatalogue,
-            skill_activated: skillFilesRead.length > 0,
-            skill_files_read: skillFilesRead.length,
-            inline_comments_posted: inlineFindings.length,
-            summary_findings: summaryFindings.length,
-            token_input: tokenUsage.input,
+            token_input:  tokenUsage.input,
             token_output: tokenUsage.output,
-            token_total: tokenUsage.total,
-            duration_ms: prDurationMs,
+            token_total:  tokenUsage.total,
           },
         });
 
@@ -426,7 +745,6 @@ async function reviewPRs() {
         // Format and post summary comment (check env flag)
         const postSummary = process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
         if (postSummary) {
-          console.log('\n📝 Posting summary comment...');
           const commentBody = formatSummaryComment({
             agent,
             summaryMarkdown: review.summaryMarkdown,
@@ -453,7 +771,6 @@ async function reviewPRs() {
         }
         
         // Add AIReviewed label
-        console.log('🏷️  Adding review label...');
         await client.addReviewedLabel({
           owner: GITHUB_OWNER,
           repo: GITHUB_REPO,
@@ -462,16 +779,8 @@ async function reviewPRs() {
         });
         console.log('✅ Label added');
         
-        // Cleanup (unless artifacts should be kept for debugging)
-        if (process.env.GITHUB_AI_AGENT_KEEP_ARTIFACTS !== 'true') {
-          console.log('🧹 Cleaning up...');
-          await bundle.cleanup();
-        } else {
-          console.log('📦 Keeping artifacts for debugging:', bundle.dir);
-        }
-        
         console.log(`\n✅ PR #${pr.number} review complete`);
-        
+
       } catch (prError) {
         console.error(`\n❌ Error reviewing PR #${pr.number}:`, prError.message);
         console.error(prError.stack);
@@ -483,6 +792,11 @@ async function reviewPRs() {
           agent: REVIEW_AGENT,
           payload: { error: prError.message },
         });
+      } finally {
+        // Runs on every exit from this PR — success, parse failure, agent
+        // timeout, or any other throw — so no bundle, and no copy of
+        // BOB_API_KEY, is ever left behind.
+        await cleanupBundle(bundle);
       }
     }
 
@@ -492,7 +806,15 @@ async function reviewPRs() {
       correlation_id: correlationId,
       repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
       agent: REVIEW_AGENT,
-      payload: { prs_reviewed: prsReviewedThisRun, duration_ms: runDurationMs },
+      payload: {
+        prs_reviewed: prsReviewedThisRun,
+        duration_ms: runDurationMs,
+        // Flat scalars, matching the rest of the payloads: a run that reviewed
+        // two of the three PRs it was given is not the same as one given two.
+        prs_requested: target.mode === 'explicit' ? target.prNumbers.length : null,
+        prs_fetch_failed: fetchFailures.length,
+        target_mode: target.mode,
+      },
     });
 
     console.log(`\n${'='.repeat(80)}`);
@@ -521,8 +843,11 @@ function _countBy(arr, field) {
   }, {});
 }
 
-// Export for module usage
-module.exports = { reviewPRs };
+// Export for module usage.
+//
+// parsePrNumbers and resolveReviewTargets are exported so the API server enforces
+// exactly the rules this module obeys, rather than a second copy of them.
+module.exports = { reviewPRs, parsePrNumbers, resolveReviewTargets };
 
 // Run if executed directly
 if (require.main === module) {

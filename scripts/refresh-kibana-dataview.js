@@ -13,9 +13,9 @@ require('dotenv').config();
 const http  = require('http');
 const https = require('https');
 
-const ES_USERNAME = process.env.ES_USERNAME || 'elastic';
-const ES_PASSWORD = process.env.ES_PASSWORD || '';
-const AUTH        = Buffer.from(`${ES_USERNAME}:${ES_PASSWORD}`).toString('base64');
+// Kibana always authenticates with ES username/password regardless of whether
+// ES_API_KEY is set — API keys are for direct ES access, not the Kibana API.
+const AUTH = `Basic ${Buffer.from(`${process.env.ES_USERNAME || 'elastic'}:${process.env.ES_PASSWORD || ''}`).toString('base64')}`;
 
 // The ID that all 9 Lens panels reference
 const DATA_VIEW_ID = 'carbon-monitor-index-pattern';
@@ -29,7 +29,7 @@ function kRequest({ method = 'GET', path, body } = {}) {
       path,
       method,
       headers: {
-        'Authorization': `Basic ${AUTH}`,
+        'Authorization': AUTH,
         'kbn-xsrf': 'true',
         'Content-Type': 'application/json',
       },
