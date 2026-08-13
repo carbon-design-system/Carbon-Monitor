@@ -294,10 +294,12 @@ function ReviewLog({ running, startedAt, onVisibilityChange, prNumbers, owner, r
         </div>
 
         <div className="cm-log__actions">
-          {running && (
-            <InlineLoading description="Running…" status="active" className="cm-log__spinner" />
-          )}
-
+          {/*
+            No run spinner here: the per-PR progress list below already shows a
+            "Reviewing" spinner on the active PR, and two spinners for one running
+            state read as two things happening. The toolbar keeps only its
+            copy / download / clear controls.
+          */}
           {/*
             Carbon's CopyButton, which carries its own icon and the "Copied!"
             feedback tooltip — so no @carbon/icons-react import is needed, which

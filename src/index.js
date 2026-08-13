@@ -11,7 +11,7 @@
  * - Spec-compliant comments with Carbon verification
  *****************************************************************************/
 
-require('dotenv').config();
+require('./loadEnv');
 
 // Resolve target PR: CLI flag --pr takes precedence over env var
 const _cliPrIdx = process.argv.indexOf('--pr');
@@ -525,7 +525,7 @@ async function reviewPRs(options = {}) {
 
         // Run agent review
         console.log(`\n🤖 Running ${agent} review...`);
-        console.log('This may take 30-60 seconds...\n');
+        console.log('This may take a few minutes...\n');
 
         // ── Bobcoins accounting ─────────────────────────────────────────────
         // Bob only reports a run's own cost in stream-json output, and this app

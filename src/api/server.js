@@ -876,10 +876,25 @@ function startServer() {
   const shutdown = (signal) => {
     console.log(`${signal} received, shutting down gracefully...`);
     mcpConnection.stopAutoRefresh();
+
+    // server.close() stops accepting NEW connections but resolves only once every
+    // existing connection has ended — and on its own it never closes keep-alive
+    // sockets. The console polls /api/status over a persistent keep-alive
+    // connection, so a single open dashboard tab holds that count above zero
+    // forever: the callback never fires, process.exit is never reached, and the
+    // port stays bound. That is what turns a plain `kill`/Ctrl+C into a hang and
+    // makes the next `npm run api` fail with EADDRINUSE. Close idle sockets so the
+    // drain can finish, and hard-exit after a grace period so even a genuinely
+    // stuck in-flight request cannot wedge shutdown.
     server.close(() => {
       console.log('Server closed');
       process.exit(0);
     });
+    server.closeIdleConnections?.();
+    setTimeout(() => {
+      console.warn('Shutdown grace period elapsed; forcing exit.');
+      process.exit(0);
+    }, 5000).unref();
   };
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
@@ -891,7 +906,7 @@ function startServer() {
 module.exports = { startServer, handleRequest };
 
 if (require.main === module) {
-  require('dotenv').config();
+  require('../loadEnv');
   startServer();
 }
 

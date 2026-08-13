@@ -20,9 +20,9 @@ import {
 } from '@carbon/react';
 // Icons are imported sparingly and only after the export name is verified against
 // the installed @carbon/icons-react. Settings opens the connection panel; Terminal
-// marks the live review-output indicator; Checkmark and Close are the success glyph
-// and dismiss control of the review-complete card.
-import { Settings, Terminal, Checkmark, Close } from '@carbon/icons-react';
+// marks the live review-output indicator. (The completion popup is now a Carbon
+// Modal, which carries its own close affordance — no icon import needed.)
+import { Settings, Terminal } from '@carbon/icons-react';
 import { api } from '../api';
 import StatusTile from '../components/StatusTile';
 import McpConnectionPanel from '../components/McpConnectionPanel';
@@ -31,6 +31,15 @@ import ReviewLog from '../components/ReviewLog';
 
 /** How often the status panel re-polls, in milliseconds. */
 const POLL_INTERVAL_MS = 30_000;
+
+/**
+ * How often to poll JUST the review status while a run is in flight. Matched to
+ * the log tail's cadence (ReviewLog's TAIL_INTERVAL_MS) so `running` flips the
+ * instant a run ends — the completion modal and the idle status bubble track
+ * completion within a couple seconds instead of lagging up to POLL_INTERVAL_MS
+ * behind the log's "complete" line.
+ */
+const REVIEW_POLL_INTERVAL_MS = 2_000;
 
 /** Reviews listed in the Bobcoins ledger. Enough to see the trend, not a log. */
 const CREDIT_HISTORY_LIMIT = 10;
@@ -146,19 +155,11 @@ function Console({ authRequired = false, onSignOut }) {
   // the control they opened it from rather than at the top of the document.
   const settingsButtonRef = useRef(null);
 
-  // Completion toast: set once when a run transitions from running → finished
+  // Set once when a run transitions from running → finished. A success drives the
+  // passive completion Modal (which handles its own Escape / close / click-away);
+  // an error drives the toast below.
   const [completion, setCompletion] = useState(null);
   const prevRunningRef = useRef(false);
-
-  // The success card is dismissed manually — no timer.
-  useEffect(() => {
-    if (!completion) return undefined;
-    const onKey = (event) => {
-      if (event.key === 'Escape') setCompletion(null);
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [completion]);
 
 
   const load = useCallback(async () => {
@@ -206,7 +207,33 @@ function Console({ authRequired = false, onSignOut }) {
     return () => clearInterval(timer);
   }, [load]);
 
-  // Announce the end of a run.
+  // While a run is in flight, poll just the review status on the fast log-tail
+  // cadence so `review.running` flips the moment the run finishes. Without this
+  // the flag only refreshed on the 30s load() poll, so the completion modal and
+  // the idle status bubble lagged the log's "complete" line by up to 30s. Only the
+  // review status is fetched here, and only while running, so it adds no
+  // steady-state cost and never hammers the external credits gateway.
+  useEffect(() => {
+    if (!review?.running) return undefined;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      try {
+        const next = await api.reviewStatus();
+        if (!cancelled) setReview(next);
+      } catch (_) {
+        // A dropped fast poll is harmless: the 30s load() still runs, and the next
+        // tick is REVIEW_POLL_INTERVAL_MS away.
+      }
+    }, REVIEW_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [review?.running]);
+
+  // Announce the end of a run. The fast poll above flips `running` off within a
+  // couple seconds of completion, so this fires — and the modal appears — right as
+  // the status bubble goes idle, not at the next 30s poll.
   useEffect(() => {
     const isRunning = Boolean(review?.running);
     if (prevRunningRef.current && !isRunning) {
@@ -220,9 +247,14 @@ function Console({ authRequired = false, onSignOut }) {
           subtitle: n ? `Reviewed ${pluralPRs(n)}.` : 'The review run finished.',
         });
       }
+      // A finished run also changes credits, the ledger and health; the fast poll
+      // only refreshed the review status, so pull the rest now rather than waiting
+      // for the next 30s tick. Safe from re-entry: prevRunningRef is already false
+      // for the setReview this load() triggers, so the branch does not run again.
+      load();
     }
     prevRunningRef.current = isRunning;
-  }, [review]);
+  }, [review, load]);
 
   const cfg = config?.config;
 
@@ -656,37 +688,30 @@ function Console({ authRequired = false, onSignOut }) {
         Both are fixed and outside the Grid flow (Carbon guidance), so they float
         over the console rather than shifting layout.
       */}
-      {completion?.kind === 'success' && (
-        <div className="cm-success-overlay" onClick={() => setCompletion(null)}>
-          <div
-            className="cm-success"
-            role="status"
-            aria-live="polite"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="cm-success__close"
-              aria-label="Dismiss"
-              onClick={() => setCompletion(null)}
-            >
-              <Close size={20} />
-            </button>
-
-            <span className="cm-success__badge" aria-hidden="true">
-              <Checkmark size={24} />
-            </span>
-
-            <p className="cm-success__title">{completion.title}</p>
-            <p className="cm-success__summary">{completion.subtitle}</p>
-
-            <p className="cm-success__disclaimer">
-              AI-powered review can save time and increase productivity, but human
-              review is still required — AI can make mistakes.
-            </p>
-          </div>
-        </div>
-      )}
+      {/*
+        Run finished cleanly. A small, centered passive Modal — Carbon centers it
+        in the viewport and traps focus. The heading carries the outcome; the body
+        keeps the run summary and the standing AI disclaimer. passiveModal renders
+        no footer: the only action is to close (the X, Escape, or clicking
+        outside), which is all a confirmation needs. Always mounted and driven by
+        `open` so it animates in and out. A failed run still uses the plain error
+        toast below.
+      */}
+      <Modal
+        open={completion?.kind === 'success'}
+        onRequestClose={() => setCompletion(null)}
+        passiveModal
+        size="sm"
+        modalLabel="Reviews"
+        modalHeading={completion?.title || 'Review complete'}
+        aria-label={completion?.title || 'Review complete'}
+      >
+        <p className="cm-modal__para">{completion?.subtitle}</p>
+        <p className="cm-modal__disclaimer">
+          AI-powered review can save time and increase productivity, but human
+          review is still required — AI can make mistakes.
+        </p>
+      </Modal>
 
       {completion?.kind === 'error' && (
         <div className="cm-toast-region">

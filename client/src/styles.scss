@@ -36,136 +36,10 @@ body {
   z-index: 9000;
 }
 
-// ── Review-complete success card ───────────────────────────────────────────
-.cm-success-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: $spacing-05;
-  background: $overlay;
-
-  @media (prefers-reduced-motion: no-preference) {
-    animation: cm-overlay-in 0.2s ease-out both;
-  }
-}
-
-@keyframes cm-overlay-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.cm-success {
-  position: relative;
-  inline-size: 22rem;
-  max-inline-size: 100%;
-  padding: $spacing-06;
-  color: $text-primary;
-  // Carbon for AI aura: a soft glow gradient over the layer surface.
-  background:
-    radial-gradient(
-      130% 120% at 100% 0%,
-      var(--cds-ai-aura-start, rgba(69, 137, 255, 0.16)) 0%,
-      var(--cds-ai-aura-end, transparent) 55%
-    ),
-    $layer;
-  border: 1px solid var(--cds-ai-border-start, rgba(15, 98, 254, 0.32));
-  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.28);
-
-  @media (prefers-reduced-motion: no-preference) {
-    animation: cm-success-in 0.32s ease-out both;
-  }
-}
-
-@keyframes cm-success-in {
-  from {
-    opacity: 0;
-    transform: translateY(0.5rem) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-// Plain ghost-style dismiss, pinned to the card's top-right corner. A native
-// button (not IconButton) so this absolute box anchors to the card rather than to
-// an IconButton tooltip wrapper.
-.cm-success__close {
-  position: absolute;
-  inset-block-start: $spacing-03;
-  inset-inline-end: $spacing-03;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: 2rem;
-  block-size: 2rem;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: $icon-primary;
-  cursor: pointer;
-
-  &:hover {
-    background: $layer-hover;
-  }
-
-  &:focus-visible {
-    outline: 2px solid $focus;
-    outline-offset: -2px;
-  }
-}
-
-// The hero: a bold white check in a success-green disc that pops in.
-.cm-success__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: 3rem;
-  block-size: 3rem;
-  border-radius: 50%;
-  background: $support-success;
-  color: $text-on-color;
-  margin-bottom: $spacing-05;
-
-  @media (prefers-reduced-motion: no-preference) {
-    animation: cm-success-pop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) 0.08s both;
-  }
-}
-
-@keyframes cm-success-pop {
-  0% {
-    transform: scale(0.3);
-    opacity: 0;
-  }
-  60% {
-    transform: scale(1.12);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.cm-success__title {
-  @include type-style('productive-heading-03');
-  margin: 0;
-}
-
-.cm-success__summary {
-  @include type-style('body-01');
-  color: $text-secondary;
-  margin-top: $spacing-02;
-}
-
-// The standing AI disclaimer: quiet, italic small print, set off by a hairline.
-.cm-success__disclaimer {
+// ── Review-complete modal ──────────────────────────────────────────────────
+// The standing AI disclaimer, shown at the foot of the completion modal: quiet,
+// italic small print, set off by a hairline.
+.cm-modal__disclaimer {
   @include type-style('label-01');
   color: $text-secondary;
   font-style: italic;
@@ -581,6 +455,25 @@ body {
 // to the bottom of the Reviews tile, so the grid's row spacing already places
 // it.
 
+// Carbon for AI presence. This panel is entirely agent-produced, so it carries
+// the soft blue aura Carbon draws on a decorator-bearing tile — but WITHOUT a
+// second AILabel: the panel already discloses its AI origin in the header
+// (AboutAi), and Carbon's `decorator` prop would render another label. Uses
+// Carbon's own --cds-ai-* tokens, so the aura and border track the theme
+// (including dark mode) rather than a hardcoded blue. Glow anchored top-right, the
+// conventional corner for Carbon's AI aura.
+.cm-log {
+  position: relative;
+  background:
+    radial-gradient(
+      60% 60% at 100% 0%,
+      var(--cds-ai-aura-start, rgba(69, 137, 255, 0.16)) 0%,
+      var(--cds-ai-aura-end, transparent) 60%
+    ),
+    $layer;
+  border: 1px solid var(--cds-ai-border-start, rgba(15, 98, 254, 0.32));
+}
+
 .cm-log__header {
   display: flex;
   align-items: center;
@@ -611,10 +504,22 @@ body {
   gap: $spacing-03;
 }
 
-// InlineLoading sizes itself for a form row; inside a tile header that leaves a
-// ragged gap under the title.
-.cm-log__spinner {
-  min-block-size: auto;
+// Carbon's CopyButton hard-codes `background-color: $layer`. That blended into
+// the plain tile, but against the AI aura it reads as a solid white box — unlike
+// the ghost Download button beside it, which is transparent. Neutralise the fill
+// so the aura shows through, and mirror the ghost button's translucent
+// hover/active overlays (they sit correctly over the gradient). Scoped to this
+// toolbar so no other CopyButton is affected.
+.cm-log__actions .cds--copy-btn {
+  background-color: transparent;
+
+  &:hover {
+    background-color: $background-hover;
+  }
+
+  &:active {
+    background-color: $background-active;
+  }
 }
 
 // The per-PR progress list — one row per PR in the run, reconstructed from the
@@ -637,12 +542,16 @@ body {
   @include type-style('body-01');
 }
 
-// InlineLoading lays out for a form row; in a compact list row that leaves a gap.
-// The min width holds the column so a row does not jump as its PR moves from
-// queued to reviewing to reviewed.
-.cm-pr-progress__spinner {
+// Carbon's InlineLoading is inline-size:100% — built to fill a form field. In
+// this flex row that makes it eat the whole width and shove the PR number and
+// title to the far edge, where the title clips. Size it to its content so the
+// blue #number link and the title sit immediately after "Reviewing", left
+// aligned and uncut — matching the reviewed (IconIndicator) row. Scoped under the
+// row to outrank Carbon's single-class rule regardless of stylesheet order.
+.cm-pr-progress__row .cm-pr-progress__spinner {
   min-block-size: auto;
-  min-inline-size: 7rem;
+  inline-size: auto;
+  flex: 0 0 auto;
 }
 
 .cm-pr-progress__num {
@@ -654,6 +563,9 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  // A nowrap flex item will not shrink below its content width without this, so a
+  // long title would overflow the tile edge instead of ellipsising within the row.
+  min-inline-size: 0;
 }
 
 .cm-log__notice {
