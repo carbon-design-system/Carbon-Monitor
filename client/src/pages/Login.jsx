@@ -7,6 +7,7 @@ import {
   PasswordInput,
   Button,
   InlineNotification,
+  Link,
   Header,
   HeaderName,
 } from '@carbon/react';
@@ -15,10 +16,9 @@ import { api } from '../api';
 /**
  * Console sign-in.
  *
- * Ported from Carbon Migrate's agent-dispatcher Login page so operators meet the
- * same screen in both tools, and accepts the same credentials (ES_USERNAME /
- * ES_PASSWORD). The wordmark keeps that page's thin/bold split — weight 100 on
- * "Carbon", default on the product word.
+ * Ported from Carbon Migrate's agent-dispatcher Login page. Signs in with the
+ * console's own CONSOLE_USERNAME / CONSOLE_PASSWORD. The wordmark keeps that
+ * page's thin/bold split — weight 100 on "Carbon", default on the product word.
  */
 function Login({ onSuccess }) {
   const [username, setUsername] = useState('');
@@ -34,11 +34,14 @@ function Login({ onSuccess }) {
       await api.login(username, password);
       onSuccess();
     } catch (err) {
-      setError(
-        err.status
+      setError({
+        message: err.status
           ? err.message
-          : 'Unable to reach the server. Please try again.'
-      );
+          : 'Unable to reach the server. Please try again.',
+        // Returned by the server on an auth failure only, so the contact line
+        // shows for a wrong username/password but not for an unreachable server.
+        contact: err.body?.contact || null,
+      });
     } finally {
       setLoading(false);
     }
@@ -65,13 +68,21 @@ function Login({ onSuccess }) {
           <p className="cm-login__subtitle">Carbon Monitor · PR Review Agent</p>
 
           {error && (
-            <InlineNotification
-              kind="error"
-              title="Authentication failed"
-              subtitle={error}
-              hideCloseButton
-              className="cm-login__notification"
-            />
+            <div className="cm-login__error">
+              <InlineNotification
+                kind="error"
+                title="Sign-in failed"
+                subtitle={error.message}
+                hideCloseButton
+                className="cm-login__notification"
+              />
+              {error.contact && (
+                <p className="cm-login__contact">
+                  For access to Carbon Monitor, contact{' '}
+                  <Link href={`mailto:${error.contact}`}>{error.contact}</Link>.
+                </p>
+              )}
+            </div>
           )}
 
           <Form onSubmit={handleSubmit}>

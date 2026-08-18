@@ -666,8 +666,83 @@ body {
   max-width: 100%;
 }
 
+// A failed sign-in shows the error notice with the access-request line directly
+// beneath it — the contact rendered as a Carbon Link (a real mailto), tucked
+// close to the notice rather than floating on its own.
+.cm-login__error {
+  margin-bottom: $spacing-05;
+}
+
+.cm-login__error .cm-login__notification {
+  margin-bottom: $spacing-03;
+}
+
+.cm-login__contact {
+  @include type-style('body-01');
+  color: $text-secondary;
+  margin: 0;
+}
+
 .cm-login__submit {
   margin-top: $spacing-06;
   width: 100%;
   max-width: 100%;
+}
+
+// ── Help & usage guide (/help) ───────────────────────────────────────────────
+// A public, single-column read. Clears the fixed UI Shell header, caps the
+// measure so prose stays readable, and lets the annotated screenshots run the
+// full column width with a hairline frame.
+.cm-help {
+  margin-top: 3rem;
+  padding-bottom: $spacing-10;
+}
+
+.cm-help__inner {
+  max-width: 64rem;
+  margin: 0 auto;
+}
+
+.cm-help__title {
+  @include type-style('productive-heading-05');
+  margin-bottom: $spacing-05;
+}
+
+.cm-help__lede {
+  @include type-style('body-02');
+  color: $text-secondary;
+  max-width: 46rem;
+  margin-bottom: $spacing-07;
+}
+
+.cm-help__h2 {
+  @include type-style('productive-heading-04');
+  margin: $spacing-09 0 $spacing-05;
+}
+
+.cm-help__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid $border-subtle;
+  margin-bottom: $spacing-05;
+}
+
+.cm-help__accordion {
+  margin-bottom: $spacing-06;
+}
+
+.cm-help p {
+  @include type-style('body-01');
+  margin-bottom: $spacing-03;
+}
+
+.cm-help__list {
+  margin: $spacing-03 0 $spacing-03 $spacing-06;
+  list-style: disc;
+
+  li {
+    @include type-style('body-01');
+    margin-bottom: $spacing-02;
+  }
 }

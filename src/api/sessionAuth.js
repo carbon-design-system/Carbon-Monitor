@@ -1,9 +1,10 @@
 /******************************************************************************
  * Console Session Authentication
  *
- * Ported from Carbon Migrate's agent-dispatcher (src/middleware/auth.js) so the
- * two consoles behave identically and accept the SAME credentials: the operator
- * signs in with ES_USERNAME / ES_PASSWORD.
+ * Ported from Carbon Migrate's agent-dispatcher (src/middleware/auth.js). The
+ * operator signs in with CONSOLE_USERNAME / CONSOLE_PASSWORD — credentials
+ * dedicated to this console and kept separate from the Elasticsearch (ES_*)
+ * account, so the two are never coupled.
  *
  * A stateless HMAC-signed token in an HttpOnly cookie — no session store, which
  * matters because Code Engine may run several instances and scale to zero. Any
@@ -23,6 +24,9 @@ const COOKIE_NAME = 'cm_session';
 const SESSION_MAX_AGE_SECONDS = Number(
   process.env.SESSION_MAX_AGE_SECONDS || 8 * 60 * 60
 );
+
+/** Where a locked-out operator is told to request access to Carbon Monitor. */
+const ACCESS_CONTACT_EMAIL = 'Carbon.MCP@ibm.com';
 
 /**
  * Feature flag: whether the console requires a sign-in.
@@ -64,9 +68,9 @@ if (!AUTH_FLAG.recognized) {
 
 // Sign-in is on but unusable without credentials to check against — worth saying
 // at startup rather than letting every attempt fail with a 503.
-if (AUTH_REQUIRED && !(process.env.ES_USERNAME && process.env.ES_PASSWORD)) {
+if (AUTH_REQUIRED && !(process.env.CONSOLE_USERNAME && process.env.CONSOLE_PASSWORD)) {
   console.warn(
-    '[api/sessionAuth] WARNING: AUTH_REQUIRED is set but ES_USERNAME/ES_PASSWORD ' +
+    '[api/sessionAuth] WARNING: AUTH_REQUIRED is set but CONSOLE_USERNAME/CONSOLE_PASSWORD ' +
       'are not — nobody will be able to sign in.'
   );
 }
@@ -196,8 +200,8 @@ function safeEqual(a, b) {
  * @returns {{ok: boolean, status: number, body: Object}}
  */
 function login(res, { username, password } = {}) {
-  const expectedUser = process.env.ES_USERNAME;
-  const expectedPass = process.env.ES_PASSWORD;
+  const expectedUser = process.env.CONSOLE_USERNAME;
+  const expectedPass = process.env.CONSOLE_PASSWORD;
 
   if (!expectedUser || !expectedPass) {
     return {
@@ -205,8 +209,9 @@ function login(res, { username, password } = {}) {
       status: 503,
       body: {
         error:
-          'Sign-in is not configured. ES_USERNAME and ES_PASSWORD must be set ' +
-          'on the server.',
+          'Sign-in is not configured. CONSOLE_USERNAME and CONSOLE_PASSWORD must ' +
+          'be set on the server.',
+        contact: ACCESS_CONTACT_EMAIL,
       },
     };
   }
@@ -216,8 +221,19 @@ function login(res, { username, password } = {}) {
   const userOk = safeEqual(username, expectedUser);
   const passOk = safeEqual(password, expectedPass);
 
+  // One generic message for BOTH a wrong username and a wrong password: saying
+  // which was wrong would confirm valid usernames to someone guessing. The
+  // contact address rides in its own field so the sign-in page can render it as a
+  // mailto link rather than parse it out of the message.
   if (!userOk || !passOk) {
-    return { ok: false, status: 401, body: { error: 'Invalid username or password' } };
+    return {
+      ok: false,
+      status: 401,
+      body: {
+        error: 'Username or password is incorrect.',
+        contact: ACCESS_CONTACT_EMAIL,
+      },
+    };
   }
 
   setSessionCookie(res, makeToken());
@@ -243,7 +259,7 @@ function status(req) {
   return {
     authRequired: AUTH_REQUIRED,
     authenticated: hasValidSession(req),
-    configured: !!(process.env.ES_USERNAME && process.env.ES_PASSWORD),
+    configured: !!(process.env.CONSOLE_USERNAME && process.env.CONSOLE_PASSWORD),
   };
 }
 

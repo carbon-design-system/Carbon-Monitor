@@ -20,9 +20,8 @@ import {
 } from '@carbon/react';
 // Icons are imported sparingly and only after the export name is verified against
 // the installed @carbon/icons-react. Settings opens the connection panel; Terminal
-// marks the live review-output indicator. (The completion popup is now a Carbon
-// Modal, which carries its own close affordance — no icon import needed.)
-import { Settings, Terminal } from '@carbon/icons-react';
+// marks the live review-output indicator; Help opens the usage guide.
+import { Settings, Terminal, Help } from '@carbon/icons-react';
 import { api } from '../api';
 import StatusTile from '../components/StatusTile';
 import McpConnectionPanel from '../components/McpConnectionPanel';
@@ -397,6 +396,19 @@ function Console({ authRequired = false, onSignOut }) {
               </span>
             </div>
           </Tooltip>
+
+          {/*
+            Help sits to the LEFT of the settings gear. It opens the usage guide
+            (/help) in a new tab — a public page, so it works whether or not the
+            operator is signed in. aria-label doubles as the hover tooltip.
+          */}
+          <HeaderGlobalAction
+            aria-label="Help"
+            tooltipAlignment="center"
+            onClick={() => window.open('/help', '_blank', 'noopener,noreferrer')}
+          >
+            <Help size={20} />
+          </HeaderGlobalAction>
 
           {/*
             Connection settings live behind this rather than in a tile on the

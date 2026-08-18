@@ -184,10 +184,10 @@ function McpConnectionPanel({ status, onChanged, inPanel = false }) {
           />
         </dd>
 
-        {status?.subject && (
+        {status?.authenticated && (
           <>
-            <dt>Signed in as</dt>
-            <dd>{status.subject}</dd>
+            <dt>Agent</dt>
+            <dd>AI agent ready for queries.</dd>
           </>
         )}
 
