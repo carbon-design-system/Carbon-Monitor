@@ -751,7 +751,7 @@ async function probe() {
         params: {
           protocolVersion: '2025-03-26',
           capabilities: {},
-          clientInfo: { name: 'carbon-monitor-probe', version: '1.0.0' },
+          clientInfo: { name: 'carbon-monitor-probe', version: '1.0.1' },
         },
       }),
     });
@@ -808,9 +808,11 @@ async function getStatus() {
     needsReauth: state.needsReauth === true,
     expiresInSeconds: remaining,
     expiresAt: claims?.exp ? new Date(claims.exp * 1000).toISOString() : null,
-    // Identifies whose session is in use — useful when several operators share
-    // one deployment and the connection stops behaving as expected.
-    subject: claims?.email || claims?.preferred_username || null,
+    // Whether the cached token carries a decoded identity, surfaced to the UI as
+    // a generic readiness signal only. The identifying value (email / username)
+    // is deliberately NOT returned, so an operator's address never reaches the
+    // browser or the status payloads (/api/status, /api/mcp/status).
+    authenticated: !!(claims?.email || claims?.preferred_username),
     connectedAt: state.connectedAt || null,
     lastRefreshAt: state.lastRefreshAt || lastRefresh,
     lastRefreshError,

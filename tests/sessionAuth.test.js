@@ -3,10 +3,10 @@
  *
  * Covers:
  *  1. Correct credentials are accepted and a session cookie is issued
- *  2. A wrong password is rejected
+ *  2. A wrong password is rejected, with a generic message + access contact
  *  3. A wrong username is rejected
  *  4. A username that is a prefix of the real one is rejected (length guard)
- *  5. Sign-in fails closed when ES_USERNAME / ES_PASSWORD are unset
+ *  5. Sign-in fails closed when CONSOLE_USERNAME / CONSOLE_PASSWORD are unset
  *  6. A freshly minted token verifies
  *  7. A tampered token is rejected
  *  8. A token signed with a different key is rejected
@@ -84,8 +84,8 @@ function loadAuth(env = {}, unset = []) {
 }
 
 const CREDS = {
-  ES_USERNAME: 'operator',
-  ES_PASSWORD: 'correct-horse-battery',
+  CONSOLE_USERNAME: 'operator',
+  CONSOLE_PASSWORD: 'correct-horse-battery',
   SESSION_SIGNING_KEY: 'test-signing-key',
   AUTH_REQUIRED: 'true',
 };
@@ -115,6 +115,20 @@ test('rejects a wrong password', () => {
   assert(!res.headers['Set-Cookie'], 'no cookie should be issued');
 });
 
+test('a failed sign-in returns a generic message and the access-request contact', () => {
+  const result = auth.login(fakeRes(), { username: 'operator', password: 'wrong' });
+  assert(
+    result.body.contact === 'Carbon.MCP@ibm.com',
+    `expected the Carbon MCP contact address, got ${result.body.contact}`
+  );
+  // Generic on purpose — it must never reveal WHICH field was wrong, which would
+  // confirm valid usernames to someone guessing.
+  assert(
+    result.body.error === 'Username or password is incorrect.',
+    `expected the generic failure message, got ${JSON.stringify(result.body.error)}`
+  );
+});
+
 test('rejects a wrong username', () => {
   const result = auth.login(fakeRes(), { username: 'intruder', password: 'correct-horse-battery' });
   assert(result.status === 401, `expected 401, got ${result.status}`);
@@ -126,17 +140,17 @@ test('rejects a username that is a prefix of the real one', () => {
 });
 
 test('fails closed when credentials are not configured on the server', () => {
-  const savedUser = process.env.ES_USERNAME;
-  const savedPass = process.env.ES_PASSWORD;
-  delete process.env.ES_USERNAME;
-  delete process.env.ES_PASSWORD;
+  const savedUser = process.env.CONSOLE_USERNAME;
+  const savedPass = process.env.CONSOLE_PASSWORD;
+  delete process.env.CONSOLE_USERNAME;
+  delete process.env.CONSOLE_PASSWORD;
   try {
     const result = auth.login(fakeRes(), { username: 'operator', password: 'anything' });
     assert(result.status === 503, `expected 503, got ${result.status}`);
     assert(result.ok === false, 'login must not succeed without configured credentials');
   } finally {
-    process.env.ES_USERNAME = savedUser;
-    process.env.ES_PASSWORD = savedPass;
+    process.env.CONSOLE_USERNAME = savedUser;
+    process.env.CONSOLE_PASSWORD = savedPass;
   }
 });
 
@@ -215,7 +229,7 @@ test('hasValidSession bypasses the check when auth is not enforced', () => {
 // not fail loudly — it silently exposes (or silently locks out) a deployment.
 
 test('sign-in is OFF when AUTH_REQUIRED is unset — the default deployment', () => {
-  const mod = loadAuth({ ES_USERNAME: 'operator', ES_PASSWORD: 'x' }, ['AUTH_REQUIRED']);
+  const mod = loadAuth({ CONSOLE_USERNAME: 'operator', CONSOLE_PASSWORD: 'x' }, ['AUTH_REQUIRED']);
   assert(mod.AUTH_REQUIRED === false, 'the default must be an open console');
 });
 
@@ -223,7 +237,7 @@ test('sign-in stays OFF in production unless explicitly enabled', () => {
   // The flag is deliberately not keyed to NODE_ENV: a security posture must be
   // chosen, not inferred from an unrelated variable.
   const mod = loadAuth(
-    { ES_USERNAME: 'operator', ES_PASSWORD: 'x', NODE_ENV: 'production' },
+    { CONSOLE_USERNAME: 'operator', CONSOLE_PASSWORD: 'x', NODE_ENV: 'production' },
     ['AUTH_REQUIRED']
   );
   assert(mod.AUTH_REQUIRED === false, 'NODE_ENV=production must not turn sign-in on');

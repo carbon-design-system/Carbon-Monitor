@@ -11,7 +11,12 @@
  * - Spec-compliant comments with Carbon verification
  *****************************************************************************/
 
-require('./loadEnv');
+// Load .env only when this module is the entrypoint (node src/index.js — the
+// reviewer, run directly or spawned by the dashboard). When it is imported
+// instead — by server.js for its exported helpers, or by a test — .env is NOT
+// loaded here: server.js loads it once at its own top, and a test controls
+// process.env itself, which loadEnv's override:true would otherwise clobber.
+if (require.main === module) require('./loadEnv');
 
 // Resolve target PR: CLI flag --pr takes precedence over env var
 const _cliPrIdx = process.argv.indexOf('--pr');

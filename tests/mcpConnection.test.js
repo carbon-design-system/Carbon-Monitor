@@ -157,14 +157,16 @@ async function main() {
     assert(mode === 0o600, `expected 0600, got ${mode.toString(8)} — it holds a bearer token`);
   });
 
-  await test('getStatus reports expiry and never leaks the token', async () => {
+  await test('getStatus reports expiry and never leaks the token or the operator email', async () => {
     const future = Math.floor(Date.now() / 1000) + 1800;
     await mcp.writeBobMcpHeaders({ token: makeJwt({ exp: future, email: 'op@ibm.com' }) });
 
     const status = await mcp.getStatus();
     assert(status.configured === true, 'should report configured');
     assert(status.hasToken === true, 'should report a token is present');
-    assert(status.subject === 'op@ibm.com', `unexpected subject: ${status.subject}`);
+    // Reports THAT an identity is present, never WHO — the email must not leave
+    // the server (asserted against the serialized payload below).
+    assert(status.authenticated === true, 'should report an authenticated identity');
     assert(
       status.expiresInSeconds > 1700 && status.expiresInSeconds <= 1800,
       `unexpected expiry: ${status.expiresInSeconds}`
@@ -173,6 +175,7 @@ async function main() {
     const serialized = JSON.stringify(status);
     assert(!serialized.includes('Bearer '), 'status must not include the Authorization header');
     assert(!serialized.includes('session-one'), 'status must not include the session id');
+    assert(!serialized.includes('op@ibm.com'), 'status must not expose the operator email address');
   });
 
   // Restore the environment and remove the scratch directory.

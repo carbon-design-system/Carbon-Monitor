@@ -221,7 +221,7 @@ async function checkCarbonMcp() {
     label: 'Carbon MCP',
     status: OK,
     detail: `Connected — ${renewal}`,
-    hint: status.subject ? `Signed in as ${status.subject}` : null,
+    hint: 'AI agent ready for queries.',
     meta: status,
   };
 }

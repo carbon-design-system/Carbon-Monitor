@@ -21,7 +21,7 @@ export NODE_ENV=production
 
 : "${APP:=carbon-monitor}"
 : "${IMAGE_NAME:=carbon-monitor}"
-: "${VERSION:=1.0.0}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
+: "${VERSION:=1.0.1}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
 
 # Secret holding this app's credentials. 
 : "${SECRET_NAME:=carbon-monitor-secrets}"
@@ -47,14 +47,25 @@ export NODE_ENV=production
 : "${MIN_SCALE:=1}"
 : "${MAX_SCALE:=1}"
 
-# Console sign-in feature flag. Deliberately defaulted OFF — the standard
-# deployment is open. Override with AUTH_REQUIRED=true in .env or the
-# environment; the console then requires ES_USERNAME / ES_PASSWORD from the
-# secret. Note the app is reachable at a public HTTPS URL either way, so with
-# this off anyone holding the URL can read status and trigger a review.
-: "${AUTH_REQUIRED:=false}"
-: "${CPU:=2}"
-: "${MEMORY:=4G}"
+# Console sign-in feature flag. This deployment REQUIRES a login — operators sign
+# in with CONSOLE_USERNAME / CONSOLE_PASSWORD from the secret. .env sets
+# AUTH_REQUIRED=true and is sourced above; the default here matches so a deploy is
+# never accidentally left open. Override with AUTH_REQUIRED=false only for a
+# deliberate open deployment — and note the app is on a public HTTPS URL, so with
+# sign-in off anyone holding the URL can read status and trigger a review.
+: "${AUTH_REQUIRED:=true}"
+
+# CPU / memory. Sized for THIS workload, not padded: reviews are single-flight
+# (one at a time) and top out at ~50 PRs/day, and the heavy lifting — the LLM
+# inference — happens remotely on the Bob gateway, so the container is I/O- and
+# latency-bound, not CPU-bound. 1 vCPU / 2 GB holds a bounded review bundle
+# (GITHUB_AI_AGENT_MAX_INPUT_TOKENS ≈ 512 KB of prompt) plus Bob and Node with
+# headroom. The app runs 24/7 (min-scale 1), so this is what is billed around the
+# clock — halving it from 2 vCPU / 4 GB roughly halves that standing cost. If a
+# very large PR ever OOM-kills a review, raise MEMORY to 4G (a valid 1 vCPU / 4 GB
+# pairing) rather than reaching for more CPU.
+: "${CPU:=1}"
+: "${MEMORY:=2G}"
 : "${CONCURRENCY:=100}"
 : "${REQUEST_TIMEOUT:=300}"   # CE and Bob cap is 300s (5m)
 : "${SCALE_DOWN_DELAY:=300}"
@@ -276,6 +287,8 @@ SECRET_KEYS=(
   ES_USERNAME
   ES_PASSWORD
   ES_CA_CERT_PATH
+  CONSOLE_USERNAME
+  CONSOLE_PASSWORD
   SESSION_SIGNING_KEY
   API_SECRET
 )
@@ -287,8 +300,8 @@ log "Syncing secret '${SECRET_NAME}' from .env…"
 [ -n "${BOB_API_KEY:-}" ] || die "BOB_API_KEY is not set (.env or environment). Bob cannot authenticate headlessly without it — SSO is interactive-only."
 
 if [ "${AUTH_REQUIRED}" = "true" ]; then
-  { [ -n "${ES_USERNAME:-}" ] && [ -n "${ES_PASSWORD:-}" ]; } \
-    || die "AUTH_REQUIRED=true needs ES_USERNAME and ES_PASSWORD — nobody could sign in otherwise."
+  { [ -n "${CONSOLE_USERNAME:-}" ] && [ -n "${CONSOLE_PASSWORD:-}" ]; } \
+    || die "AUTH_REQUIRED=true needs CONSOLE_USERNAME and CONSOLE_PASSWORD — nobody could sign in otherwise."
   [ -n "${SESSION_SIGNING_KEY:-}" ] \
     || warn "SESSION_SIGNING_KEY is empty; sessions will not survive a restart. Generate one with: openssl rand -hex 32"
 fi
@@ -425,7 +438,7 @@ COMMON_FLAGS=(
   --env LOG_LEVEL=info
   # Console sign-in feature flag. OFF by default: the standard deployment is
   # open. Set AUTH_REQUIRED=true in .env (or the environment) to require a login,
-  # which also needs ES_USERNAME / ES_PASSWORD in the secret.
+  # which also needs CONSOLE_USERNAME / CONSOLE_PASSWORD in the secret.
   --env "AUTH_REQUIRED=${AUTH_REQUIRED}"
   --env GITHUB_AI_AGENT_CLI=bob
   --env GITHUB_AI_AGENT_OWNER="${GITHUB_AI_AGENT_OWNER:-carbon-design-system}"
@@ -525,7 +538,7 @@ print -P "  ${BLU}Health:${CLR}   ${URL}/api/health"
 print -P ""
 
 if [ "${AUTH_REQUIRED}" = "true" ]; then
-  print -P "  ${YLW}Sign-in:${CLR}  required — ES_USERNAME / ES_PASSWORD from ${SECRET_NAME}"
+  print -P "  ${YLW}Sign-in:${CLR}  required — CONSOLE_USERNAME / CONSOLE_PASSWORD from ${SECRET_NAME}"
 else
   print -P "  ${YLW}Sign-in:${CLR}  OPEN — no authentication. Anyone with the URL can view"
   print -P "            status and trigger a review. Set AUTH_REQUIRED=true to change."

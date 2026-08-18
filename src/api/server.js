@@ -12,6 +12,13 @@
  * carries no dependency that exists purely to serve four routes.
  *****************************************************************************/
 
+// Load .env BEFORE requiring anything that reads process.env at import time —
+// sessionAuth captures AUTH_REQUIRED the moment it is required, so a later load
+// would leave sign-in silently off. Guarded to the entrypoint so importing this
+// module from a test does not overwrite the env the test set up (loadEnv uses
+// override:true).
+if (require.main === module) require('../loadEnv');
+
 const http = require('http');
 const fs = require('fs');
 const fsp = require('fs').promises;
@@ -344,13 +351,10 @@ function handleConfig(req, res) {
       postInlineComments: process.env.GITHUB_AI_AGENT_POST_INLINE_COMMENTS !== 'false',
       postSummaryComment: process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false',
       carbonMcpUrl: mcpConnection.MCP_URL,
-      // Presence only — credentials are never returned by this API.
-      //
-      // ES_USERNAME is half of the console's own sign-in pair (sessionAuth
-      // authenticates against ES_USERNAME / ES_PASSWORD), so returning it would
-      // reduce a console compromise to guessing the password alone. The host is
+      // Presence only — credentials are never returned by this API. The host is
       // enough to tell an operator which cluster is wired up; the full URL can
-      // carry a path, port and query an anonymous-ish caller has no use for.
+      // carry a path, port and query an anonymous-ish caller has no use for, and
+      // ES_USERNAME / ES_PASSWORD are never exposed at all.
       elasticsearchConfigured: !!process.env.ES_URL,
       elasticsearchHost: esHost(),
     },
@@ -857,7 +861,7 @@ function startServer() {
     console.log(
       `🔓 Sign-in:        ${
         sessionAuth.AUTH_REQUIRED
-          ? 'REQUIRED (ES_USERNAME / ES_PASSWORD)'
+          ? 'REQUIRED (CONSOLE_USERNAME / CONSOLE_PASSWORD)'
           : 'open — no authentication (set AUTH_REQUIRED=true to enable)'
       }`
     );
@@ -906,7 +910,8 @@ function startServer() {
 module.exports = { startServer, handleRequest };
 
 if (require.main === module) {
-  require('../loadEnv');
+  // .env is already loaded at the top of this file (before sessionAuth is
+  // required), so it is not repeated here.
   startServer();
 }
 
