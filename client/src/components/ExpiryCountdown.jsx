@@ -55,27 +55,44 @@ function ExpiryCountdown({ seconds, expiresAt, renewable = false }) {
   }
 
   const expired = remaining <= 0;
-
-  if (expired) {
-    return (
-      <span
-        className={`cm-countdown${renewable ? '' : ' cm-countdown--expired'}`}
-        aria-live="off"
-      >
-        {renewable ? 'Renews on next call' : 'Expired'}
-      </span>
-    );
-  }
+  const expiredText = renewable ? 'Renews on next call' : 'Expired';
 
   return (
-    <span
-      className="cm-countdown"
-      // Announced only when it changes state, not on every tick — a per-second
-      // live region would flood a screen reader with meaningless updates.
-      aria-live="off"
-    >
-      {format(remaining)}
-    </span>
+    <>
+      {/*
+        Counting span: aria-live="off" so AT is not flooded with a new
+        announcement every second. Hidden (and emptied) once expired so only
+        one span has content at a time.
+      */}
+      <span
+        className="cm-countdown"
+        aria-live="off"
+        aria-hidden={expired ? true : undefined}
+      >
+        {expired ? '' : format(remaining)}
+      </span>
+
+      {/*
+        Expiry live region: always mounted so the browser treats it as an
+        existing live region and fires the announcement when its content
+        changes from '' → expiredText. A live region that mounts with content
+        already present does NOT announce — mounting empty and then filling it
+        on transition is what produces the announcement reliably.
+
+        aria-atomic="true": announce the whole string, not a character diff.
+        aria-live="polite": queues behind current AT speech; never interrupts.
+        The className mirrors the counting span so the visual style (colour,
+        font) is consistent whether the countdown is live or expired.
+      */}
+      <span
+        className={`cm-countdown${!renewable && expired ? ' cm-countdown--expired' : ''}`}
+        aria-live="polite"
+        aria-atomic="true"
+        aria-hidden={!expired ? true : undefined}
+      >
+        {expired ? expiredText : ''}
+      </span>
+    </>
   );
 }
 

@@ -11,7 +11,6 @@ import {
   Grid,
   Column,
   Button,
-  Tooltip,
   Tile,
   TextInput,
   InlineNotification,
@@ -426,23 +425,29 @@ function Console({ authRequired = false, onSignOut }) {
           {version && <span className="cm-brand-version"> (v{version})</span>}
         </HeaderName>
         <HeaderGlobalBar>
-          <Tooltip label={review?.running ? 'Running' : 'Idle'} align="bottom" autoAlign>
-            <div
-              className="cm-review-status"
-              role="status"
-              aria-label={review?.running ? 'Review status: running' : 'Review status: idle'}
-              tabIndex={0}
-            >
-              <span className="cm-review-status__icon" aria-hidden="true">
-                <Terminal size={20} />
-                <span
-                  className={`cm-review-status__dot cm-review-status__dot--${
-                    review?.running ? 'running' : 'idle'
-                  }`}
-                />
-              </span>
-            </div>
-          </Tooltip>
+          {/*
+            Status badge — role="img" with aria-label carries the state for AT.
+            No Tooltip wrapper and no tabIndex: the Carbon Tooltip injects an
+            onFocus handler via cloneElement which VoiceOver detects and announces
+            as "clickable" even on a non-interactive element. The hover label
+            ("Running"/"Idle") is redundant with both the aria-label and the
+            Reviews tile's "State" row below, so the Tooltip adds nothing that
+            justifies the false interactive signal.
+          */}
+          <div
+            className="cm-review-status"
+            role="img"
+            aria-label={review?.running ? 'Review status: running' : 'Review status: idle'}
+          >
+            <span className="cm-review-status__icon" aria-hidden="true">
+              <Terminal size={20} />
+              <span
+                className={`cm-review-status__dot cm-review-status__dot--${
+                  review?.running ? 'running' : 'idle'
+                }`}
+              />
+            </span>
+          </div>
 
           {/*
             Help sits to the LEFT of the settings gear. It opens the usage guide
@@ -660,10 +665,13 @@ function Console({ authRequired = false, onSignOut }) {
               {/*
                 Manual controls — always in the DOM so the PR input field never
                 loses its state when the schedule poll returns. Hidden via CSS
-                when automated mode is active so the tile does not show two
-                competing interaction models at once.
+                and inerted when automated mode is active so the tile does not
+                show two competing interaction models at once. `inert` removes
+                the subtree from the accessibility tree in addition to what
+                display:none already does, guarding against AT/browser pairs
+                that do not fully honour display:none.
               */}
-              <div className={isAutomated ? 'cm-review-manual--hidden' : undefined}>
+              <div className={isAutomated ? 'cm-review-manual--hidden' : undefined} inert={isAutomated || undefined}>
                 <div className="cm-review-field">
                   <TextInput
                     id="cm-review-prs"
@@ -884,6 +892,14 @@ function Console({ authRequired = false, onSignOut }) {
         `open` so it animates in and out. A failed run still uses the plain error
         toast below.
       */}
+      {/*
+        aria-describedby points to the wrapper that contains both the run
+        summary and the AI disclaimer. Carbon Modal spreads ...rest onto the
+        <div role="dialog">, so this lands on the correct element. AT reads
+        the heading (via aria-labelledby) then the body (via aria-describedby)
+        on focus entry — the disclaimer is announced without requiring the
+        operator to navigate down to it.
+      */}
       <Modal
         open={completion?.kind === 'success'}
         onRequestClose={() => setCompletion(null)}
@@ -892,12 +908,15 @@ function Console({ authRequired = false, onSignOut }) {
         modalLabel="Reviews"
         modalHeading={completion?.title || 'Review complete'}
         aria-label={completion?.title || 'Review complete'}
+        aria-describedby="cm-completion-modal-body"
       >
-        <p className="cm-modal__para">{completion?.subtitle}</p>
-        <p className="cm-modal__disclaimer">
-          AI-powered review can save time and increase productivity, but human
-          review is still required — AI can make mistakes.
-        </p>
+        <div id="cm-completion-modal-body">
+          <p className="cm-modal__para">{completion?.subtitle}</p>
+          <p className="cm-modal__disclaimer">
+            AI-powered review can save time and increase productivity, but human
+            review is still required — AI can make mistakes.
+          </p>
+        </div>
       </Modal>
 
       {completion?.kind === 'error' && (

@@ -252,13 +252,24 @@ function McpConnectionPanel({ status, onChanged, inPanel = false, resetKey }) {
         )}
       </div>
 
-      {/* Spelled out rather than left to the button's colour, which is not a
-          reliable signal on its own (WCAG 1.4.1), and announced so the second
-          step is not a silent change for a screen reader user. */}
-      {connected && confirmingSignOut && (
-        <p className="cm-status-tile__hint cm-confirm-hint" role="status">
-          Signing out clears the stored token and refresh grant. Reconnecting needs
-          another IBMid sign-in in the browser.
+      {/*
+        Spelled out rather than left to the button's colour (WCAG 1.4.1).
+        Always mounted once connected so the live region already exists in the
+        DOM when confirmingSignOut flips — a live region that mounts with
+        content does not announce; one whose content changes inside an existing
+        region does. Scoped to `connected` so no empty element sits in the DOM
+        (and no ghost margin from cm-confirm-hint) when disconnected.
+      */}
+      {connected && (
+        <p
+          className="cm-status-tile__hint cm-confirm-hint"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {confirmingSignOut
+            ? 'Signing out clears the stored token and refresh grant. Reconnecting needs another IBMid sign-in in the browser.'
+            : ''}
         </p>
       )}
 

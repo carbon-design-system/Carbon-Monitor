@@ -386,10 +386,18 @@ body {
   margin-block: $spacing-05;
 }
 
-.cm-coins__gauge {
+// The role="img" wrapper that gives AT a single accessible label for the gauge.
+// Needs the same fixed dimensions as the inner .cm-coins__gauge so the flex
+// layout of .cm-coins__budget is unaffected by the extra DOM layer.
+.cm-coins__gauge-wrapper {
   flex: 0 0 auto;
   inline-size: 11rem;
   block-size: 9.5rem;
+}
+
+.cm-coins__gauge {
+  inline-size: 100%;
+  block-size: 100%;
 }
 
 .cm-coins__figures {
