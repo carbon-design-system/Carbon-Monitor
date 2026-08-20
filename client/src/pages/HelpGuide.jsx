@@ -124,6 +124,38 @@ function HelpGuide() {
               </p>
             </AccordionItem>
           </Accordion>
+
+          {/* ── Troubleshooting ─────────────────────────────────────────── */}
+          <h2 className="cm-help__h2">Troubleshooting</h2>
+          <Accordion className="cm-help__accordion">
+            <AccordionItem title="First thing to try — refresh and retry" open>
+              <p>
+                Carbon Monitor runs in the cloud, and cloud services have the
+                occasional brief hiccup. If something looks wrong &mdash; a tile
+                flips red, &ldquo;Sign in with IBMid&rdquo; does not respond, or a
+                review will not start &mdash; it is very often a momentary blip
+                rather than a real fault.
+              </p>
+              <p>
+                <strong>
+                  Refresh the browser (or reopen the page), wait a moment, and
+                  try the same action again.
+                </strong>{' '}
+                A retry against a warm, idle service usually just works &mdash;
+                this one low-tech step clears the large majority of intermittent
+                issues.
+              </p>
+            </AccordionItem>
+
+            <AccordionItem title="If it keeps happening">
+              <ul className="cm-help__list">
+                <li>Refresh once more and give it a minute; two or three tries clears most transient issues.</li>
+                <li>Check the four pre-check tiles at the top &mdash; if one is red or amber, fix that first, because reviews fail when a check is down.</li>
+                <li>For the Carbon MCP tile, open Settings and use <strong>Test connection</strong>; if it is red, <strong>Sign in with IBMid</strong> again.</li>
+                <li>If every retry still fails after a few minutes, it is more likely a real outage than a blip &mdash; check back shortly.</li>
+              </ul>
+            </AccordionItem>
+          </Accordion>
         </div>
       </Content>
     </Theme>

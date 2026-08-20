@@ -161,8 +161,10 @@ ENV HOME=/home/app
 # stable, owned by the app user, and can be backed by a Code Engine mount.
 ENV BOB_WORKSPACE_ROOT=/workspace
 
-# Survives a restart, so a container that is rescheduled does not force an
-# operator back through the browser sign-in.
+# Local-dev fallback location for the connection state. NOTE: /workspace is
+# EPHEMERAL in Code Engine, so a state file here does NOT survive an instance
+# replacement. In the cloud, deploy_ce.sh sets MCP_STATE_BACKEND=elasticsearch so
+# the refresh token is persisted to Elasticsearch (durable) instead of this file.
 ENV MCP_STATE_PATH=/workspace/.mcp-state.json
 
 # Code Engine injects PORT; 8080 documents the default for local runs.
