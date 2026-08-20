@@ -37,6 +37,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const esClient = require('../observability/esClient');
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
@@ -74,11 +75,14 @@ function getBobMcpConfigPath() {
 }
 
 /**
- * Where the rotating refresh token is persisted.
+ * File path for the connection state — used by the FILE backend (local dev, and
+ * any deployment without Elasticsearch). Defaults next to Bob's own state.
  *
- * Defaults next to Bob's own state. In Code Engine this should point at a
- * writable mount so a container restart does not force a human back through the
- * browser bootstrap.
+ * Note: in Code Engine this file is on the ephemeral container layer and does NOT
+ * survive an instance replacement. The cloud deployment sets
+ * MCP_STATE_BACKEND=elasticsearch (see readState/writeState) so the refresh token
+ * is persisted durably in ES instead, which is what keeps the connection alive
+ * across redeploys and platform recycling.
  */
 function getStatePath() {
   return (
@@ -157,12 +161,72 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15_000) {
 }
 
 // ── Persisted state ─────────────────────────────────────────────────────────
+//
+// The connection state — crucially the ROTATING refresh token — must outlive the
+// process. There are two backends:
+//
+//   • Elasticsearch (MCP_STATE_BACKEND=elasticsearch) — a single document in a
+//     dedicated index. Code Engine's container filesystem is ephemeral, so a file
+//     does not survive an instance replacement (a redeploy, an OOM, or platform
+//     recycling) and the connection cannot self-heal. Elasticsearch does survive
+//     it, and it is already wired up for telemetry, so no extra cloud resource is
+//     needed. This is the cloud default.
+//   • File (default) — getStatePath(), for local development and any deployment
+//     without Elasticsearch.
+//
+// The document holds the refresh token — the one credential that can mint Carbon
+// MCP access indefinitely — so it lives in a DEDICATED, access-restricted index,
+// never the broadly-readable telemetry index.
+
+/** Dedicated index holding the single connection-state document. */
+const MCP_STATE_INDEX = process.env.MCP_STATE_INDEX || 'carbon-monitor-mcp-state';
+
+/** Fixed id of that one document — one Carbon MCP connection per deployment. */
+const MCP_STATE_DOC_ID = process.env.MCP_STATE_DOC_ID || 'connection';
+
+/**
+ * Whether Elasticsearch is the active, durable backend.
+ *
+ * Gated on an EXPLICIT opt-in, not merely on ES_URL being present: a developer
+ * running locally against the shared telemetry cluster must not silently write to
+ * the same singleton document the cloud instance owns.
+ */
+function usingEsStateBackend() {
+  return (
+    process.env.MCP_STATE_BACKEND === 'elasticsearch' && !!esClient.getClient()
+  );
+}
+
+// A deployment that asked for ES durability but has no ES configured would
+// silently fall back to the ephemeral file — the exact failure this backend
+// exists to prevent. Say so loudly, once, at startup.
+if (process.env.MCP_STATE_BACKEND === 'elasticsearch' && !process.env.ES_URL) {
+  console.warn(
+    '[mcpConnection] MCP_STATE_BACKEND=elasticsearch but ES_URL is not set — ' +
+      'falling back to the ephemeral state file. The Carbon MCP connection will ' +
+      'NOT survive an instance replacement until Elasticsearch is configured.'
+  );
+}
 
 /**
  * Read persisted connection state.
  * @returns {Promise<Object>} State object; empty when nothing is stored yet
  */
 async function readState() {
+  return usingEsStateBackend() ? readStateFromEs() : readStateFromFile();
+}
+
+/**
+ * Persist connection state.
+ * @param {Object} state
+ */
+async function writeState(state) {
+  return usingEsStateBackend() ? writeStateToEs(state) : writeStateToFile(state);
+}
+
+// ── File backend ─────────────────────────────────────────────────────────────
+
+async function readStateFromFile() {
   try {
     return JSON.parse(await fs.readFile(getStatePath(), 'utf8'));
   } catch (error) {
@@ -172,18 +236,67 @@ async function readState() {
 }
 
 /**
- * Persist connection state.
- *
  * Written 0600 because it holds the refresh token — the single credential that
  * can mint new Carbon MCP access indefinitely.
  */
-async function writeState(state) {
+async function writeStateToFile(state) {
   const statePath = getStatePath();
   await fs.mkdir(path.dirname(statePath), { recursive: true });
   await fs.writeFile(statePath, JSON.stringify(state, null, 2), {
     encoding: 'utf8',
     mode: 0o600,
   });
+}
+
+// ── Elasticsearch backend ────────────────────────────────────────────────────
+
+async function readStateFromEs() {
+  const client = esClient.getClient();
+  try {
+    // GET by id is real-time in Elasticsearch (it reads the translog), so state
+    // written by the previous instance is visible to a fresh one immediately —
+    // no index refresh delay to wait out on boot.
+    const res = await client.get({
+      index: MCP_STATE_INDEX,
+      id: MCP_STATE_DOC_ID,
+    });
+    return res._source || {};
+  } catch (error) {
+    // 404 = never connected yet: no document, or the index does not exist. Same
+    // meaning as an absent file — empty state, not an error.
+    if (error.meta?.statusCode === 404) return {};
+    throw error;
+  }
+}
+
+async function writeStateToEs(state) {
+  const client = esClient.getClient();
+
+  // The write must be durable before a freshly rotated refresh token is relied
+  // upon, so a transient network blip cannot silently drop it. index() with a
+  // fixed id upserts (create-or-replace), so there is exactly one state document
+  // per deployment; refresh:true makes it immediately visible to any reader.
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await client.index({
+        index: MCP_STATE_INDEX,
+        id: MCP_STATE_DOC_ID,
+        document: { ...state, updatedAt: new Date().toISOString() },
+        refresh: true,
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+      }
+    }
+  }
+  throw new Error(
+    `Failed to persist Carbon MCP state to Elasticsearch index ` +
+      `'${MCP_STATE_INDEX}': ${lastError.message}`
+  );
 }
 
 // ── Bob MCP configuration ───────────────────────────────────────────────────
@@ -584,6 +697,16 @@ function startAutoRefresh() {
     `[mcpConnection] auto-refresh active (every ${REFRESH_CHECK_MS / 1000}s, ` +
       `margin ${REFRESH_MARGIN_SEC}s)`
   );
+
+  // Kick once now, without waiting a full interval. A freshly replaced instance
+  // starts with an empty mcp.json but a valid refresh token in the persisted
+  // state (Elasticsearch), so an immediate refresh rebuilds the live connection
+  // in seconds — before the next review or the deploy's post-restart status check
+  // — rather than up to REFRESH_CHECK_MS later. Backgrounded; never fatal.
+  refreshIfNeeded().catch((error) => {
+    lastRefreshError = error.message;
+    console.error('[mcpConnection] initial refresh failed:', error.message);
+  });
 }
 
 /** Stop the background refresh loop. */
@@ -751,7 +874,7 @@ async function probe() {
         params: {
           protocolVersion: '2025-03-26',
           capabilities: {},
-          clientInfo: { name: 'carbon-monitor-probe', version: '1.0.1' },
+          clientInfo: { name: 'carbon-monitor-probe', version: '1.0.2' },
         },
       }),
     });

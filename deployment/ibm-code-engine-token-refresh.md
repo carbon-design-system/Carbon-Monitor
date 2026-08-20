@@ -12,7 +12,7 @@ This guide provides step-by-step instructions for deploying the Carbon MCP Token
 │                                                              │
 │  ┌────────────────────────────────────────────────────┐    │
 │  │  carbon-pr-review-api (Application)                │    │
-│  │  - Auto-scaling: 0-5 instances                     │    │
+│  │  - Auto-scaling: 1-5 instances                     │    │
 │  │  - Port: 3000                                      │    │
 │  │  - Public endpoint with HTTPS                      │    │
 │  └────────────────────────────────────────────────────┘    │
@@ -467,10 +467,13 @@ kubectl exec -it $(kubectl get pods -l app=carbon-pr-review-api -o jsonpath='{.i
 ### Auto-scaling Configuration
 
 ```bash
-# Scale to zero when idle (saves costs)
+# Keep at least one instance resident — do NOT set --min-scale 0. This app runs a
+# background timer that renews the Carbon MCP token before it expires; an instance
+# scaled to zero runs no timer, so the connection lapses and reviews fail. Tune the
+# ceiling for load, but the floor stays at 1.
 ibmcloud ce application update \
   --name carbon-pr-review-api \
-  --min-scale 0 \
+  --min-scale 1 \
   --max-scale 5 \
   --scale-down-delay 300
 

@@ -21,7 +21,7 @@ export NODE_ENV=production
 
 : "${APP:=carbon-monitor}"
 : "${IMAGE_NAME:=carbon-monitor}"
-: "${VERSION:=1.0.1}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
+: "${VERSION:=1.0.2}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
 
 # Secret holding this app's credentials. 
 : "${SECRET_NAME:=carbon-monitor-secrets}"
@@ -448,6 +448,9 @@ COMMON_FLAGS=(
   --env GITHUB_AI_AGENT_REVIEW_LABEL="${GITHUB_AI_AGENT_REVIEW_LABEL:-AIReviewed}"
   --env BOB_WORKSPACE_ROOT=/workspace
   --env MCP_STATE_PATH=/workspace/.mcp-state.json
+  # Durable Carbon MCP state lives in Elasticsearch
+  # (readState/writeState) and the 'carbon-monitor-mcp-state' index.
+  --env MCP_STATE_BACKEND=elasticsearch
 )
 
 if [ "$APP_EXISTS" = "1" ]; then
@@ -514,9 +517,10 @@ else
   warn "Check: ibmcloud ce app logs --name ${APP} --tail 100"
 fi
 
-# Ask the app itself whether Carbon MCP is already connected. A redeploy that
-# preserved /workspace keeps its refresh token, in which case there is nothing
-# for a human to do and saying otherwise would just be noise.
+# Ask the app itself whether Carbon MCP is already connected. With state persisted
+# in Elasticsearch the refresh token survives the redeploy, so the container
+# reconnects on its own and there is nothing for a human to do; saying otherwise
+# would just be noise.
 MCP_CONNECTED="unknown"
 if [ "$HEALTHY" = "1" ]; then
   MCP_JSON=$(curl -fsS --max-time 10 "${URL}/api/mcp/status" 2>/dev/null || true)
