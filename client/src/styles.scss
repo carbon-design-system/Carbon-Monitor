@@ -447,6 +447,83 @@ body {
   padding: 0;
 }
 
+// ── Settings modal tabs ────────────────────────────────────────────────────
+// The Carbon Tabs component inside the passiveModal needs a little top spacing
+// so the tab bar does not sit flush against the modal heading.
+.cds--modal-content .cds--tabs {
+  margin-top: $spacing-05;
+}
+
+// Give each tab panel breathing room so its contents do not crowd the tab bar.
+.cds--modal-content .cds--tab-content {
+  padding-top: $spacing-05;
+}
+
+// Fix the settings modal to a stable height so switching between tabs of
+// different content heights never resizes it. Carbon's modal content area
+// already has overflow-y: auto, so it handles any scroll — no inner scrollbar.
+// capped at 84vh (Carbon's own default max) so the modal never causes body
+// scroll, which would send the scrollbar through the fixed UI Shell header.
+.cds--modal-container:has(.cds--tabs) {
+  block-size: min(42rem, 84vh);
+}
+
+// ── Schedule panel ─────────────────────────────────────────────────────────
+
+// Vertical rhythm between each field in the schedule form.
+.cm-schedule-panel__fields > * + * {
+  margin-top: $spacing-06;
+}
+
+// The read-only maxPRs display. Styled to feel like a definition-list row so
+// it reads as data, not a second heading.
+.cm-schedule-panel__readonly {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-02;
+}
+
+.cm-schedule-panel__readonly-label {
+  @include type-style('label-01');
+  color: $text-secondary;
+  margin: 0;
+}
+
+.cm-schedule-panel__readonly-value {
+  @include type-style('body-01');
+  color: $text-primary;
+  margin: 0;
+}
+
+// The "Unsaved changes" indicator beside Save/Discard. Text-based, not colour
+// alone (WCAG 1.4.1) — the warning icon reinforces the label rather than
+// carrying the meaning by itself.
+.cm-schedule-panel__unsaved {
+  @include type-style('body-compact-01');
+  color: $support-warning;
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: $spacing-02;
+}
+
+// A hairline divider before the status read-out (last run / next run).
+.cm-schedule-panel__status {
+  margin-top: $spacing-07;
+  padding-top: $spacing-05;
+  border-block-start: 1px solid $border-subtle;
+}
+
+// ── Reviews tile — automated mode ─────────────────────────────────────────
+// Hide the manual controls when the daily schedule is active. The elements
+// remain in the DOM (the TextInput keeps its state) but are invisible and
+// inert so the operator cannot accidentally interact with them.
+.cm-review-manual--hidden {
+  display: none;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 // ── Review output ─────────────────────────────────────────────────────────
 // The live log of a running review. Monospaced and inset so it reads as machine
 // output rather than as more of the page's prose.

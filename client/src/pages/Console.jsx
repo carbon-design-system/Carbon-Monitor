@@ -17,6 +17,11 @@ import {
   InlineNotification,
   Loading,
   ToastNotification,
+  Tabs,
+  Tab,
+  TabList,
+  TabPanels,
+  TabPanel,
 } from '@carbon/react';
 // Icons are imported sparingly and only after the export name is verified against
 // the installed @carbon/icons-react. Settings opens the connection panel; Terminal
@@ -27,6 +32,8 @@ import StatusTile from '../components/StatusTile';
 import McpConnectionPanel from '../components/McpConnectionPanel';
 import BobcoinsPanel, { BobcoinsLedger } from '../components/BobcoinsPanel';
 import ReviewLog from '../components/ReviewLog';
+import SchedulePanel, { toLocalTz, detectBrowserTimezone } from '../components/SchedulePanel';
+import { pluralPRs, targetWindowText } from '../utils/prPhrasing';
 
 /** How often the status panel re-polls, in milliseconds. */
 const POLL_INTERVAL_MS = 30_000;
@@ -42,16 +49,6 @@ const REVIEW_POLL_INTERVAL_MS = 2_000;
 
 /** Reviews listed in the Bobcoins ledger. Enough to see the trend, not a log. */
 const CREDIT_HISTORY_LIMIT = 10;
-
-/**
- * "1 pull request" / "3 pull requests".
- *
- * Worth the helper because GITHUB_AI_AGENT_MAX_PRS is genuinely set to 1 in some
- * deployments, where a hardcoded plural reads as a bug in the limit itself.
- */
-function pluralPRs(count) {
-  return `${count} pull request${count === 1 ? '' : 's'}`;
-}
 
 /**
  * Parse the comma-separated PR field, mirroring the server's rules exactly.
@@ -131,6 +128,10 @@ function Console({ authRequired = false, onSignOut }) {
   const [review, setReview] = useState(null);
   const [credits, setCredits] = useState(null);
   const [creditHistory, setCreditHistory] = useState(null);
+  const [scheduleConfig, setScheduleConfig] = useState(null);
+  // IANA timezone for displaying schedule times — initialised from the browser's
+  // detected zone and updated when the operator changes it in the Schedule panel.
+  const [timezone, setTimezone] = useState(detectBrowserTimezone);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [prInput, setPrInput] = useState('');
@@ -150,6 +151,13 @@ function Console({ authRequired = false, onSignOut }) {
   // Connection settings live in an off-canvas panel; closed by default because
   // they are configured once and then left alone.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Which tab is active inside the Settings modal. 0 = Carbon MCP, 1 = Scheduled reviews.
+  const [settingsTab, setSettingsTab] = useState(0);
+  // Bumped every time the Settings modal closes. Passed to both settings panels
+  // as a resetKey so their one-time save/action confirmations do not linger
+  // and reappear when the modal is reopened — the modal stays mounted (only
+  // hidden) between opens, so neither panel unmounts on its own.
+  const [settingsResetKey, setSettingsResetKey] = useState(0);
   // Focus returns here when the panel closes, so a keyboard user lands back on
   // the control they opened it from rather than at the top of the document.
   const settingsButtonRef = useRef(null);
@@ -160,11 +168,23 @@ function Console({ authRequired = false, onSignOut }) {
   const [completion, setCompletion] = useState(null);
   const prevRunningRef = useRef(false);
 
+  // Set on an automated→manual transition when the PR field already has
+  // text in it — text typed (by this operator or another, on this shared
+  // single-instance deployment) while automation was on, and never reviewed.
+  // Deliberately a hint, not a clear: the field is kept mounted specifically
+  // so an operator's typed value is never lost (see cm-review-manual--hidden
+  // below), and silently wiping it on a remote schedule toggle would destroy
+  // someone else's input without their say. Cleared the moment the operator
+  // edits the field themselves or submits it — both are how they show they
+  // have seen it.
+  const [staleInputHint, setStaleInputHint] = useState(false);
+  const prevAutomatedRef = useRef(null);
+
 
   const load = useCallback(async () => {
     try {
       // Fetched together so a slow dependency check does not stagger the panel.
-      const [statusResult, mcpResult, reviewResult, creditsResult, historyResult] =
+      const [statusResult, mcpResult, reviewResult, creditsResult, historyResult, scheduleResult] =
         await Promise.all([
           api.status(),
           api.mcpStatus(),
@@ -175,12 +195,16 @@ function Console({ authRequired = false, onSignOut }) {
           // explains the null.
           api.credits().catch(() => null),
           api.creditsHistory(CREDIT_HISTORY_LIMIT).catch(() => null),
+          // Schedule config is supplementary: a failure here must degrade only
+          // the schedule panel, not the whole console.
+          api.schedule().catch(() => null),
         ]);
       setStatus(statusResult);
       setMcpStatus(mcpResult);
       setReview(reviewResult);
       setCredits(creditsResult);
       setCreditHistory(historyResult);
+      setScheduleConfig(scheduleResult);
       setError(null);
     } catch (err) {
       // An expired session must return the operator to the login page rather
@@ -266,6 +290,28 @@ function Console({ authRequired = false, onSignOut }) {
   const { prNumbers, error: prError } = parsePrNumbers(prInput, maxPRs);
   const reviewRunning = Boolean(review?.running) || triggering;
 
+  // True only once the schedule config has loaded AND enabled is explicitly true.
+  // Null (not yet loaded) keeps the manual tile visible — no flash on first paint.
+  const isAutomated = scheduleConfig?.schedule?.enabled === true;
+
+  // Detect an automated→manual transition and flag (never clear) a PR field
+  // that already has text in it. Compared against the previous *true* value
+  // specifically — the initial null → false on first load is not a
+  // transition away from automated, so it must not trigger the hint on a
+  // console that simply starts out unscheduled.
+  useEffect(() => {
+    if (prevAutomatedRef.current === true && isAutomated === false && prInput.trim()) {
+      setStaleInputHint(true);
+    }
+    prevAutomatedRef.current = isAutomated;
+  }, [isAutomated, prInput]);
+
+  /** Open Settings modal directly on the "Scheduled reviews" tab (index 1). */
+  function openScheduleSettings() {
+    setSettingsTab(1);
+    setSettingsOpen(true);
+  }
+
   // Bobcoins is pulled out of the health row and handed to the tile that already
   // shows the balance, so the dependency is still reported exactly once.
   const healthChecks = status?.checks?.filter((check) => check.id !== 'bobcoins') || [];
@@ -340,6 +386,7 @@ function Console({ authRequired = false, onSignOut }) {
       // in that case, which is the request this console has always sent.
       await api.triggerReview(prNumbers);
       setPrInput('');
+      setStaleInputHint(false);
       await load();
     } catch (err) {
       if (err.status === 401) return onSignOut();
@@ -419,7 +466,7 @@ function Console({ authRequired = false, onSignOut }) {
           */}
           <HeaderGlobalAction
             ref={settingsButtonRef}
-            aria-label={settingsOpen ? 'Close connection settings' : 'Open connection settings'}
+            aria-label={settingsOpen ? 'Close Settings' : 'Open Settings'}
             aria-expanded={settingsOpen}
             isActive={settingsOpen}
             onClick={() => setSettingsOpen((open) => !open)}
@@ -480,12 +527,17 @@ function Console({ authRequired = false, onSignOut }) {
         </Grid>
 
         {/* C. The work: starting a review, and the budget that decides whether
-            one can run. Reviews takes the wider column. */}
+            one can run. Reviews takes the wider column.
+            When the daily schedule is enabled the tile becomes "Reviews — Automated":
+            the manual controls are hidden (CSS, never unmounted so input state is
+            safe) and a read-only status block shows the schedule's history. */}
         <Grid narrow withRowGap className="cm-tile-grid">
           <Column sm={4} md={8} lg={10}>
             <Tile className="cm-fill">
               <div className="cm-tile-head">
-                <h2 className="cm-section-heading cm-tile-head__title">Reviews</h2>
+                <h2 className="cm-section-heading cm-tile-head__title">
+                  {isAutomated ? 'Reviews — Automated' : 'Reviews'}
+                </h2>
               </div>
 
               <dl className="cm-definition-list">
@@ -506,6 +558,13 @@ function Console({ authRequired = false, onSignOut }) {
                   </>
                 )}
 
+                {/*
+                  Shown in both manual and automated mode: the scheduled run
+                  draws from the same GITHUB_AI_AGENT_MAX_PRS / _DAYS_BACK
+                  config as the manual "Review latest" button (see
+                  SchedulePanel's maxPRs note), so the target criteria are
+                  identical either way — only the trigger differs.
+                */}
                 {cfg && (
                   <>
                     <dt>Target</dt>
@@ -524,7 +583,7 @@ function Console({ authRequired = false, onSignOut }) {
                     <dd>
                       {cfg.targetPR
                         ? `PR #${cfg.targetPR}`
-                        : `Up to ${pluralPRs(cfg.maxPRs)} opened in the last ${cfg.daysBack} days`}
+                        : targetWindowText(cfg.maxPRs, cfg.daysBack) || 'Loading…'}
                     </dd>
                   </>
                 )}
@@ -542,7 +601,41 @@ function Console({ authRequired = false, onSignOut }) {
                     </dd>
                   </>
                 )}
+
+                {/* Automated mode only: show schedule-specific status rows.
+                    Times are shown in the operator's selected timezone. */}
+                {isAutomated && scheduleConfig?.schedule && (
+                  <>
+                    <dt>Last scheduled run</dt>
+                    <dd>
+                      {scheduleConfig.schedule.lastRunAt
+                        ? toLocalTz(scheduleConfig.schedule.lastRunAt, timezone)
+                        : 'Never'}
+                    </dd>
+
+                    <dt>Next scheduled run</dt>
+                    <dd>
+                      {scheduleConfig.schedule.nextRunAt
+                        ? toLocalTz(scheduleConfig.schedule.nextRunAt, timezone)
+                        : 'Calculating…'}
+                    </dd>
+                  </>
+                )}
               </dl>
+
+              {/* Skipped-run warning — only relevant in automated mode. */}
+              {isAutomated && scheduleConfig?.schedule?.lastRunSkipped && (
+                <InlineNotification
+                  kind="warning"
+                  title="Last scheduled run was skipped"
+                  subtitle={
+                    scheduleConfig.schedule.lastSkipReason ||
+                    'A manual review was in flight at the scheduled time.'
+                  }
+                  hideCloseButton
+                  className="cm-tile-notification"
+                />
+              )}
 
               {review?.error && (
                 <InlineNotification
@@ -564,45 +657,90 @@ function Console({ authRequired = false, onSignOut }) {
                 />
               )}
 
-              <div className="cm-review-field">
-                <TextInput
-                  id="cm-review-prs"
-                  labelText="Pull request numbers"
-                  placeholder="e.g. 22971, 22972"
-                  helperText={prHelperText}
-                  invalid={Boolean(prError)}
-                  invalidText={prError || ''}
-                  value={prInput}
-                  onChange={(e) => setPrInput(e.target.value)}
-                  disabled={reviewRunning}
-                  autoComplete="off"
-                  inputMode="numeric"
-                />
+              {/*
+                Manual controls — always in the DOM so the PR input field never
+                loses its state when the schedule poll returns. Hidden via CSS
+                when automated mode is active so the tile does not show two
+                competing interaction models at once.
+              */}
+              <div className={isAutomated ? 'cm-review-manual--hidden' : undefined}>
+                <div className="cm-review-field">
+                  <TextInput
+                    id="cm-review-prs"
+                    labelText="Pull request numbers"
+                    placeholder="e.g. 22971, 22972"
+                    helperText={prHelperText}
+                    invalid={Boolean(prError)}
+                    invalidText={prError || ''}
+                    // Non-destructive: flags text left over from before the
+                    // schedule was turned off rather than erasing it, since
+                    // the schedule may have been toggled by another operator
+                    // on this shared deployment. warn is suppressed once
+                    // invalid is set — the two are mutually exclusive states
+                    // on this field and invalid is the more actionable one.
+                    warn={!prError && staleInputHint}
+                    warnText="Entered before scheduling was turned on — review before submitting."
+                    value={prInput}
+                    onChange={(e) => {
+                      setPrInput(e.target.value);
+                      setStaleInputHint(false);
+                    }}
+                    disabled={reviewRunning || isAutomated}
+                    autoComplete="off"
+                    inputMode="numeric"
+                  />
+                </div>
+
+                <div className="cm-button-row">
+                  {/*
+                    Two distinct actions rather than one whose meaning depends on
+                    whether a field happens to be empty. The primary is the routine
+                    case — review the latest PRs — and it deliberately ignores the
+                    field, so an abandoned half-typed number cannot silently change
+                    what a click does, and reaching it never requires clearing the
+                    input first.
+                  */}
+                  <Button onClick={triggerAutoReview} disabled={reviewRunning}>
+                    {reviewRunning ? 'Review running…' : autoButtonLabel}
+                  </Button>
+
+                  <Button
+                    kind="secondary"
+                    onClick={triggerReview}
+                    disabled={reviewRunning || Boolean(prError) || prNumbers.length === 0}
+                  >
+                    {prNumbers.length > 0
+                      ? `Review ${prNumbers.map((n) => `#${n}`).join(', ')}`
+                      : 'Review listed PRs'}
+                  </Button>
+
+                  {/*
+                    Discovery path into schedule settings — only shown while
+                    still in manual mode. Checked against `false` explicitly,
+                    not `!isAutomated` — isAutomated is null before the schedule
+                    config has loaded, and the button should not flash in during
+                    that instant.
+                  */}
+                  {isAutomated === false && (
+                    <Button kind="ghost" onClick={openScheduleSettings}>
+                      Set up daily schedule
+                    </Button>
+                  )}
+                </div>
               </div>
 
-              <div className="cm-button-row">
-                {/*
-                  Two distinct actions rather than one whose meaning depends on
-                  whether a field happens to be empty. The primary is the routine
-                  case — review the latest PRs — and it deliberately ignores the
-                  field, so an abandoned half-typed number cannot silently change
-                  what a click does, and reaching it never requires clearing the
-                  input first.
-                */}
-                <Button onClick={triggerAutoReview} disabled={reviewRunning}>
-                  {reviewRunning ? 'Review running…' : autoButtonLabel}
-                </Button>
-
-                <Button
-                  kind="secondary"
-                  onClick={triggerReview}
-                  disabled={reviewRunning || Boolean(prError) || prNumbers.length === 0}
-                >
-                  {prNumbers.length > 0
-                    ? `Review ${prNumbers.map((n) => `#${n}`).join(', ')}`
-                    : 'Review listed PRs'}
-                </Button>
-              </div>
+              {/*
+                Once automated, offer a direct link to adjust the schedule.
+                Sits in its own row so it doesn't compete with the hidden
+                manual controls above.
+              */}
+              {isAutomated === true && (
+                <div className="cm-button-row">
+                  <Button kind="ghost" onClick={openScheduleSettings}>
+                    Configure schedule
+                  </Button>
+                </div>
+              )}
             </Tile>
           </Column>
 
@@ -639,14 +777,51 @@ function Console({ authRequired = false, onSignOut }) {
 
       <Modal
         open={settingsOpen}
-        onRequestClose={() => setSettingsOpen(false)}
-        modalHeading="Carbon MCP connection"
-        modalLabel="Settings"
-        aria-label="Carbon MCP connection settings"
+        onRequestClose={() => {
+          setSettingsOpen(false);
+          // Reset to the default tab so re-opening lands on Carbon MCP, unless
+          // the operator opened it explicitly from the schedule tile.
+          setSettingsTab(0);
+          setSettingsResetKey((key) => key + 1);
+        }}
+        modalHeading="Settings"
+        aria-label="Settings"
         passiveModal
         launcherButtonRef={settingsButtonRef}
       >
-        <McpConnectionPanel status={mcpStatus} onChanged={load} inPanel />
+        {/*
+          Two tabs: Carbon MCP connection and Scheduled reviews.
+          Carbon Tabs is used rather than nested Accordions — McpConnectionPanel
+          already has its own Accordion internally ("Enter credentials manually"),
+          and nesting Accordion inside AccordionItem produces unreliable focus-trap
+          behaviour inside a Modal. Tabs avoid that issue entirely.
+        */}
+        <Tabs selectedIndex={settingsTab} onChange={({ selectedIndex }) => setSettingsTab(selectedIndex)}>
+          <TabList aria-label="Settings sections">
+            <Tab>Carbon MCP connection</Tab>
+            <Tab>Scheduled reviews</Tab>
+          </TabList>
+          <TabPanels>
+            <TabPanel>
+              <McpConnectionPanel
+                status={mcpStatus}
+                onChanged={load}
+                inPanel
+                resetKey={settingsResetKey}
+              />
+            </TabPanel>
+            <TabPanel>
+              <SchedulePanel
+                schedule={scheduleConfig?.schedule ?? null}
+                config={cfg}
+                onChanged={load}
+                timezone={timezone}
+                onTimezoneChange={setTimezone}
+                resetKey={settingsResetKey}
+              />
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
       </Modal>
 
       {/*

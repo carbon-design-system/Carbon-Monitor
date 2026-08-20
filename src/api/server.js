@@ -32,6 +32,7 @@ const sessionAuth = require('./sessionAuth');
 const bobCredits = require('./bobCredits');
 const creditLedger = require('./creditLedger');
 const reviewLog = require('./reviewLog');
+const scheduleManager = require('./scheduleManager');
 const { reviewPRs, parsePrNumbers, resolveReviewTargets } = require('../index');
 const { MAX_PRS_PER_RUN, N_DAYS_SINCE_PR_CREATED } = require('../constants');
 
@@ -631,6 +632,44 @@ function handleReviewStatus(req, res) {
   sendJSON(res, 200, { success: true, ...reviewState, timestamp: new Date().toISOString() });
 }
 
+// ── Schedule ─────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/schedule — current schedule config + computed nextRunAt.
+ */
+async function handleScheduleGet(req, res) {
+  const schedule = await scheduleManager.getSchedule();
+  sendJSON(res, 200, { success: true, schedule, timestamp: new Date().toISOString() });
+}
+
+/**
+ * POST /api/schedule — save a partial update { enabled?, timeEST? }.
+ *
+ * Validates before writing. Returns 400 with a descriptive message on invalid
+ * input; the server is the authority, not the UI's own field constraints.
+ */
+async function handleScheduleSet(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (err) {
+    return sendError(res, 400, `Could not read request body: ${err.message}`);
+  }
+
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    return sendError(res, 400, 'Request body must be a JSON object');
+  }
+
+  const result = await scheduleManager.setSchedule(body);
+  if (!result.ok) return sendError(res, 400, result.error);
+
+  sendJSON(res, 200, {
+    success: true,
+    schedule: result.state,
+    timestamp: new Date().toISOString(),
+  });
+}
+
 // ── Static client ───────────────────────────────────────────────────────────
 
 const MIME_TYPES = {
@@ -701,6 +740,8 @@ const ROUTES = {
   'GET /api/review/status': handleReviewStatus,
   'GET /api/review/logs': handleReviewLogs,
   'POST /api/review/logs/clear': handleReviewLogsClear,
+  'GET /api/schedule': handleScheduleGet,
+  'POST /api/schedule': handleScheduleSet,
 };
 
 /**
@@ -723,6 +764,7 @@ const SILENT_GET_ROUTES = new Set([
   '/api/credits/history', // same 30 s batch
   '/api/auth/status',     // App.jsx on mount + after every 401
   '/api/config',          // Console.jsx once on mount
+  '/api/schedule',        // polled every 30 s alongside status, config, credits
 ]);
 
 async function handleRequest(req, res) {
@@ -869,6 +911,7 @@ function startServer() {
       console.log(`🔑 Bearer API:     ${ENABLE_AUTH ? 'enabled (API_SECRET)' : 'disabled'}`);
     }
     console.log(`🔗 Carbon MCP:     ${mcpConnection.MCP_URL}`);
+    console.log(`🕐 Schedule:       ${scheduleManager.getSchedulePath()}`);
     if (process.env.BASE_URL) console.log(`🌐 Base URL:       ${process.env.BASE_URL}`);
     console.log(`${'='.repeat(64)}\n`);
   });
@@ -877,9 +920,13 @@ function startServer() {
   // it — the entire point of the deployment.
   mcpConnection.startAutoRefresh();
 
+  // Start the daily scheduled review tick (60s interval, default-off).
+  scheduleManager.startScheduler(reviewPRs, reviewState, reviewLog);
+
   const shutdown = (signal) => {
     console.log(`${signal} received, shutting down gracefully...`);
     mcpConnection.stopAutoRefresh();
+    scheduleManager.stopScheduler();
 
     // server.close() stops accepting NEW connections but resolves only once every
     // existing connection has ended — and on its own it never closes keep-alive

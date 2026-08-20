@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Tile,
   Button,
@@ -32,7 +32,7 @@ import ExpiryCountdown from './ExpiryCountdown';
  *   surface and the title. Drops this component's own Tile chrome and heading,
  *   which would otherwise be a box inside a box under a duplicated title.
  */
-function McpConnectionPanel({ status, onChanged, inPanel = false }) {
+function McpConnectionPanel({ status, onChanged, inPanel = false, resetKey }) {
   const [busy, setBusy] = useState(null);
   const [message, setMessage] = useState(null);
   const [token, setToken] = useState('');
@@ -40,6 +40,14 @@ function McpConnectionPanel({ status, onChanged, inPanel = false }) {
   // Signing out is cheap to do and expensive to undo — restoring the connection
   // needs a browser round trip through IBMid — so the control asks twice.
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+
+  // Clear the action confirmation when the parent Settings modal closes.
+  // The modal stays mounted (only hidden) between opens, so this component
+  // never unmounts on its own — without this, a stale confirmation (e.g.
+  // "Token refreshed") would reappear on reopen with no new action taken.
+  useEffect(() => {
+    setMessage(null);
+  }, [resetKey]);
 
   function report(kind, title, subtitle) {
     setMessage({ kind, title, subtitle });

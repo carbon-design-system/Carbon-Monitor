@@ -21,7 +21,8 @@
     "test:apiauth": "node tests/apiAuth.test.js",
     "test:mcp": "node tests/mcpConnection.test.js",
     "test:credits": "node tests/bobCredits.test.js",
-    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js && node tests/linkedIssue.test.js && node tests/prTargeting.test.js && node tests/sessionAuth.test.js && node tests/apiAuth.test.js && node tests/mcpConnection.test.js && node tests/bobCredits.test.js && node tests/reviewTargeting.test.js"
+    "test:schedule": "node tests/scheduleManager.test.js",
+    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js && node tests/linkedIssue.test.js && node tests/prTargeting.test.js && node tests/sessionAuth.test.js && node tests/apiAuth.test.js && node tests/mcpConnection.test.js && node tests/bobCredits.test.js && node tests/reviewTargeting.test.js && node tests/scheduleManager.test.js"
   },
   "keywords": [
     "carbon",
