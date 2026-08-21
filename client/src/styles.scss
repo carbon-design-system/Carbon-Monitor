@@ -813,6 +813,13 @@ body {
   margin-bottom: $spacing-05;
 }
 
+// A portrait screenshot (the GitHub label sidebar) would upscale and dominate the
+// column at full width; cap it so it renders crisply at a natural size.
+.cm-help__img--narrow {
+  width: auto;
+  max-width: 26rem;
+}
+
 .cm-help__accordion {
   margin-bottom: $spacing-06;
 }

@@ -9,6 +9,7 @@ import {
 } from '@carbon/react';
 import mainImg from '../assets/carbon_monitor_screen.png';
 import settingsImg from '../assets/settings.png';
+import aiReviewedImg from '../assets/ai_reviewed_label.png';
 
 /**
  * Public help & usage guide, served at /help.
@@ -121,6 +122,42 @@ function HelpGuide() {
                 Expand this to paste a bearer token and session ID instead of
                 signing in with IBMid. It is a fallback for when IBMid sign-in is
                 not available.
+              </p>
+            </AccordionItem>
+          </Accordion>
+
+          {/* ── The AIReviewed label ────────────────────────────────────── */}
+          <h2 className="cm-help__h2">The AIReviewed label</h2>
+          <img
+            className="cm-help__img cm-help__img--narrow"
+            src={aiReviewedImg}
+            alt="A GitHub pull request sidebar. In the Labels section, the AIReviewed label is highlighted with a purple box marked J."
+          />
+
+          <Accordion className="cm-help__accordion">
+            <AccordionItem title="J — The AIReviewed label" open>
+              <p>
+                When Carbon Monitor finishes reviewing a pull request, it adds the{' '}
+                <strong>AIReviewed</strong> label to it on GitHub (highlighted
+                above). That label is how Carbon Monitor remembers which pull
+                requests it has already handled.
+              </p>
+              <p>
+                <strong>
+                  Please do not add, remove, rename, or edit this label by hand.
+                </strong>{' '}
+                An automatic run skips any pull request that already carries it.
+                Remove it and the pull request looks unreviewed again, so the next
+                run reviews it a second time &mdash; spending Bobcoins and posting
+                duplicate comments. Adding it to a pull request that was never
+                reviewed has the opposite effect: that one is skipped and never
+                reviewed.
+              </p>
+              <p>
+                If a pull request genuinely needs another look, leave the label
+                alone and use <strong>Review listed PRs</strong> on the Operations
+                screen (B) &mdash; that reviews exactly the numbers you enter and
+                ignores the label.
               </p>
             </AccordionItem>
           </Accordion>
