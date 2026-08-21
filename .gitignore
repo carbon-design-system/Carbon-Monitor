@@ -41,5 +41,7 @@ Thumbs.db
 .bob/cache/
 .bob/sessions/
 .bob/tmp/
+.bob/artifacts/
+.bob/.bob-errors/
 
 # Made with Bob
