@@ -504,11 +504,17 @@ body {
 }
 
 // The "Unsaved changes" indicator beside Save/Discard. Text-based, not colour
-// alone (WCAG 1.4.1) — the warning icon reinforces the label rather than
-// carrying the meaning by itself.
+// alone (WCAG 1.4.1) — the WarningFilled triangle and the label carry the
+// meaning, so the colour itself does not have to.
+//
+// Deliberately NOT $support-warning: Carbon's warning yellow (#f1c21b) sits at
+// ~1.4:1 on this g10 light surface, failing both text contrast (1.4.3) and, for
+// the icon, non-text contrast (1.4.11). $text-secondary is the app's quiet-status
+// colour and clears AA for the label and the icon alike (the icon inherits
+// currentColor). It keeps the cue readable without inventing an off-palette hue.
 .cm-schedule-panel__unsaved {
   @include type-style('body-compact-01');
-  color: $support-warning;
+  color: $text-secondary;
   display: inline-flex;
   align-items: center;
   align-self: center;
