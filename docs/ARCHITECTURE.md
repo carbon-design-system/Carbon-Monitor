@@ -534,7 +534,7 @@ npm run test:all
 | `BOB_TEAM_ID` | Adds `--team-id`; only for `general`-type keys | unset |
 | `BOB_WORKSPACE_ROOT` | Review bundle root | `/private/tmp` on macOS, else `os.tmpdir()` |
 | `BOB_CHECK_TIMEOUT_MS` | Health-check budget for `bob --version` | `20000` |
-| `MCP_STATE_PATH` | Where the rotating refresh token is persisted | `~/.bob/carbon-monitor-mcp-state.json` |
+| `MCP_STATE_PATH` | Where the rotating refresh token is persisted | `~/.config/carbon-monitor/mcp-state.json` |
 | `MCP_REFRESH_MARGIN_SEC` | Renew this far before expiry | `900` |
 | `MCP_REFRESH_CHECK_MS` | Timer interval | `60000` |
 | `CARBON_MCP_URL` | Carbon MCP endpoint | `https://mcp.carbondesignsystem.com/mcp` |

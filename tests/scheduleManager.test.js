@@ -55,8 +55,9 @@ function assertEqual(actual, expected, label) {
 /**
  * Redirect HOME and SCHEDULE_STATE_PATH to a scratch directory.
  *
- * scheduleManager derives its state file path from MCP_STATE_PATH or HOME, so
- * without this the tests would overwrite any real schedule config on disk.
+ * scheduleManager derives its state file path from SCHEDULE_STATE_PATH,
+ * MCP_STATE_PATH, or ~/.config/carbon-monitor/ — without this the tests would
+ * overwrite any real schedule config on disk.
  */
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'carbon-monitor-schedule-test-'));
 const originalHome = process.env.HOME;

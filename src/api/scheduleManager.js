@@ -44,11 +44,26 @@ const os = require('os');
 function getSchedulePath() {
   if (process.env.SCHEDULE_STATE_PATH) return process.env.SCHEDULE_STATE_PATH;
 
-  const stateDir = process.env.MCP_STATE_PATH
-    ? path.dirname(process.env.MCP_STATE_PATH)
-    : path.join(os.homedir(), '.bob');
+  if (process.env.MCP_STATE_PATH) {
+    return path.join(path.dirname(process.env.MCP_STATE_PATH), 'carbon-monitor-schedule.json');
+  }
 
-  return path.join(stateDir, 'carbon-monitor-schedule.json');
+  const newPath = path.join(os.homedir(), '.config', 'carbon-monitor', 'schedule.json');
+  const oldPath = path.join(os.homedir(), '.bob', 'carbon-monitor-schedule.json');
+
+  const fssync = require('fs');
+  if (fssync.existsSync(oldPath) && !fssync.existsSync(newPath)) {
+    try {
+      fssync.mkdirSync(path.dirname(newPath), { recursive: true });
+      fssync.renameSync(oldPath, newPath);
+      console.warn('[scheduleManager] migrated schedule to ~/.config/carbon-monitor/schedule.json');
+    } catch (e) {
+      console.warn(`[scheduleManager] migration skipped, using legacy path: ${e.message}`);
+      return oldPath;
+    }
+  }
+
+  return newPath;
 }
 
 // ── Default state ────────────────────────────────────────────────────────────

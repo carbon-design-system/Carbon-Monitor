@@ -45,11 +45,26 @@ function getMaxEntries() {
 function getLedgerPath() {
   if (process.env.CREDIT_LEDGER_PATH) return process.env.CREDIT_LEDGER_PATH;
 
-  const stateDir = process.env.MCP_STATE_PATH
-    ? path.dirname(process.env.MCP_STATE_PATH)
-    : path.join(os.homedir(), '.bob');
+  if (process.env.MCP_STATE_PATH) {
+    return path.join(path.dirname(process.env.MCP_STATE_PATH), 'carbon-monitor-credit-ledger.jsonl');
+  }
 
-  return path.join(stateDir, 'carbon-monitor-credit-ledger.jsonl');
+  const newPath = path.join(os.homedir(), '.config', 'carbon-monitor', 'credit-ledger.jsonl');
+  const oldPath = path.join(os.homedir(), '.bob', 'carbon-monitor-credit-ledger.jsonl');
+
+  const fssync = require('fs');
+  if (fssync.existsSync(oldPath) && !fssync.existsSync(newPath)) {
+    try {
+      fssync.mkdirSync(path.dirname(newPath), { recursive: true });
+      fssync.renameSync(oldPath, newPath);
+      console.warn('[creditLedger] migrated ledger to ~/.config/carbon-monitor/credit-ledger.jsonl');
+    } catch (e) {
+      console.warn(`[creditLedger] migration skipped, using legacy path: ${e.message}`);
+      return oldPath;
+    }
+  }
+
+  return newPath;
 }
 
 // ── Reading ─────────────────────────────────────────────────────────────────
