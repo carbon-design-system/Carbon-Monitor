@@ -52,7 +52,7 @@ const UNAVAILABLE_COPY = {
   unauthorized: {
     title: 'Bob rejected the API key',
     subtitle:
-      'The gateway returned 401. Check that the configured key is current and that it matches the instance and team.',
+      'The gateway returned 401. This is usually transient. Wait a few minutes, refresh the browser and try again.',
   },
   unreachable: {
     title: 'Bob gateway unreachable',
