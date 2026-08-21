@@ -408,7 +408,14 @@ function ReviewLog({ running, startedAt, onVisibilityChange, prNumbers, owner, r
         role="log" with aria-live="polite" announces new lines without stealing
         focus. aria-atomic="false" keeps it to the additions rather than
         re-reading the whole buffer on every poll.
+
+        aria-describedby points to the hint span below, which is a sibling
+        rather than a child — placing it inside role="log" would have it
+        announced as log output on every live-region update.
       */}
+      <span id="cm-log-scroll-hint" className="cds--visually-hidden">
+        Scrollable region. Use arrow keys or scroll to read. Tab to exit.
+      </span>
       <div
         className="cm-log__body"
         ref={scrollRef}
@@ -417,6 +424,7 @@ function ReviewLog({ running, startedAt, onVisibilityChange, prNumbers, owner, r
         aria-live="polite"
         aria-atomic="false"
         aria-label="Review output"
+        aria-describedby="cm-log-scroll-hint"
         tabIndex={0}
       >
         {lines.length === 0 ? (

@@ -139,6 +139,24 @@ export const api = {
    */
   clearReviewLogs: () => request('/api/review/logs/clear', { method: 'POST' }),
 
+  // ── Schedule ──────────────────────────────────────────────────────────────
+
+  /** Current schedule config plus computed nextRunAt. */
+  schedule: () => request('/api/schedule'),
+
+  /**
+   * Save a partial schedule update.
+   *
+   * Body: { enabled?: boolean, timeEST?: string }
+   * The server validates all fields and returns 400 with a descriptive message
+   * on invalid input.
+   */
+  setSchedule: (patch) =>
+    request('/api/schedule', {
+      method: 'POST',
+      body: JSON.stringify(patch),
+    }),
+
   // ── Bobcoins ─────────────────────────────────────────────────────────────
   /** Current Bob gateway balance plus a summary of locally recorded spend. */
   credits: () => request('/api/credits'),

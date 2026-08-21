@@ -1,0 +1,241 @@
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Adversarial Review — Scheduled Reviews UI Batch</title>
+<style>
+  body {
+    margin: 0;
+    padding: 40px 20px;
+    background: #ffffff;
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: #1f2328;
+  }
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 21px;
+    margin: 0 0 6px;
+  }
+  .subtitle {
+    color: #57606a;
+    margin: 0 0 28px;
+    font-size: 14px;
+  }
+  h2 {
+    font-size: 16px;
+    margin: 32px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 8px;
+    font-size: 13.5px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border: 1px solid #e5e7eb;
+    vertical-align: top;
+  }
+  th {
+    background: #f7f8fa;
+    font-weight: 600;
+    color: #1f2328;
+  }
+  td.item {
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .risk {
+    font-weight: 700;
+    white-space: nowrap;
+    text-align: center;
+  }
+  .risk-low { color: #1a7f37; }
+  .risk-med { color: #9a6700; }
+  .risk-high { color: #cf222e; }
+  .note {
+    background: #f7f8fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin: 10px 0 20px;
+    font-size: 13.5px;
+    color: #57606a;
+  }
+  .overall {
+    margin-top: 32px;
+    padding: 14px 16px;
+    background: #f7f8fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+  }
+  .overall strong { color: #1f2328; }
+  code {
+    background: #f7f8fa;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12.5px;
+  }
+  footer {
+    margin-top: 40px;
+    padding-top: 14px;
+    border-top: 1px solid #e5e7eb;
+    text-align: center;
+    font-size: 12px;
+    color: #57606a;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Adversarial Review: Scheduled Reviews UI Batch</h1>
+  <p class="subtitle">Pre-execution risk assessment for items #1, #2, #4, #5, #6 — before any code is written.</p>
+
+  <h2>1. Days-back window on Schedule tab</h2>
+  <table>
+    <tr><th style="width:22%">Dimension</th><th>Finding</th><th style="width:10%">Risk</th></tr>
+    <tr>
+      <td class="item">Gap</td>
+      <td><code>SchedulePanel.jsx</code> receives <code>config</code> prop but it is only ever <code>cfg</code> (i.e. <code>maxPRs</code>/<code>daysBack</code>), not the full config object — need to confirm <code>daysBack</code> is actually passed through, since currently only <code>maxPRs</code> is read (<code>config?.maxPRs</code>).</td>
+      <td class="risk risk-low">15%</td>
+    </tr>
+    <tr>
+      <td class="item">Regression</td>
+      <td>Low — purely additive read-only text, no state/logic touched.</td>
+      <td class="risk risk-low">5%</td>
+    </tr>
+    <tr>
+      <td class="item">Consistency</td>
+      <td>If phrasing helper (#6) isn't done first, this risks introducing a second hardcoded phrase that #6 then has to retrofit — sequencing matters.</td>
+      <td class="risk risk-med">25%</td>
+    </tr>
+  </table>
+
+  <h2>2. "Set up daily schedule" discovery button</h2>
+  <table>
+    <tr><th style="width:22%">Dimension</th><th>Finding</th><th style="width:10%">Risk</th></tr>
+    <tr>
+      <td class="item">Gap</td>
+      <td>Placement inside <code>.cm-review-manual--hidden</code> wrapper vs. outside it matters — if placed inside the hidden-when-automated div, it will vanish exactly when automated mode turns on, which is correct; but if a future edit moves it, it could show under both states. Needs an explicit conditional (<code>!isAutomated</code>), not implicit CSS hiding, to avoid duplicate/orphaned "Configure schedule" and "Set up" buttons both rendering in edge states.</td>
+      <td class="risk risk-med">20%</td>
+    </tr>
+    <tr>
+      <td class="item">Regression</td>
+      <td><code>openScheduleSettings()</code> already exists and is reused — no new logic, just a new call site. Low risk.</td>
+      <td class="risk risk-low">5%</td>
+    </tr>
+    <tr>
+      <td class="item">Edge case</td>
+      <td><code>isAutomated</code> is <code>null</code> before <code>scheduleConfig</code> loads (intentionally keeps manual tile visible). The new button must not render during that <code>null</code> transient state and then disappear once data loads — flicker risk on first paint.</td>
+      <td class="risk risk-med">20%</td>
+    </tr>
+  </table>
+
+  <h2>4. Save changes / Unsaved changes / Discard changes</h2>
+  <table>
+    <tr><th style="width:22%">Dimension</th><th>Finding</th><th style="width:10%">Risk</th></tr>
+    <tr>
+      <td class="item">Gap — dirty detection</td>
+      <td>No existing "isDirty" concept in <code>SchedulePanel.jsx</code>. Must be derived correctly by comparing live form state (<code>enabled</code>, <code>timeEST</code>, <code>timezone</code>) against last-synced server values (<code>lastSyncedSchedule</code>). Timezone is tricky: it's lifted to <code>Console</code> and not part of the persisted schedule at all today — changing it currently has <strong>no save action</strong> and no server persistence call visible in <code>api.setSchedule</code>. Marking timezone changes as "unsaved" could be misleading if timezone is actually just a display preference, not a saved field.</td>
+      <td class="risk risk-high">45%</td>
+    </tr>
+    <tr>
+      <td class="item">Regression — discard</td>
+      <td>"Discard changes" must reset to <code>lastSyncedSchedule</code>-derived state exactly, reusing the same conversion logic already in the sync effect (~line 239). Risk of subtly different reset path (e.g. forgetting to reset <code>timeDisplay</code>/<code>timePeriod</code> together) causing a visible/logic mismatch (toggle reverts but time field doesn't, or vice versa).</td>
+      <td class="risk risk-med">30%</td>
+    </tr>
+    <tr>
+      <td class="item">Regression — resetKey interaction</td>
+      <td>The existing <code>resetKey</code> effect clears <code>message</code> on modal close but does <strong>not</strong> discard unsaved form edits. If a user edits, doesn't save, and closes the modal, current behavior silently loses the edit (item #4 exists specifically to warn about this) — but now the modal close and the "Discard" button both need to converge on the same reset behavior, or they'll drift into two different code paths for what should be one concept.</td>
+      <td class="risk risk-high">35%</td>
+    </tr>
+    <tr>
+      <td class="item">Accessibility</td>
+      <td>"Unsaved changes" in yellow text alone is a color-only signal risk (WCAG 1.4.1) — same category of finding already called out for confirm-buttons elsewhere in this codebase (<code>McpConnectionPanel.jsx</code> comment at line ~247). Needs an icon or explicit wording, not color alone, to stay consistent with the project's own established pattern.</td>
+      <td class="risk risk-med">30%</td>
+    </tr>
+    <tr>
+      <td class="item">Copy consistency</td>
+      <td>Button text change "Save schedule" → "Save changes" is generic — could read as ambiguous inside a modal that also has an MCP tab with its own separate save-like actions ("Save credentials"). Minor confusion risk if a screen reader user tabs between tabs.</td>
+      <td class="risk risk-low">10%</td>
+    </tr>
+  </table>
+
+  <h2>5. Clear stale PR input on automated → manual transition</h2>
+  <table>
+    <tr><th style="width:22%">Dimension</th><th>Finding</th><th style="width:10%">Risk</th></tr>
+    <tr>
+      <td class="item">Gap — trigger condition</td>
+      <td>Needs a <code>useEffect</code> keyed on the automated→manual transition specifically (not just "isAutomated is false"), otherwise <code>prInput</code> would be wiped on every render where automation is off, including the very first paint before a user has typed anything — harmless but wasteful, and risks wiping a value if <code>isAutomated</code> flickers <code>null → true → false</code> rapidly during initial load.</td>
+      <td class="risk risk-med">25%</td>
+    </tr>
+    <tr>
+      <td class="item">Regression — data loss</td>
+      <td>Directly contradicts the existing documented design intent at line ~637-641: "Manual controls — always in the DOM so the PR input field never loses its state." Clearing it on transition is a deliberate reversal of an explicit prior design decision for this exact field — worth flagging clearly since it changes documented behavior, not just adds to it.</td>
+      <td class="risk risk-high">40%</td>
+    </tr>
+    <tr>
+      <td class="item">Edge case</td>
+      <td>If a user has typed valid PR numbers, an admin enables the schedule elsewhere (another browser tab / another operator), and it polls in within 30s, the field is wiped without any warning or confirmation — silent data loss triggered by someone else's action, not the user's own.</td>
+      <td class="risk risk-high">35%</td>
+    </tr>
+  </table>
+
+  <h2>6. Shared pluralization/phrasing helper</h2>
+  <table>
+    <tr><th style="width:22%">Dimension</th><th>Finding</th><th style="width:10%">Risk</th></tr>
+    <tr>
+      <td class="item">Gap</td>
+      <td><code>pluralPRs</code> is currently defined only in <code>Console.jsx</code> (unexported, module-private). Moving/exporting it from <code>SchedulePanel.jsx</code> (as previously suggested) creates an odd dependency direction — a page importing a helper from a component file it also renders. Cleaner: a small shared utils module, or keep it in <code>Console.jsx</code> and import into <code>SchedulePanel.jsx</code> instead (reverse direction), matching how <code>toLocalTz</code>/<code>detectBrowserTimezone</code> already flow from <code>SchedulePanel.jsx</code> → <code>Console.jsx</code> today (inconsistent either way without a decision).</td>
+      <td class="risk risk-med">25%</td>
+    </tr>
+    <tr>
+      <td class="item">Regression</td>
+      <td>Pure refactor of a pure function — near-zero behavioral risk if the import direction is resolved cleanly.</td>
+      <td class="risk risk-low">5%</td>
+    </tr>
+  </table>
+
+  <h2>Cross-cutting risks</h2>
+  <table>
+    <tr><th style="width:22%">Dimension</th><th>Finding</th><th style="width:10%">Risk</th></tr>
+    <tr>
+      <td class="item">Test coverage</td>
+      <td><code>tests/scheduleManager.test.js</code> only covers the server-side scheduler module. There is no client-side test for <code>SchedulePanel.jsx</code> or <code>Console.jsx</code> — none of these five UI changes will be caught by <code>npm run test:all</code> if something regresses. Verification will rely entirely on manual build + visual check, same as the last two rounds where partial edits silently broke the build.</td>
+      <td class="risk risk-high">50%</td>
+    </tr>
+    <tr>
+      <td class="item">Tool-apply reliability</td>
+      <td>Two of the last three edit batches to these exact files (<code>SchedulePanel.jsx</code>, <code>Console.jsx</code>) had <code>apply_diff</code> report success while silently dropping part of the diff, causing a live render crash caught only by rebuilding and inspecting file contents afterward. This batch touches the same two files again with 5 separate concerns — re-verification via <code>grep</code>/full re-read after every diff is mandatory, not optional.</td>
+      <td class="risk risk-high">55%</td>
+    </tr>
+    <tr>
+      <td class="item">Scope creep</td>
+      <td>#4's dirty-state tracking and #5's clear-on-transition both touch the same underlying form-state lifecycle in <code>SchedulePanel.jsx</code>/<code>Console.jsx</code> — implementing them in the same pass without careful sequencing risks one's reset logic clobbering the other's (e.g. "Discard changes" resetting fields at the same moment <code>isAutomated</code> flips and independently clears <code>prInput</code>).</td>
+      <td class="risk risk-med">30%</td>
+    </tr>
+  </table>
+
+  <div class="overall">
+    <strong>Highest-risk items requiring a decision before coding starts:</strong>
+    <ul style="margin:8px 0 0;padding-left:20px">
+      <li>#4 — whether timezone changes count as "unsaved" (no persistence path currently exists for timezone at all)</li>
+      <li>#4 — whether modal-close-without-save should now warn/discard-prompt, or silently discard as today (resetKey vs. dirty-check divergence)</li>
+      <li>#5 — explicit reversal of the documented "PR input never loses state" design decision; confirm this is intentional</li>
+      <li>Process — re-verify every diff with a fresh <code>grep</code>/read immediately after applying, given the two prior silent-drop incidents in these same files</li>
+    </ul>
+  </div>
+
+  <footer>Made with IBM Bob</footer>
+</div>
+</body>
+</html>

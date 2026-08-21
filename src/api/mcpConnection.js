@@ -85,10 +85,24 @@ function getBobMcpConfigPath() {
  * across redeploys and platform recycling.
  */
 function getStatePath() {
-  return (
-    process.env.MCP_STATE_PATH ||
-    path.join(os.homedir(), '.bob', 'carbon-monitor-mcp-state.json')
-  );
+  if (process.env.MCP_STATE_PATH) return process.env.MCP_STATE_PATH;
+
+  const newPath = path.join(os.homedir(), '.config', 'carbon-monitor', 'mcp-state.json');
+  const oldPath = path.join(os.homedir(), '.bob', 'carbon-monitor-mcp-state.json');
+
+  const fssync = require('fs');
+  if (fssync.existsSync(oldPath) && !fssync.existsSync(newPath)) {
+    try {
+      fssync.mkdirSync(path.dirname(newPath), { recursive: true });
+      fssync.renameSync(oldPath, newPath);
+      console.warn('[mcpConnection] migrated state file to ~/.config/carbon-monitor/mcp-state.json');
+    } catch (e) {
+      console.warn(`[mcpConnection] migration skipped, using legacy path: ${e.message}`);
+      return oldPath;
+    }
+  }
+
+  return newPath;
 }
 
 // ── In-memory state ─────────────────────────────────────────────────────────

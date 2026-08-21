@@ -266,6 +266,11 @@ function BalanceTile({ balance, summary, check }) {
         ? Math.round(((remaining ?? 0) / budget) * 100)
         : 0;
   const gaugeStatus = gaugeValue < 10 ? 'danger' : gaugeValue < 25 ? 'warning' : 'success';
+  // Plain-English urgency label — appended to the prose sub-line only when the
+  // budget is not healthy, so colour is not the sole signal (WCAG 1.4.1) but
+  // normal state isn't cluttered with a redundant confirmation word.
+  // null = healthy (>= 25%): the number speaks for itself.
+  const gaugeUrgency = gaugeValue < 10 ? 'critical' : gaugeValue < 25 ? 'low' : null;
   const gaugeColor = gaugeValue < 10 ? '#da1e28' : gaugeValue < 25 ? '#ff832b' : '#0f62fe';
   const gaugeData = [{ group: 'value', value: gaugeValue }];
   const gaugeOptions = {
@@ -320,14 +325,34 @@ function BalanceTile({ balance, summary, check }) {
               it shows the figure plainly and keeps its count-up. */}
           {budget !== null && used !== null ? (
             <div className="cm-coins__budget">
-              <div className="cm-coins__gauge">
-                <GaugeChart data={gaugeData} options={gaugeOptions} />
+              {/*
+                role="img" wrapper gives AT a single, accurate label for the
+                whole gauge area. aria-hidden on the inner div suppresses the
+                GaugeChart SVG internals, which would otherwise be announced as
+                disconnected SVG text nodes. The label carries only the
+                percentage — urgency is in the prose sub-line below so it is
+                not announced twice. WCAG 1.1.1.
+              */}
+              <div
+                role="img"
+                aria-label={`Budget gauge: ${gaugeValue}% remaining${gaugeUrgency ? ` · ${gaugeUrgency}` : ''}`}
+                className="cm-coins__gauge-wrapper"
+              >
+                <div className="cm-coins__gauge" aria-hidden="true">
+                  <GaugeChart data={gaugeData} options={gaugeOptions} />
+                </div>
               </div>
               <div className="cm-coins__figures">
                 <p className="cm-coins__value"><CoinValue value={animatedRemaining} /></p>
                 <p className="cm-coins__label">Bobcoins remaining</p>
+                {/*
+                  gaugeUrgency appended only when non-null (budget is low or
+                  critical) so the status level is conveyed independently of
+                  colour (WCAG 1.4.1) without cluttering healthy state with a
+                  redundant confirmation word.
+                */}
                 <p className="cm-coins__sub">
-                  {`${coins(used)} used · ${coins(budget)} budget`}
+                  {`${coins(used)} used · ${coins(budget)} budget${gaugeUrgency ? ` · ${gaugeUrgency}` : ''}`}
                 </p>
               </div>
             </div>

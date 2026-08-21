@@ -61,8 +61,8 @@ function assert(condition, message) {
 /**
  * Sandbox every path the modules derive.
  *
- * creditLedger falls back to ~/.bob when MCP_STATE_PATH is unset, so without
- * this the tests would append to the developer's real ledger.
+ * creditLedger falls back to ~/.config/carbon-monitor/ when MCP_STATE_PATH is
+ * unset, so without this the tests would append to the developer's real ledger.
  */
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'carbon-monitor-credits-'));
 const originalHome = process.env.HOME;
