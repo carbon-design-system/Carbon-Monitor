@@ -84,9 +84,9 @@ function truncateAtWord(text, maxLen) {
 function flagFor(recommendation) {
   switch (recommendation) {
     case 'consider-revising':
-      return { emoji: '🔴', label: 'Major rework needed' };
+      return { emoji: '🔴', label: 'Significant revision suggested' };
     case 'suggested-improvements':
-      return { emoji: '🟡', label: 'Minor rework' };
+      return { emoji: '🟡', label: 'Minor rework suggested"' };
     case 'looks-good':
       return { emoji: '🟢', label: 'Looks good' };
     default:
