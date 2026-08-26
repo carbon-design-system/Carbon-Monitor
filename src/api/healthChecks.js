@@ -388,7 +388,7 @@ async function checkGitHub() {
       label: 'GitHub',
       status: low ? WARNING : OK,
       detail: quota || `Connected to ${owner}/${repo}`,
-      hint: `Watching ${owner}/${repo}${quota ? '' : ' — quota unavailable'}`,
+      hint: `Monitoring ${owner}/${repo}${quota ? '' : ' — quota unavailable'}`,
     };
   } catch (error) {
     return {
