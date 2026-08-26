@@ -53,6 +53,7 @@ const { splitFindings } = require('./diffMapper');
 const { emitEvent } = require('./observability/eventService');
 const bobCredits = require('./api/bobCredits');
 const creditLedger = require('./api/creditLedger');
+const { postRunDigest } = require('./slackNotifier');
 const {
   GITHUB_OWNER,
   GITHUB_REPO,
@@ -324,6 +325,8 @@ async function reviewPRs(options = {}) {
   const correlationId = randomUUID();
   const runStartedAt = Date.now();
   let prsReviewedThisRun = 0;
+  // Accumulates per-PR outcomes for the Slack digest (scheduled runs only)
+  const runResults = [];
 
   // Spec-compliant startup logging
   console.log(`[Carbon-Monitor] repo=${GITHUB_OWNER}/${GITHUB_REPO}`);
@@ -447,6 +450,16 @@ async function reviewPRs(options = {}) {
 
       if (prs.length === 0) {
         console.log('✅ No PRs need review');
+        // Scheduled run: post a "nothing to review" ping so the channel
+        // confirms the scheduler fired even when no PRs were eligible.
+        if (options.triggeredBy === 'schedule') {
+          await postRunDigest({
+            startedAt: runStartedAt,
+            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            results: [],
+            emitEvent,
+          });
+        }
         return;
       }
     }
@@ -786,6 +799,15 @@ async function reviewPRs(options = {}) {
         
         console.log(`\n✅ PR #${pr.number} review complete`);
 
+        // Record success for the Slack digest
+        runResults.push({
+          prNumber: pr.number,
+          prUrl: pr.html_url,
+          findingsCount: review.findings.length,
+          summary: review.summaryMarkdown,
+          recommendation: review.recommendation,
+        });
+
       } catch (prError) {
         console.error(`\n❌ Error reviewing PR #${pr.number}:`, prError.message);
         console.error(prError.stack);
@@ -796,6 +818,13 @@ async function reviewPRs(options = {}) {
           pr_number: pr.number,
           agent: REVIEW_AGENT,
           payload: { error: prError.message },
+        });
+        // Record failure for the Slack digest so it appears as a ⚠️ entry
+        // rather than silently vanishing from the summary.
+        runResults.push({
+          prNumber: pr.number,
+          failed: true,
+          error: prError.message,
         });
       } finally {
         // Runs on every exit from this PR — success, parse failure, agent
@@ -821,6 +850,16 @@ async function reviewPRs(options = {}) {
         target_mode: target.mode,
       },
     });
+
+    // Post Slack digest for scheduled runs only
+    if (options.triggeredBy === 'schedule') {
+      await postRunDigest({
+        startedAt: runStartedAt,
+        repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+        results: runResults,
+        emitEvent,
+      });
+    }
 
     console.log(`\n${'='.repeat(80)}`);
     console.log('✅ Carbon PR Review Agent Complete');

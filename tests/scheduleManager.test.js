@@ -285,9 +285,9 @@ async function main() {
     // Read the source and assert the ordering.
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'api', 'scheduleManager.js'), 'utf8');
     const claimIdx = src.indexOf('reviewState.running = true');
-    const fireIdx = src.indexOf('reviewPRs({})');
+    const fireIdx = src.indexOf('reviewPRs(');
     assert(claimIdx !== -1, 'reviewState.running = true must appear in scheduleManager.js');
-    assert(fireIdx !== -1, 'reviewPRs({}) must appear in scheduleManager.js');
+    assert(fireIdx !== -1, 'reviewPRs( must appear in scheduleManager.js');
     assert(
       claimIdx < fireIdx,
       `reviewState.running must be claimed (pos ${claimIdx}) BEFORE reviewPRs is called (pos ${fireIdx})`

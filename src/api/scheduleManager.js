@@ -470,7 +470,7 @@ async function tick(reviewPRs, reviewState, reviewLog) {
 
   // 9. Fire the review in the background. Do not await — the tick must return
   //    promptly so the interval does not stack up.
-  reviewPRs({})
+  reviewPRs({ triggeredBy: 'schedule' })
     .then(() => {
       reviewState.error = null;
     })
