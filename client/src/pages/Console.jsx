@@ -427,17 +427,18 @@ function Console({ authRequired = false, onSignOut }) {
         <HeaderGlobalBar>
           {/*
             Status badge — role="img" with aria-label carries the state for AT.
-            No Tooltip wrapper and no tabIndex: the Carbon Tooltip injects an
-            onFocus handler via cloneElement which VoiceOver detects and announces
-            as "clickable" even on a non-interactive element. The hover label
-            ("Running"/"Idle") is redundant with both the aria-label and the
-            Reviews tile's "State" row below, so the Tooltip adds nothing that
-            justifies the false interactive signal.
+            The mouse-hover label ("Running"/"Idle") is a native `title`, not a
+            Carbon Tooltip: the Tooltip needs a focusable trigger (tabIndex={0})
+            and injects an onFocus handler via cloneElement, which VoiceOver
+            announces as "clickable" on this non-interactive status. A plain
+            title restores the hover affordance for sighted users with no
+            interactive semantics — AT still reads the state from the aria-label.
           */}
           <div
             className="cm-review-status"
             role="img"
             aria-label={review?.running ? 'Review status: running' : 'Review status: idle'}
+            title={review?.running ? 'Running' : 'Idle'}
           >
             <span className="cm-review-status__icon" aria-hidden="true">
               <Terminal size={20} />
@@ -498,7 +499,7 @@ function Console({ authRequired = false, onSignOut }) {
             and the tiles share one left edge instead of stair-stepping by 16px. */}
         <Grid narrow withRowGap>
           <Column sm={4} md={8} lg={16}>
-            <h1 className="cm-page-heading">Operations</h1>
+            <h1 className="cm-page-heading">Dashboard</h1>
             <p className="cm-page-caption">
               {cfg
                 ? `Reviewing pull requests in ${cfg.owner}/${cfg.repo} with the ${cfg.agent} agent.`
