@@ -32,7 +32,7 @@ import McpConnectionPanel from '../components/McpConnectionPanel';
 import BobcoinsPanel, { BobcoinsLedger } from '../components/BobcoinsPanel';
 import ReviewLog from '../components/ReviewLog';
 import SchedulePanel, { toLocalTz, detectBrowserTimezone } from '../components/SchedulePanel';
-import { pluralPRs, targetWindowText } from '../utils/prPhrasing';
+import { pluralPRs, targetWindowText, reviewButtonLabel } from '../utils/prPhrasing';
 
 /** How often the status panel re-polls, in milliseconds. */
 const POLL_INTERVAL_MS = 30_000;
@@ -63,9 +63,10 @@ const CREDIT_HISTORY_LIMIT = 10;
  */
 function parsePrNumbers(raw, maxPRs) {
   const trimmed = raw.trim();
-  if (!trimmed) return { prNumbers: [], error: null };
+  if (!trimmed) return { prNumbers: [], error: null, duplicatesDropped: 0 };
 
   const prNumbers = [];
+  let duplicatesDropped = 0;
 
   for (const entry of trimmed.split(',').map((part) => part.trim())) {
     // An empty entry means a doubled or trailing comma. Everything else that
@@ -75,29 +76,34 @@ function parsePrNumbers(raw, maxPRs) {
       return {
         prNumbers: [],
         error: 'Separate pull request numbers with a single comma.',
+        duplicatesDropped: 0,
       };
     }
     if (!/^\d+$/.test(entry) || Number(entry) < 1) {
       return {
         prNumbers: [],
         error: `“${entry}” is not a pull request number. Use positive whole numbers separated by commas.`,
+        duplicatesDropped: 0,
       };
     }
 
     // Duplicates are dropped rather than rejected, keeping first-seen order —
     // the same thing the server does, so the count check below agrees with it.
+    // Counted so the field can flag it instead of collapsing quietly.
     const value = Number(entry);
     if (!prNumbers.includes(value)) prNumbers.push(value);
+    else duplicatesDropped++;
   }
 
   if (maxPRs != null && prNumbers.length > maxPRs) {
     return {
       prNumbers: [],
       error: `Up to ${pluralPRs(maxPRs)} per run; ${prNumbers.length} given.`,
+      duplicatesDropped: 0,
     };
   }
 
-  return { prNumbers, error: null };
+  return { prNumbers, error: null, duplicatesDropped };
 }
 
 /**
@@ -286,7 +292,7 @@ function Console({ authRequired = false, onSignOut }) {
   const maxPRs = cfg?.maxPRs ?? null;
   const daysBack = cfg?.daysBack ?? null;
 
-  const { prNumbers, error: prError } = parsePrNumbers(prInput, maxPRs);
+  const { prNumbers, error: prError, duplicatesDropped } = parsePrNumbers(prInput, maxPRs);
   const reviewRunning = Boolean(review?.running) || triggering;
 
   // True only once the schedule config has loaded AND enabled is explicitly true.
@@ -681,14 +687,14 @@ function Console({ authRequired = false, onSignOut }) {
                     helperText={prHelperText}
                     invalid={Boolean(prError)}
                     invalidText={prError || ''}
-                    // Non-destructive: flags text left over from before the
-                    // schedule was turned off rather than erasing it, since
-                    // the schedule may have been toggled by another operator
-                    // on this shared deployment. warn is suppressed once
-                    // invalid is set — the two are mutually exclusive states
-                    // on this field and invalid is the more actionable one.
-                    warn={!prError && staleInputHint}
-                    warnText="Entered before scheduling was turned on — review before submitting."
+                    // Two notices share the warn slot (hidden while invalid shows):
+                    // the stale-input hint, then the duplicate-collapsed note.
+                    warn={!prError && (staleInputHint || duplicatesDropped > 0)}
+                    warnText={
+                      staleInputHint
+                        ? 'Entered before scheduling was turned on — review before submitting.'
+                        : 'Duplicate pull request numbers were ignored.'
+                    }
                     value={prInput}
                     onChange={(e) => {
                       setPrInput(e.target.value);
@@ -718,9 +724,7 @@ function Console({ authRequired = false, onSignOut }) {
                     onClick={triggerReview}
                     disabled={reviewRunning || Boolean(prError) || prNumbers.length === 0}
                   >
-                    {prNumbers.length > 0
-                      ? `Review ${prNumbers.map((n) => `#${n}`).join(', ')}`
-                      : 'Review listed PRs'}
+                    {reviewButtonLabel(prNumbers)}
                   </Button>
 
                   {/*

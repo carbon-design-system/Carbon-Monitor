@@ -33,3 +33,17 @@ export function targetWindowText(maxPRs, daysBack) {
   if (maxPRs == null || daysBack == null) return null;
   return `Up to ${pluralPRs(maxPRs)} opened in the last ${daysBack} days`;
 }
+
+/**
+ * Label for the explicit "Review …" button. Names a single PR, but collapses a
+ * longer selection to a count so the button stays a fixed size instead of
+ * growing with the numbers entered.
+ *
+ * @param {number[]} prNumbers
+ * @returns {string}
+ */
+export function reviewButtonLabel(prNumbers) {
+  if (!prNumbers || prNumbers.length === 0) return 'Review listed PRs';
+  if (prNumbers.length === 1) return `Review #${prNumbers[0]}`;
+  return `Review ${prNumbers.length} listed PRs`;
+}
