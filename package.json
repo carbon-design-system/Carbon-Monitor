@@ -1,6 +1,6 @@
 {
   "name": "carbon-monitor",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "AI-powered PR review agent for Carbon Design System",
   "main": "src/index.js",
   "scripts": {
@@ -18,12 +18,13 @@
     "test:linked": "node tests/linkedIssue.test.js",
     "test:session": "node tests/sessionAuth.test.js",
     "test:targeting": "node tests/reviewTargeting.test.js",
+    "test:reviewable": "node tests/reviewablePrs.test.js",
     "test:apiauth": "node tests/apiAuth.test.js",
     "test:mcp": "node tests/mcpConnection.test.js",
     "test:credits": "node tests/bobCredits.test.js",
     "test:schedule": "node tests/scheduleManager.test.js",
     "test:slack": "node tests/slackNotifier.test.js",
-    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js && node tests/linkedIssue.test.js && node tests/prTargeting.test.js && node tests/sessionAuth.test.js && node tests/apiAuth.test.js && node tests/mcpConnection.test.js && node tests/bobCredits.test.js && node tests/reviewTargeting.test.js && node tests/scheduleManager.test.js && node tests/slackNotifier.test.js"
+    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js && node tests/linkedIssue.test.js && node tests/prTargeting.test.js && node tests/sessionAuth.test.js && node tests/apiAuth.test.js && node tests/mcpConnection.test.js && node tests/bobCredits.test.js && node tests/reviewTargeting.test.js && node tests/reviewablePrs.test.js && node tests/scheduleManager.test.js && node tests/slackNotifier.test.js"
   },
   "keywords": [
     "carbon",

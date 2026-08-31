@@ -22,6 +22,7 @@ function createGitHubClient(octokit) {
         const since = new Date();
         since.setDate(since.getDate() - daysBack);
 
+        // Newest-created first, so the PRs we want are at the front of the page.
         const { data: prs } = await octokit.rest.pulls.list({
           owner,
           repo,
@@ -38,6 +39,13 @@ function createGitHubClient(octokit) {
           if (pr.labels.some(l => l.name === label || SKIP_LABELS.includes(l.name))) return false;
           if (pr.user.type === 'Bot') return false;
           return true;
+        });
+
+        // Sort newest-first in code so the top-N slice is deterministic rather
+        // than dependent on response order. Ties break by PR number (higher = newer).
+        filtered.sort((a, b) => {
+          const byCreated = new Date(b.created_at) - new Date(a.created_at);
+          return byCreated !== 0 ? byCreated : b.number - a.number;
         });
 
         return maxPRs ? filtered.slice(0, maxPRs) : filtered;
