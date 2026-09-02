@@ -1,6 +1,6 @@
 {
   "name": "carbon-monitor",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "AI-powered PR review agent for Carbon Design System",
   "main": "src/index.js",
   "scripts": {
