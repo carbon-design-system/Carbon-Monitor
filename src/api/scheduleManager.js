@@ -24,6 +24,14 @@
  *
  * 5. Same file-persistence patterns as creditLedger: atomic tmp→rename write,
  *    ENOENT returns defaults, parse error resets to defaults and overwrites.
+ *
+ * 6. Elasticsearch as cross-deployment durable store. On a fresh container the
+ *    local state file does not exist (ENOENT). loadSchedule() attempts one ES
+ *    GET to restore the previous deployment's state before falling back to
+ *    defaults. saveSchedule() upserts the same state to ES after the file write
+ *    succeeds — fire-and-forget, so an ES failure never blocks the idempotency
+ *    token write (principle #2). The file remains the primary gate; ES is the
+ *    off-container backup.
  *****************************************************************************/
 
 'use strict';
@@ -31,6 +39,9 @@
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
+
+// Lazy-require so the module loads fine when esClient is unavailable in tests.
+const { esCall } = require('../observability/esClient');
 
 // ── State file location ──────────────────────────────────────────────────────
 
@@ -90,6 +101,49 @@ function defaultState() {
 /** Cached copy of the on-disk state, kept in sync by loadSchedule/saveSchedule. */
 let _state = null;
 
+// ── Elasticsearch helpers ─────────────────────────────────────────────────────
+
+const ES_INDEX = 'carbon-monitor-schedule';
+const ES_DOC_ID = 'singleton';
+
+/**
+ * Fetch the schedule state from Elasticsearch.
+ *
+ * Returns the stored state object merged onto defaults, or null if ES is
+ * unavailable, the document does not exist, or any error occurs.
+ * Never throws.
+ */
+async function esLoadSchedule() {
+  try {
+    const result = await esCall((client) =>
+      client.get({ index: ES_INDEX, id: ES_DOC_ID })
+    );
+    if (!result || !result._source || typeof result._source !== 'object') {
+      return null;
+    }
+    return { ...defaultState(), ...result._source };
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Upsert the schedule state to Elasticsearch.
+ *
+ * Fire-and-forget — the returned promise is intentionally not awaited by
+ * saveSchedule(), so an ES failure never blocks the idempotency token write.
+ * Never throws.
+ */
+async function esSaveSchedule(state) {
+  try {
+    await esCall((client) =>
+      client.index({ index: ES_INDEX, id: ES_DOC_ID, document: state })
+    );
+  } catch (_) {
+    // Failure is already logged by esCall's circuit breaker. Nothing to add.
+  }
+}
+
 // ── File I/O ─────────────────────────────────────────────────────────────────
 
 /**
@@ -106,6 +160,15 @@ async function loadSchedule() {
   } catch (err) {
     if (err.code !== 'ENOENT') {
       console.warn(`[schedule] could not read state file: ${err.message}`);
+    }
+    // File absent (fresh container) — attempt to restore from ES before
+    // falling back to defaults. This is the only path that queries ES on read;
+    // when the file exists it is always preferred (faster, no network hop).
+    const esState = await esLoadSchedule();
+    if (esState) {
+      console.log('[schedule] restored state from Elasticsearch (no local file found)');
+      _state = esState;
+      return _state;
     }
     _state = defaultState();
     return _state;
@@ -147,6 +210,12 @@ async function saveSchedule(state) {
   });
   await fs.rename(tmp, schedulePath);
   _state = state;
+  // Upsert to ES after the file write succeeds. Fire-and-forget — an ES
+  // failure must never prevent the idempotency token from being recorded
+  // (design principle #2). The file is always written first.
+  esSaveSchedule(state).catch((err) => {
+    console.warn(`[schedule] could not upsert state to Elasticsearch: ${err.message}`);
+  });
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
