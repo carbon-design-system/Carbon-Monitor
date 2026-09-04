@@ -3,6 +3,11 @@
  * STRICTLY filters Carbon-specific claims that lack proper carbon-mcp verification
  */
 
+// General-purpose JSON repair, used ONLY as a last-resort syntactic fallback after
+// the bespoke passes below have failed (see parseReviewOutput). It never runs on
+// output that already parses, so it cannot alter a currently-passing review.
+const { jsonrepair } = require('jsonrepair');
+
 /**
  * Check if a finding appears to be Carbon Design System specific
  *
@@ -723,7 +728,25 @@ function parseReviewOutput(agentOutput) {
         jsonForDiagnostics = escapeRepaired;
         console.warn('⚠️  Escaped invalid backslash sequence(s) in JSON output');
       } catch (_) {
-        throw primaryParseError;
+        // Last-resort fallback — jsonrepair: robust general syntactic repair
+        // (unescaped quotes, trailing commas, bad escapes, missing quotes). Reached
+        // ONLY after the two repairs above have already failed, so no review that
+        // currently parses can be affected. Recovering here avoids falling through
+        // to the agent retry, which re-runs the model and doubles the token/coin
+        // spend for the PR. The semantic passes (v2 line-wrap collapse, truncation
+        // salvage) still run first; jsonrepair only does syntactic cleanup on their
+        // output, and any hollow finding it yields is still rejected by the
+        // per-finding schema validation below. Wrapped so a jsonrepair failure
+        // surfaces the ORIGINAL parse error — identical to today's behaviour.
+        try {
+          const jsonRepaired = jsonrepair(jsonStr);
+          review = JSON.parse(jsonRepaired);
+          jsonStr = jsonRepaired;
+          jsonForDiagnostics = jsonRepaired;
+          console.warn('⚠️  Recovered malformed JSON via jsonrepair');
+        } catch (_2) {
+          throw primaryParseError;
+        }
       }
     }
 

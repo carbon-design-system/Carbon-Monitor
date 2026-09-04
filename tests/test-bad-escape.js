@@ -102,6 +102,55 @@ const cleanReview =
 const clean = parseReviewOutput(cleanReview);
 ok('clean review still parses (happy path untouched)', !!clean && clean.findings.length === 0);
 
+console.log('\n── jsonrepair last-resort fallback ────────────────────────────');
+
+// jsonrepair runs ONLY after the escaper has also failed. These lock in that it
+// recovers malformations the escaper cannot — so they no longer fall through to
+// the token-doubling agent retry — AND that it does NOT run when a cheaper layer
+// already succeeds, the ordering that keeps the working path untouched.
+function runCapturingWarnings(agentOutput) {
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args.join(' '));
+  let review = null;
+  try { review = parseReviewOutput(agentOutput); } finally { console.warn = originalWarn; }
+  return { review, warnings: warnings.join('\n') };
+}
+
+const mk = (bodyJson) => `BEGIN_REVIEW_JSON\n${bodyJson}\nEND_REVIEW_JSON`;
+const goodFinding =
+  '{"severity":"minor","file":"a.ts","line":1,"title":"t",' +
+  '"body":"a reasonably long body ending with an actionable suggestion sentence",' +
+  '"carbonVerified":false,"verificationSource":"not-carbon-specific"}';
+
+// 1. Trailing comma — no bad escape for the escaper to fix, so it reaches jsonrepair.
+const trailingComma = mk(`{"summaryMarkdown":"ok","findings":[${goodFinding},],"shouldPostInlineComments":false}`);
+const tc = runCapturingWarnings(trailingComma);
+ok('trailing comma recovered', !!tc.review);
+ok('trailing comma used the jsonrepair layer', /jsonrepair/.test(tc.warnings));
+
+// 2. Unescaped interior quote in a NON-padded payload — the quote-sanitiser only
+//    runs for v2-padded output, so this would otherwise fall through to the retry.
+const unescQuote = mk(
+  '{"summaryMarkdown":"ok","findings":[{"severity":"minor","file":"a.ts","line":1,' +
+  '"title":"t","body":"the attr role="dialog" is required; add an actionable fix sentence",' +
+  '"carbonVerified":false,"verificationSource":"not-carbon-specific"}],"shouldPostInlineComments":false}'
+);
+const uq = runCapturingWarnings(unescQuote);
+ok('unescaped interior quote (non-padded) recovered', !!uq.review);
+ok('unescaped interior quote used the jsonrepair layer', /jsonrepair/.test(uq.warnings));
+
+// 3. Escaper path UNTOUCHED: the bad-escape payload is still fixed by the escaper,
+//    and jsonrepair is NOT invoked — the layering the fallback must preserve.
+const be = runCapturingWarnings(badEscapeReview);
+ok('bad-escape still recovered by the escaper, not jsonrepair',
+  !!be.review && /Escaped invalid backslash/.test(be.warnings) && !/jsonrepair/.test(be.warnings));
+
+// 4. Clean review invokes NO repair layer at all.
+const cl = runCapturingWarnings(cleanReview);
+ok('clean review triggers no repair layer',
+  !!cl.review && !/Escaped invalid backslash|jsonrepair/.test(cl.warnings));
+
 console.log('\n────────────────────────────────────────────────────────────');
 console.log(`Results: ${pass} passed, ${fail} failed`);
 if (fail > 0) {
