@@ -406,20 +406,11 @@ function Console({ authRequired = false, onSignOut }) {
           {version && <span className="cm-brand-version"> (v{version})</span>}
         </HeaderName>
         <HeaderGlobalBar>
-          {/*
-            Status badge — role="img" with aria-label carries the state for AT.
-            The mouse-hover label ("Running"/"Idle") is a native `title`, not a
-            Carbon Tooltip: the Tooltip needs a focusable trigger (tabIndex={0})
-            and injects an onFocus handler via cloneElement, which VoiceOver
-            announces as "clickable" on this non-interactive status. A plain
-            title restores the hover affordance for sighted users with no
-            interactive semantics — AT still reads the state from the aria-label.
-          */}
-          <div
+          {/* Status badge — HeaderGlobalAction for built-in tooltip; className overrides suppress click/hover feedback. */}
+          <HeaderGlobalAction
+            aria-label={review?.running ? 'Running' : 'Idle'}
+            tooltipAlignment="center"
             className="cm-review-status"
-            role="img"
-            aria-label={review?.running ? 'Review status: running' : 'Review status: idle'}
-            title={review?.running ? 'Running' : 'Idle'}
           >
             <span className="cm-review-status__icon" aria-hidden="true">
               <Terminal size={20} />
@@ -429,7 +420,7 @@ function Console({ authRequired = false, onSignOut }) {
                 }`}
               />
             </span>
-          </div>
+          </HeaderGlobalAction>
 
           {/*
             Help sits to the LEFT of the settings gear. It opens the usage guide
