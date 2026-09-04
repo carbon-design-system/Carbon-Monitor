@@ -528,16 +528,6 @@ body {
   border-block-start: 1px solid $border-subtle;
 }
 
-// ── Reviews tile — automated mode ─────────────────────────────────────────
-// Hide the manual controls when the daily schedule is active. The elements
-// remain in the DOM (the TextInput keeps its state) but are invisible and
-// inert so the operator cannot accidentally interact with them.
-.cm-review-manual--hidden {
-  display: none;
-  visibility: hidden;
-  pointer-events: none;
-}
-
 // ── Review output ─────────────────────────────────────────────────────────
 // The live log of a running review. Monospaced and inset so it reads as machine
 // output rather than as more of the page's prose.

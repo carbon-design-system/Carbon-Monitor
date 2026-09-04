@@ -173,19 +173,6 @@ function Console({ authRequired = false, onSignOut }) {
   const [completion, setCompletion] = useState(null);
   const prevRunningRef = useRef(false);
 
-  // Set on an automated→manual transition when the PR field already has
-  // text in it — text typed (by this operator or another, on this shared
-  // single-instance deployment) while automation was on, and never reviewed.
-  // Deliberately a hint, not a clear: the field is kept mounted specifically
-  // so an operator's typed value is never lost (see cm-review-manual--hidden
-  // below), and silently wiping it on a remote schedule toggle would destroy
-  // someone else's input without their say. Cleared the moment the operator
-  // edits the field themselves or submits it — both are how they show they
-  // have seen it.
-  const [staleInputHint, setStaleInputHint] = useState(false);
-  const prevAutomatedRef = useRef(null);
-
-
   const load = useCallback(async () => {
     try {
       // Fetched together so a slow dependency check does not stagger the panel.
@@ -296,20 +283,9 @@ function Console({ authRequired = false, onSignOut }) {
   const reviewRunning = Boolean(review?.running) || triggering;
 
   // True only once the schedule config has loaded AND enabled is explicitly true.
-  // Null (not yet loaded) keeps the manual tile visible — no flash on first paint.
+  // Null (not yet loaded) reads as not-automated, so the schedule-only status rows
+  // and the "Configure schedule" label never flash in before the config arrives.
   const isAutomated = scheduleConfig?.schedule?.enabled === true;
-
-  // Detect an automated→manual transition and flag (never clear) a PR field
-  // that already has text in it. Compared against the previous *true* value
-  // specifically — the initial null → false on first load is not a
-  // transition away from automated, so it must not trigger the hint on a
-  // console that simply starts out unscheduled.
-  useEffect(() => {
-    if (prevAutomatedRef.current === true && isAutomated === false && prInput.trim()) {
-      setStaleInputHint(true);
-    }
-    prevAutomatedRef.current = isAutomated;
-  }, [isAutomated, prInput]);
 
   /** Open Settings modal directly on the "Scheduled reviews" tab (index 1). */
   function openScheduleSettings() {
@@ -391,7 +367,6 @@ function Console({ authRequired = false, onSignOut }) {
       // in that case, which is the request this console has always sent.
       await api.triggerReview(prNumbers);
       setPrInput('');
-      setStaleInputHint(false);
       await load();
     } catch (err) {
       if (err.status === 401) return onSignOut();
@@ -670,15 +645,15 @@ function Console({ authRequired = false, onSignOut }) {
               )}
 
               {/*
-                Manual controls — always in the DOM so the PR input field never
-                loses its state when the schedule poll returns. Hidden via CSS
-                and inerted when automated mode is active so the tile does not
-                show two competing interaction models at once. `inert` removes
-                the subtree from the accessibility tree in addition to what
-                display:none already does, guarding against AT/browser pairs
-                that do not fully honour display:none.
+                Manual controls — always available, including while a daily
+                schedule is configured. A scheduled run and a manual run share one
+                single-flight lock (the server refuses a second run with 409 while
+                one is in flight, and the scheduler skips its slot when a manual run
+                is already going), so the two coexist safely: an operator never has
+                to disable the schedule to review a PR by hand. Only an in-flight
+                run (reviewRunning) disables the controls below.
               */}
-              <div className={isAutomated ? 'cm-review-manual--hidden' : undefined} inert={isAutomated || undefined}>
+              <div>
                 <div className="cm-review-field">
                   <TextInput
                     id="cm-review-prs"
@@ -687,20 +662,13 @@ function Console({ authRequired = false, onSignOut }) {
                     helperText={prHelperText}
                     invalid={Boolean(prError)}
                     invalidText={prError || ''}
-                    // Two notices share the warn slot (hidden while invalid shows):
-                    // the stale-input hint, then the duplicate-collapsed note.
-                    warn={!prError && (staleInputHint || duplicatesDropped > 0)}
-                    warnText={
-                      staleInputHint
-                        ? 'Entered before scheduling was turned on — review before submitting.'
-                        : 'Duplicate pull request numbers were ignored.'
-                    }
+                    // Warn slot flags duplicate PR numbers that were collapsed
+                    // (suppressed while an invalid error is showing).
+                    warn={!prError && duplicatesDropped > 0}
+                    warnText="Duplicate pull request numbers were ignored."
                     value={prInput}
-                    onChange={(e) => {
-                      setPrInput(e.target.value);
-                      setStaleInputHint(false);
-                    }}
-                    disabled={reviewRunning || isAutomated}
+                    onChange={(e) => setPrInput(e.target.value)}
+                    disabled={reviewRunning}
                     autoComplete="off"
                     inputMode="numeric"
                   />
@@ -728,32 +696,18 @@ function Console({ authRequired = false, onSignOut }) {
                   </Button>
 
                   {/*
-                    Discovery path into schedule settings — only shown while
-                    still in manual mode. Checked against `false` explicitly,
-                    not `!isAutomated` — isAutomated is null before the schedule
-                    config has loaded, and the button should not flash in during
-                    that instant.
+                    Discovery path into schedule settings, always present alongside
+                    the manual controls. The label reflects state: "Configure
+                    schedule" once a daily schedule is set, "Set up daily schedule"
+                    otherwise. `=== true` rather than truthiness so the label stays
+                    "Set up…" during the null instant before the schedule config
+                    loads and never flashes "Configure…" on an unscheduled console.
                   */}
-                  {isAutomated === false && (
-                    <Button kind="ghost" onClick={openScheduleSettings}>
-                      Set up daily schedule
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/*
-                Once automated, offer a direct link to adjust the schedule.
-                Sits in its own row so it doesn't compete with the hidden
-                manual controls above.
-              */}
-              {isAutomated === true && (
-                <div className="cm-button-row">
                   <Button kind="ghost" onClick={openScheduleSettings}>
-                    Configure schedule
+                    {isAutomated === true ? 'Configure schedule' : 'Set up daily schedule'}
                   </Button>
                 </div>
-              )}
+              </div>
             </Tile>
           </Column>
 
