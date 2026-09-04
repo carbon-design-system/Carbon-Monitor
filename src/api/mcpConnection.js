@@ -888,7 +888,7 @@ async function probe() {
         params: {
           protocolVersion: '2025-03-26',
           capabilities: {},
-          clientInfo: { name: 'carbon-monitor-probe', version: '1.0.7' },
+          clientInfo: { name: 'carbon-monitor-probe', version: '1.0.8' },
         },
       }),
     });

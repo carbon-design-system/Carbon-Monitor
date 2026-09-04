@@ -529,6 +529,8 @@ Incorrect: "✅ TextArea API confirmed via code_search. ✅ Implementation align
 
 **findingsTable** must be populated with one entry per confirmed finding — the same findings that appear in the \`findings\` array. Each entry is a plain object with five string fields. Do NOT include rows for clean areas. Do NOT use pipe characters, newlines, or backslashes in any field value — these are plain text labels only.
 
+**Emit strict, parseable JSON.** Every string value (\`summaryMarkdown\`, \`title\`, \`body\`, \`mcpEvidence\`) must be valid JSON: escape any embedded double-quote as \\" and write any literal backslash as two backslashes. A lone backslash — from a regex (\\d, \\s), a Windows path, or escaped markdown (\\_, \\*) — makes the block unparseable and causes the ENTIRE review to be discarded. Keep each string value on a single line with no raw line breaks.
+
 Return exactly this JSON between markers — this is mandatory, do not end your response without it:
 
 BEGIN_REVIEW_JSON

@@ -380,6 +380,72 @@ function repairTruncatedJSON(jsonStr) {
 }
 
 /**
+ * Escape stray backslash sequences that are not valid JSON escapes.
+ *
+ * The sanitiser passes in parseReviewOutput repair v2 line-wraps and unescaped
+ * double-quotes, but never invalid backslash escapes. When the agent writes prose
+ * containing a lone backslash (a regex like \d, a Windows path, escaped markdown
+ * like \_), JSON.parse throws "Bad escaped character" and the whole review is
+ * dropped. This walks the string and, inside string literals only, doubles any
+ * backslash that does not begin a valid JSON escape (\" \\ \/ \b \f \n \r \t
+ * \uXXXX) so it parses as a literal backslash. Valid escapes are passed through
+ * untouched, so a correctly-escaped value is never altered.
+ *
+ * Only ever called AFTER an initial JSON.parse has already failed — the happy
+ * path never touches it — so it cannot regress a review that currently parses.
+ *
+ * @param {string} str - JSON string that failed to parse
+ * @returns {string} - JSON string with invalid escapes repaired
+ */
+function escapeInvalidJsonEscapes(str) {
+  const VALID_ESCAPE = new Set(['"', '\\', '/', 'b', 'f', 'n', 'r', 't']);
+  let out = '';
+  let inString = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+
+    if (!inString) {
+      out += ch;
+      if (ch === '"') inString = true;
+      continue;
+    }
+
+    // Inside a string literal
+    if (ch === '"') {
+      out += ch;
+      inString = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      const next = str[i + 1];
+      // Valid \uXXXX escape — pass the whole sequence through untouched
+      if (next === 'u' && /^[0-9a-fA-F]{4}$/.test(str.slice(i + 2, i + 6))) {
+        out += str.slice(i, i + 6);
+        i += 5;
+        continue;
+      }
+      // Valid two-character escape (including an already-escaped \\) — pass through
+      if (VALID_ESCAPE.has(next)) {
+        out += ch + next;
+        i += 1;
+        continue;
+      }
+      // Invalid escape — double the backslash so it becomes a literal '\'. `next`
+      // is intentionally left for the following iteration to emit as an ordinary
+      // character.
+      out += '\\\\';
+      continue;
+    }
+
+    out += ch;
+  }
+
+  return out;
+}
+
+/**
  * Parse structured JSON review output from agent
  *
  * @param {string} agentOutput - Raw output from AI agent
@@ -387,6 +453,10 @@ function repairTruncatedJSON(jsonStr) {
  */
 function parseReviewOutput(agentOutput) {
   const skillFilesRead = extractCarbonBuilderSkillReads(agentOutput);
+
+  // Holds the exact JSON string handed to JSON.parse, so a SyntaxError's byte
+  // position can be shown against the real JSON rather than the raw transcript.
+  let jsonForDiagnostics = null;
 
   try {
     // Find JSON markers — search for the LAST BEGIN_REVIEW_JSON immediately followed
@@ -633,8 +703,29 @@ function parseReviewOutput(agentOutput) {
     // Extract only the JSON object
     jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
     
-    // Parse JSON
-    const review = JSON.parse(jsonStr);
+    // Record the exact string handed to JSON.parse so the catch block's
+    // position-based diagnostic points at the real JSON, not the raw transcript.
+    jsonForDiagnostics = jsonStr;
+
+    // Parse JSON. The sanitiser passes above repair v2 line-wraps and unescaped
+    // quotes but not invalid backslash escapes (\d, \., \_, Windows paths, escaped
+    // markdown) — those surface here as "Bad escaped character". Retry once with
+    // stray backslashes escaped; if it still fails, surface the ORIGINAL error so
+    // diagnostics are unchanged. The first-try success path is left untouched.
+    let review;
+    try {
+      review = JSON.parse(jsonStr);
+    } catch (primaryParseError) {
+      const escapeRepaired = escapeInvalidJsonEscapes(jsonStr);
+      try {
+        review = JSON.parse(escapeRepaired);
+        jsonStr = escapeRepaired;
+        jsonForDiagnostics = escapeRepaired;
+        console.warn('⚠️  Escaped invalid backslash sequence(s) in JSON output');
+      } catch (_) {
+        throw primaryParseError;
+      }
+    }
 
     // ── Schema normalisation ────────────────────────────────────────────────
     // The agent occasionally emits a non-standard schema (e.g. after using
@@ -766,14 +857,17 @@ function parseReviewOutput(agentOutput) {
       console.error('\n📋 Debugging Information:');
       console.error('Error type: JSON Syntax Error');
       
-      // Try to show the problematic area
+      // Try to show the problematic area. A JSON SyntaxError's position is a byte
+      // offset into the string handed to JSON.parse (the extracted JSON), not the
+      // raw transcript — slice that so the context points at the real error site.
       const match = error.message.match(/position (\d+)/);
       if (match) {
         const position = parseInt(match[1]);
+        const source = jsonForDiagnostics != null ? jsonForDiagnostics : agentOutput;
         const start = Math.max(0, position - 50);
-        const end = Math.min(agentOutput.length, position + 50);
+        const end = Math.min(source.length, position + 50);
         console.error(`Context around error position ${position}:`);
-        console.error(agentOutput.substring(start, end));
+        console.error(source.substring(start, end));
       }
       
       // Show first 500 chars of agent output
@@ -918,6 +1012,7 @@ module.exports = {
   parseReviewOutput,
   filterUnverifiedCarbonFindings,
   extractCarbonBuilderSkillReads,
+  escapeInvalidJsonEscapes,
   looksCarbonSpecific,
   countBySeverity,
   computeRecommendation

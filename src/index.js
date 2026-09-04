@@ -621,7 +621,7 @@ async function reviewPRs(options = {}) {
         // Reuse the shared extractor from reviewParser — handles both v1
         // (read_file calls to .bob/skills/carbon-builder/) and v2 (use_skill
         // tool with skill_name: carbon-builder).
-        const skillFilesRead = extractCarbonBuilderSkillReads(agentOutput);
+        let skillFilesRead = extractCarbonBuilderSkillReads(agentOutput);
         if (skillFilesRead.length > 0) {
           // v2 leaves a single "use_skill:carbon-builder" signal; v1 leaves one
           // entry per skill file the agent read. Either form means the agent
@@ -636,7 +636,65 @@ async function reviewPRs(options = {}) {
         // ─────────────────────────────────────────────────────────────────
 
         // Parse review output
-        const review = parseReviewOutput(agentOutput);
+        let review = parseReviewOutput(agentOutput);
+
+        // Retry once on parse failure. Bob's JSON block is a fresh, non-deterministic
+        // generation each run: a malformed-output parse failure (an escape/quote
+        // sequence the sanitiser can't repair) frequently clears on a second attempt.
+        // Re-run the agent once and re-parse before skipping the PR entirely.
+        if (!review) {
+          console.warn('⚠️  Parse failed — retrying bob review once (output is non-deterministic)');
+          try {
+            let retryCoinsBefore = null;
+            if (tracksBobcoins) {
+              retryCoinsBefore = await bobCredits.getBalance({ force: true }).catch(() => null);
+            }
+            let retryOutput;
+            try {
+              retryOutput = await runAgent({
+                agent,
+                cwd: bundle.dir,
+                prompt: bundle.prompt,
+                timeout: 10 * 60 * 1000
+              });
+            } finally {
+              // Mirror the first run's billing: the retry burns coins too, so record
+              // its spend. Guarded so an accounting failure never masks the retry.
+              try {
+                if (tracksBobcoins) {
+                  const retryCoinsAfter = await bobCredits.getBalance({ force: true });
+                  const retrySpent = bobCredits.computeSpend(retryCoinsBefore, retryCoinsAfter);
+                  if (retrySpent !== null) {
+                    console.log(`\n🪙 Bobcoins spent (retry): ${retrySpent}`);
+                  }
+                  await recordReviewCost({
+                    correlationId,
+                    pr,
+                    after: retryCoinsAfter,
+                    coinsSpent: retrySpent,
+                    durationMs: Date.now() - prStartedAt,
+                    source: 'balance-delta',
+                  });
+                }
+              } catch (costErr) {
+                console.warn(`⚠️  Bobcoins accounting failed (retry): ${costErr.message}`);
+              }
+            }
+            if (retryOutput) {
+              review = parseReviewOutput(retryOutput);
+              if (review) {
+                // Adopt the successful retry as the run of record so the token
+                // estimate and skill_unavailable metric below reflect the output
+                // actually used.
+                agentOutput = retryOutput;
+                skillFilesRead = extractCarbonBuilderSkillReads(retryOutput);
+                console.log('✅ Retry succeeded — parsed review from second attempt');
+              }
+            }
+          } catch (retryErr) {
+            console.warn(`⚠️  Retry run failed: ${retryErr.message}`);
+          }
+        }
         
         if (!review) {
           console.error('❌ Failed to parse review output');
