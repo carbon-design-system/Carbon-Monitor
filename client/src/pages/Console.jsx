@@ -878,6 +878,23 @@ function Console({ authRequired = false, onSignOut }) {
         </div>
       </Modal>
 
+      {/*
+        Always-present assertive live region. Empty at rest; receives
+        completion.title when an error fires. A live region that exists in
+        the DOM before content is injected is guaranteed to announce by AT —
+        a node that mounts with content already in it is not. This gives
+        VoiceOver/Safari and NVDA/Firefox the content-change event they need.
+        Visually hidden — the ToastNotification below is the visual presentation
+        and is left completely unchanged.
+      */}
+      <div
+        role="alert"
+        aria-atomic="true"
+        className="cds--visually-hidden"
+      >
+        {completion?.kind === 'error' ? completion.title : ''}
+      </div>
+
       {completion?.kind === 'error' && (
         <div className="cm-toast-region">
           <ToastNotification

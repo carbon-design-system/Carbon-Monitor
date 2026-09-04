@@ -426,7 +426,7 @@ function LedgerTile({ entries, hasCredits, summary, balance }) {
 
       <dl className="cm-stat-row">
         {stats.map((stat) => (
-          <div className="cm-stat" key={stat.label}>
+          <div className="cm-stat" key={stat.label} role="presentation">
             <dt className="cm-stat__label">{stat.label}</dt>
             <dd className="cm-stat__value">{stat.value}</dd>
           </div>
@@ -473,7 +473,7 @@ function LedgerTile({ entries, hasCredits, summary, balance }) {
       {rows.length > 0 && (
         <p className="cm-coins__caption">
           “Account balance after” is the account balance snapshotted right after
-          each review, and it is unlikey to match the live “Remaining this month” balance,
+          each review, and it is unlikely to match the live “Remaining this month” balance,
           which also reflects Bobcoins spent elsewhere on the account.
         </p>
       )}
