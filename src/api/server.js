@@ -31,6 +31,7 @@ const healthChecks = require('./healthChecks');
 const sessionAuth = require('./sessionAuth');
 const bobCredits = require('./bobCredits');
 const creditLedger = require('./creditLedger');
+const { esCall } = require('../observability/esClient');
 const reviewLog = require('./reviewLog');
 const scheduleManager = require('./scheduleManager');
 const { reviewPRs, parsePrNumbers, resolveReviewTargets } = require('../index');
@@ -365,6 +366,145 @@ function handleConfig(req, res) {
 
 // ── Bobcoins ────────────────────────────────────────────────────────────────
 
+const CREDIT_EVENTS_INDEX = 'carbon-monitor-events-*';
+const CREDIT_EVENT_FILTER = [
+  { term: { event_type: 'pr_review_completed' } },
+  { range: { timestamp: { gte: 'now-90d' } } },
+];
+const CREDIT_SUMMARY_TTL_MS = 60_000;
+
+let creditSummaryCache = null;
+let creditSummaryInFlight = null;
+
+function creditSearchQuery(size, sort) {
+  return {
+    index: CREDIT_EVENTS_INDEX,
+    size,
+    ...(sort ? { sort } : {}),
+    query: { bool: { filter: CREDIT_EVENT_FILTER } },
+  };
+}
+
+function numberOrNull(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function mapCreditEvent(hit) {
+  const source = hit && hit._source ? hit._source : {};
+  const payload = source.payload && typeof source.payload === 'object' ? source.payload : {};
+  return {
+    at: source.timestamp || null,
+    prNumber: source.pr_number ?? null,
+    repo: source.repo || '',
+    correlationId: source.correlation_id || '',
+    coinsSpent: numberOrNull(payload.coinsSpent),
+    remainingAfter: numberOrNull(payload.remainingAfter),
+    durationMs: numberOrNull(payload.durationMs),
+  };
+}
+
+async function readCreditsHistoryFromEs(limit) {
+  const result = await esCall((client) =>
+    client.search({
+      ...creditSearchQuery(Math.min(limit, 100), [{ timestamp: { order: 'desc' } }]),
+      _source: [
+        'timestamp',
+        'pr_number',
+        'repo',
+        'correlation_id',
+        'payload.coinsSpent',
+        'payload.remainingAfter',
+        'payload.durationMs',
+      ],
+    })
+  );
+  if (result === null) return null;
+  return (result.hits && result.hits.hits ? result.hits.hits : []).map(mapCreditEvent);
+}
+
+function toIsoFromAggregation(value) {
+  if (value === null || value === undefined) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function aggregationNumber(aggregation) {
+  return aggregation && typeof aggregation.value === 'number' && Number.isFinite(aggregation.value)
+    ? aggregation.value
+    : 0;
+}
+
+function roundCredits(value) {
+  return Math.round(value * 1e6) / 1e6;
+}
+
+function mapCreditSummary(result) {
+  const aggregations = result && result.aggregations ? result.aggregations : {};
+  const totalSpent = aggregationNumber(aggregations.totalSpent);
+  const costedCount = aggregationNumber(
+    aggregations.costedCount && aggregations.costedCount.count
+  );
+  const last24h = aggregations.last24h && aggregations.last24h.spent;
+  const last7d = aggregations.last7d && aggregations.last7d.spent;
+  return {
+    totalSpent: roundCredits(totalSpent),
+    reviewCount: aggregationNumber(aggregations.reviewCount),
+    averagePerReview: costedCount > 0 ? roundCredits(totalSpent / costedCount) : null,
+    last24hSpent: roundCredits(aggregationNumber(last24h)),
+    last7dSpent: roundCredits(aggregationNumber(last7d)),
+    firstRecordedAt: toIsoFromAggregation(aggregations.firstRecordedAt && aggregations.firstRecordedAt.value),
+    lastRecordedAt: toIsoFromAggregation(aggregations.lastRecordedAt && aggregations.lastRecordedAt.value),
+  };
+}
+
+async function readCreditsSummaryFromEs() {
+  const result = await esCall((client) =>
+    client.search({
+      ...creditSearchQuery(0),
+      aggs: {
+        reviewCount: { value_count: { field: 'event_id' } },
+        totalSpent: { sum: { field: 'payload.coinsSpent' } },
+        costedCount: {
+          filter: { exists: { field: 'payload.coinsSpent' } },
+          aggs: { count: { value_count: { field: 'payload.coinsSpent' } } },
+        },
+        last24h: {
+          filter: { range: { timestamp: { gte: 'now-24h' } } },
+          aggs: { spent: { sum: { field: 'payload.coinsSpent' } } },
+        },
+        last7d: {
+          filter: { range: { timestamp: { gte: 'now-7d' } } },
+          aggs: { spent: { sum: { field: 'payload.coinsSpent' } } },
+        },
+        firstRecordedAt: { min: { field: 'timestamp' } },
+        lastRecordedAt: { max: { field: 'timestamp' } },
+      },
+    })
+  );
+  if (result === null) return null;
+  return mapCreditSummary(result);
+}
+
+async function getCreditsSummary() {
+  const now = Date.now();
+  if (creditSummaryCache && now - creditSummaryCache.at < CREDIT_SUMMARY_TTL_MS) {
+    return creditSummaryCache.value;
+  }
+  if (!creditSummaryInFlight) {
+    creditSummaryInFlight = (async () => {
+      const summary = await readCreditsSummaryFromEs();
+      if (summary !== null) {
+        creditSummaryCache = { at: Date.now(), value: summary };
+        return summary;
+      }
+      return creditLedger.summary();
+    })().finally(() => {
+      creditSummaryInFlight = null;
+    });
+  }
+  return creditSummaryInFlight;
+}
+
 /**
  * GET /api/credits — live balance plus what this app has spent.
  *
@@ -379,7 +519,7 @@ async function handleCredits(req, res) {
   // Independent sources — a slow gateway must not also delay the local ledger.
   let [balance, summary] = await Promise.all([
     bobCredits.getBalance(),
-    creditLedger.summary(),
+    getCreditsSummary(),
   ]);
 
   // Re-read the balance when the ledger proves it is out of date.
@@ -403,7 +543,7 @@ async function handleCredits(req, res) {
       new Date(summary.lastRecordedAt).getTime() > new Date(balance.fetchedAt).getTime();
     if (ledgerNewer) {
       balance = await bobCredits.getBalance({ force: true });
-      summary = await creditLedger.summary();
+      summary = await getCreditsSummary();
     }
   }
 
@@ -429,14 +569,15 @@ async function handleCreditsHistory(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const requested = Number(url.searchParams.get('limit'));
 
-  // Capped so a caller cannot ask for a response larger than the ledger's own
-  // retention, and defaulted to a chartable window.
+  // Capped at the durable history endpoint's response limit and defaulted to a
+  // chartable window.
   const limit =
     Number.isFinite(requested) && requested > 0
-      ? Math.min(Math.floor(requested), creditLedger.getMaxEntries())
+      ? Math.min(Math.floor(requested), 100)
       : 100;
 
-  const entries = await creditLedger.readRecent(limit);
+  const esEntries = process.env.ES_URL ? await readCreditsHistoryFromEs(limit) : null;
+  const entries = esEntries === null ? await creditLedger.readRecent(limit) : esEntries;
 
   sendJSON(res, 200, {
     success: true,

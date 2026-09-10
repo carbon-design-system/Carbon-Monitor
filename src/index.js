@@ -812,6 +812,9 @@ async function reviewPRs(options = {}) {
             token_input:  tokenUsage.input,
             token_output: tokenUsage.output,
             token_total:  tokenUsage.total,
+            coinsSpent,
+            remainingAfter: coinsAfter && coinsAfter.available ? coinsAfter.remaining : null,
+            durationMs: Date.now() - prStartedAt,
           },
         });
 
