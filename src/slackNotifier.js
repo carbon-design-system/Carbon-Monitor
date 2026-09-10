@@ -86,7 +86,7 @@ function flagFor(recommendation) {
     case 'consider-revising':
       return { emoji: '🔴', label: 'Significant revision suggested' };
     case 'suggested-improvements':
-      return { emoji: '🟡', label: 'Minor rework suggested"' };
+      return { emoji: '🟡', label: 'Minor rework suggested' };
     case 'looks-good':
       return { emoji: '🟢', label: 'Looks good' };
     default:

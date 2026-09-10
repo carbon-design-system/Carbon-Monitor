@@ -147,18 +147,16 @@ body {
 
 // ── Header review-status indicator ─────────────────────────────────────────
 // A Terminal glyph carrying a status dot at its corner, left of the settings
-// gear — the same treatment as Carbon Migrate's supervisor indicator. Grey when
-// idle, green while a review runs. A status, not a control: it reports state and
-// is not clickable, so it is a labelled element rather than a HeaderGlobalAction.
+// gear. Grey when idle, green while a review runs.
+// HeaderGlobalAction overrides — suppress hover/active feedback so the badge
+// looks and feels non-interactive while keeping the built-in tooltip.
 .cm-review-status {
-  display: flex;
-  align-items: center;
-  // Centres the glyph in the 3rem UI Shell header bar, with the same inline
-  // breathing room the gear beside it carries.
-  block-size: 3rem;
-  padding-inline: $spacing-05;
-  // The Terminal glyph inherits currentColor; match the header's other icons.
-  color: $icon-secondary;
+  cursor: default !important;
+
+  &:hover,
+  &:active {
+    background-color: transparent !important;
+  }
 }
 
 .cm-review-status__icon {

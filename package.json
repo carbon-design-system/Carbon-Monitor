@@ -41,7 +41,7 @@
     "@elastic/elasticsearch": "^8.19.2",
     "@octokit/rest": "^20.0.2",
     "dotenv": "^16.3.1",
-    "jsonrepair": "3.15.0"
+    "jsonrepair": "^3.15.0"
   },
   "devDependencies": {
     "@carbon/react": "^1.113.0",
