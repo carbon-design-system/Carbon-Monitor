@@ -127,9 +127,11 @@ function formatEasternTime(ts) {
  * @param {number}   opts.startedAt  - epoch ms when the run kicked off
  * @param {string}   opts.repo       - "owner/repo"
  * @param {Array}    opts.results    - per-PR result objects (see postRunDigest)
+ * @param {number}   [opts.maxPRs]   - selection cap (MAX_PRS_PER_RUN); shown as "Criteria" when paired with daysBack
+ * @param {number}   [opts.daysBack] - age window in days (N_DAYS_SINCE_PR_CREATED); shown as "Criteria" when paired with maxPRs
  * @returns {Object} - Slack API blocks payload
  */
-function buildPayload({ startedAt, repo, results }) {
+function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
   const timeStr = formatEasternTime(startedAt);
   const blocks = [];
 
@@ -143,11 +145,21 @@ function buildPayload({ startedAt, repo, results }) {
     },
   });
 
+  // Criteria only renders when both config values are supplied — callers that
+  // omit them (e.g. unit tests) still get a valid Repo/Run-started section
+  // rather than an "undefined most recent PRs" line.
+  const introLines = [`*Repo:* ${repo}`, `*Run started:* ${timeStr}`];
+  if (Number.isFinite(maxPRs) && Number.isFinite(daysBack)) {
+    introLines.push(
+      `*Criteria:* ${maxPRs} most recent PRs opened within the last ${daysBack} days`
+    );
+  }
+
   blocks.push({
     type: 'section',
     text: {
       type: 'mrkdwn',
-      text: `*Repo:* ${repo}\n*Run started:* ${timeStr}`,
+      text: introLines.join('\n'),
     },
   });
 
@@ -283,13 +295,15 @@ function postToSlack(payload) {
  * @param {Array}   opts.results       - Array of per-PR result objects:
  *   Success shape: { prNumber, prUrl, findingsCount, summary, recommendation }
  *   Failure shape: { prNumber, failed: true, error }
+ * @param {number}   [opts.maxPRs]     - selection cap (MAX_PRS_PER_RUN), shown in the Criteria line
+ * @param {number}   [opts.daysBack]   - age window in days (N_DAYS_SINCE_PR_CREATED), shown in the Criteria line
  * @param {Function} [opts.emitEvent]  - optional emitEvent fn for ES observability
  * @returns {Promise<void>}
  */
-async function postRunDigest({ startedAt, repo, results, emitEvent }) {
+async function postRunDigest({ startedAt, repo, results, maxPRs, daysBack, emitEvent }) {
   if (!_enabled) return;
 
-  const payload = buildPayload({ startedAt, repo, results });
+  const payload = buildPayload({ startedAt, repo, results, maxPRs, daysBack });
 
   try {
     await postToSlack(payload);
