@@ -118,6 +118,78 @@ function formatEasternTime(ts) {
   }
 }
 
+// ── Low-token alert Block Kit builder ────────────────────────────────────────
+
+/**
+ * Build the Slack Block Kit payload for a low-token auto-pause alert.
+ *
+ * Used for both the initial auto-pause notification and daily reminders.
+ * When `percentRemaining` is null (manually paused or balance unavailable),
+ * the percentage line is omitted entirely — never prints "null%".
+ *
+ * @param {Object}       opts
+ * @param {number|null}  opts.percentRemaining - Current % of budget remaining, or null
+ * @param {number}       opts.threshold        - The BOB_CREDITS_LOW_PCT threshold
+ * @param {string}       opts.repo             - "owner/repo"
+ * @param {boolean}      opts.isReminder       - true on daily reminders after initial pause
+ * @returns {Object} Slack API blocks payload
+ */
+function buildLowTokenPayload({ percentRemaining, threshold, repo, isReminder }) {
+  const blocks = [];
+
+  // ── Header ──────────────────────────────────────────────────────────────────
+  const headerText = isReminder
+    ? '⚠️  Carbon Monitor — Scheduled Reviews Paused'
+    : '⚠️  Carbon Monitor — Scheduled Review Paused';
+
+  blocks.push({
+    type: 'header',
+    text: {
+      type: 'plain_text',
+      text: headerText,
+      emoji: true,
+    },
+  });
+
+  // ── Status section ──────────────────────────────────────────────────────────
+  // Build the detail lines, omitting the percentage line when unavailable.
+  const detailLines = [`*Repo:* ${repo}`];
+  if (percentRemaining !== null && percentRemaining !== undefined) {
+    detailLines.push(
+      `*Bobcoins remaining:* ${percentRemaining}% (threshold: ${threshold}%)`
+    );
+  } else {
+    detailLines.push(`*Bobcoins remaining:* below threshold (threshold: ${threshold}%)`);
+  }
+  if (isReminder) {
+    detailLines.push('_This is a daily reminder — the schedule remains paused._');
+  }
+
+  blocks.push({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: detailLines.join('\n'),
+    },
+  });
+
+  blocks.push({ type: 'divider' });
+
+  // ── Action required section ─────────────────────────────────────────────────
+  blocks.push({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text:
+        '*Action required:* increase your Bobcoins token limit, or disable scheduled ' +
+        'reviews in the Carbon Monitor Settings panel. ' +
+        'Scheduled reviews will remain paused until a human resumes them.',
+    },
+  });
+
+  return { blocks };
+}
+
 // ── Block Kit builder ─────────────────────────────────────────────────────────
 
 /**
@@ -318,10 +390,60 @@ async function postRunDigest({ startedAt, repo, results, emitEvent }) {
   }
 }
 
+/**
+ * Post a low-token alert to Slack. Used for both the initial auto-pause
+ * notification and daily reminders while the schedule remains paused.
+ *
+ * No-ops silently when SLACK_WEBHOOK_URL is unset.
+ * Never throws — a Slack failure must never block the scheduler tick.
+ *
+ * @param {Object}       opts
+ * @param {number|null}  opts.percentRemaining - Current % remaining, or null if unavailable
+ * @param {number}       opts.threshold        - The BOB_CREDITS_LOW_PCT threshold value
+ * @param {string}       opts.repo             - "owner/repo" string
+ * @param {boolean}      opts.isReminder       - true for daily reminders, false for initial alert
+ * @param {Function}     [opts.emitEvent]      - optional emitEvent fn for ES observability
+ * @returns {Promise<void>}
+ */
+async function postLowTokenAlert({ percentRemaining, threshold, repo, isReminder, emitEvent }) {
+  if (!_enabled) return;
+
+  const payload = buildLowTokenPayload({ percentRemaining, threshold, repo, isReminder });
+  const eventType = isReminder ? 'schedule_low_token_reminder' : 'schedule_low_token_paused';
+
+  try {
+    await postToSlack(payload);
+    console.log(`[slack] low-token alert posted (${isReminder ? 'reminder' : 'initial'})`);
+
+    if (emitEvent) {
+      emitEvent({
+        event_type: eventType,
+        repo,
+        payload: { percentRemaining, threshold, isReminder },
+      }).catch(() => {
+        // ES failure must not re-surface here
+      });
+    }
+  } catch (err) {
+    // Log the error message only — never the URL
+    console.warn(`[slack] low-token alert post failed: ${err.message}`);
+
+    if (emitEvent) {
+      emitEvent({
+        event_type: eventType,
+        repo,
+        payload: { error: err.message, percentRemaining, threshold, isReminder },
+      }).catch(() => {});
+    }
+  }
+}
+
 module.exports = {
   postRunDigest,
+  postLowTokenAlert,
   // Exported for testing only
   _buildPayload: buildPayload,
+  _buildLowTokenPayload: buildLowTokenPayload,
   _stripMarkdown: stripMarkdown,
   _truncateAtWord: truncateAtWord,
   _flagFor: flagFor,

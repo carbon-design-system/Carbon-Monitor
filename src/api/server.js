@@ -784,7 +784,7 @@ async function handleScheduleGet(req, res) {
 }
 
 /**
- * POST /api/schedule — save a partial update { enabled?, timeEST? }.
+ * POST /api/schedule — save a partial update { enabled?, timeEST?, paused? }.
  *
  * Validates before writing. Returns 400 with a descriptive message on invalid
  * input; the server is the authority, not the UI's own field constraints.

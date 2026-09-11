@@ -42,6 +42,7 @@ delete process.env.SLACK_WEBHOOK_URL;
 const notifier = require('../src/slackNotifier');
 const {
   _buildPayload,
+  _buildLowTokenPayload,
   _stripMarkdown,
   _truncateAtWord,
   _flagFor,
@@ -256,6 +257,112 @@ async function main() {
     assert.ok(
       allText.includes('No eligible PRs'),
       'Empty results must produce a "No eligible PRs" message'
+    );
+  });
+
+  // ── 7. postLowTokenAlert no-ops when SLACK_WEBHOOK_URL is unset ─────────────
+  await test('postLowTokenAlert no-ops when SLACK_WEBHOOK_URL is not set', async () => {
+    // Module was loaded without SLACK_WEBHOOK_URL, so _enabled is false.
+    assert.strictEqual(_isEnabled(), false, '_isEnabled() should be false');
+
+    let networkCallMade = false;
+    const origRequest = https.request;
+    https.request = () => {
+      networkCallMade = true;
+      return origRequest.apply(https, arguments);
+    };
+    try {
+      await notifier.postLowTokenAlert({
+        percentRemaining: 5,
+        threshold: 10,
+        repo: 'carbon-design-system/carbon',
+        isReminder: false,
+      });
+    } finally {
+      https.request = origRequest;
+    }
+
+    assert.strictEqual(networkCallMade, false, 'No HTTP request should be made when disabled');
+  });
+
+  // ── 8. buildLowTokenPayload renders percentage when provided ─────────────────
+  await test('buildLowTokenPayload renders percentage when provided', () => {
+    const payload = _buildLowTokenPayload({
+      percentRemaining: 7.5,
+      threshold: 10,
+      repo: 'carbon-design-system/carbon',
+      isReminder: false,
+    });
+
+    assert.ok(Array.isArray(payload.blocks), 'payload.blocks must be an array');
+
+    const allText = payload.blocks
+      .filter((b) => b.type === 'section' && b.text)
+      .map((b) => b.text.text)
+      .join('\n');
+
+    assert.ok(allText.includes('7.5%'), 'Percentage must appear in payload');
+    assert.ok(allText.includes('threshold: 10%'), 'Threshold must appear in payload');
+    assert.ok(allText.includes('carbon-design-system/carbon'), 'Repo must appear in payload');
+    assert.ok(allText.includes('Action required'), 'Action required section must be present');
+
+    // Initial alert header
+    const header = payload.blocks.find((b) => b.type === 'header');
+    assert.ok(header, 'Must contain a header block');
+    assert.ok(
+      header.text.text.includes('Scheduled Review Paused'),
+      'Initial header must say "Scheduled Review Paused"'
+    );
+    assert.ok(
+      !header.text.text.includes('Still Paused'),
+      'Initial header must not say "Still Paused"'
+    );
+  });
+
+  // ── 9. buildLowTokenPayload omits percentage line when null ──────────────────
+  await test('buildLowTokenPayload omits percentage line when percentRemaining is null', () => {
+    const payload = _buildLowTokenPayload({
+      percentRemaining: null,
+      threshold: 10,
+      repo: 'carbon-design-system/carbon',
+      isReminder: false,
+    });
+
+    const allText = payload.blocks
+      .filter((b) => b.type === 'section' && b.text)
+      .map((b) => b.text.text)
+      .join('\n');
+
+    assert.ok(!allText.includes('null'), 'Must not print "null" anywhere in the payload');
+    assert.ok(!allText.includes('null%'), 'Must not print "null%"');
+    assert.ok(allText.includes('threshold: 10%'), 'Threshold must still appear');
+    assert.ok(allText.includes('carbon-design-system/carbon'), 'Repo must still appear');
+  });
+
+  // ── 10. buildLowTokenPayload uses correct header for isReminder: true ────────
+  await test('buildLowTokenPayload uses reminder header when isReminder is true', () => {
+    const payload = _buildLowTokenPayload({
+      percentRemaining: 4,
+      threshold: 10,
+      repo: 'carbon-design-system/carbon',
+      isReminder: true,
+    });
+
+    const header = payload.blocks.find((b) => b.type === 'header');
+    assert.ok(header, 'Must contain a header block');
+    assert.ok(
+      header.text.text.includes('Scheduled Reviews Paused'),
+      'Reminder header must say "Scheduled Reviews Paused"'
+    );
+
+    const allText = payload.blocks
+      .filter((b) => b.type === 'section' && b.text)
+      .map((b) => b.text.text)
+      .join('\n');
+
+    assert.ok(
+      allText.includes('daily reminder'),
+      'Reminder payload must mention "daily reminder"'
     );
   });
 
