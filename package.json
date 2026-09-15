@@ -25,7 +25,8 @@
     "test:credits-es": "node tests/creditsEs.test.js",
     "test:schedule": "node tests/scheduleManager.test.js",
     "test:slack": "node tests/slackNotifier.test.js",
-    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js && node tests/linkedIssue.test.js && node tests/prTargeting.test.js && node tests/sessionAuth.test.js && node tests/apiAuth.test.js && node tests/mcpConnection.test.js && node tests/creditsEs.test.js && node tests/bobCredits.test.js && node tests/reviewTargeting.test.js && node tests/reviewablePrs.test.js && node tests/scheduleManager.test.js && node tests/slackNotifier.test.js"
+    "test:prompt": "node tests/reviewPrompt.test.js",
+    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js && node tests/linkedIssue.test.js && node tests/prTargeting.test.js && node tests/sessionAuth.test.js && node tests/apiAuth.test.js && node tests/mcpConnection.test.js && node tests/creditsEs.test.js && node tests/bobCredits.test.js && node tests/reviewTargeting.test.js && node tests/reviewablePrs.test.js && node tests/scheduleManager.test.js && node tests/slackNotifier.test.js && node tests/reviewPrompt.test.js"
   },
   "keywords": [
     "carbon",

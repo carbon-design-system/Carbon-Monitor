@@ -12,6 +12,7 @@
 'use strict';
 
 const https = require('https');
+const { escapeAtSign } = require('./textUtils');
 
 // ── Module-level initialisation ───────────────────────────────────────────────
 
@@ -183,13 +184,18 @@ function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `⚠️  *PR #${result.prNumber}* — review failed\n_${result.error || 'Unknown error'}_`,
+            text: `⚠️  *PR #${result.prNumber}* — review failed\n_${escapeAtSign(result.error || 'Unknown error')}_`,
           },
         });
       } else {
         const { emoji, label } = flagFor(result.recommendation);
         const issueWord = result.findingsCount === 1 ? 'issue' : 'issues';
-        const summary = truncateAtWord(stripMarkdown(result.summary), 150);
+        const rawSummary = truncateAtWord(stripMarkdown(result.summary), 150);
+        // Ensure backtick spans are balanced after truncation — if an odd number
+        // of backticks remain the last span was cut mid-token; close it.
+        const summary = escapeAtSign(
+          rawSummary.split('`').length % 2 === 0 ? rawSummary + '`' : rawSummary
+        );
 
         blocks.push({
           type: 'section',

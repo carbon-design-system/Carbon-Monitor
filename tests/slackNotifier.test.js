@@ -259,6 +259,61 @@ async function main() {
     );
   });
 
+  // ── 7. bare @word in summary is escaped ─────────────────────────────────────
+  await test('buildPayload escapes bare @word in summary to prevent Slack mentions', () => {
+    const ZWS = '\u200B';
+    const payload = _buildPayload({
+      startedAt: Date.now(),
+      repo: 'carbon-design-system/carbon',
+      results: [{
+        prNumber: 1,
+        prUrl: 'https://github.com/carbon-design-system/carbon/pull/1',
+        findingsCount: 1,
+        summary: 'PR adds @media (forced-colors) patches to select.scss.',
+        recommendation: 'suggested-improvements',
+      }],
+    });
+
+    const allText = payload.blocks
+      .filter((b) => b.type === 'section' && b.text)
+      .map((b) => b.text.text)
+      .join('\n');
+
+    assert.ok(
+      allText.includes(`@${ZWS}media`),
+      'Bare @media must be escaped with zero-width space'
+    );
+    assert.ok(!allText.includes(' @media '), 'Raw @media must not appear unescaped');
+  });
+
+  // ── 8. `@media` in backtick span is stripped then escaped ───────────────────
+  await test('buildPayload strips backticks then escapes bare @media in summary', () => {
+    const ZWS = '\u200B';
+    const payload = _buildPayload({
+      startedAt: Date.now(),
+      repo: 'carbon-design-system/carbon',
+      results: [{
+        prNumber: 2,
+        prUrl: 'https://github.com/carbon-design-system/carbon/pull/2',
+        findingsCount: 1,
+        summary: 'PR adds `@media` (forced-colors) patches to select.scss.',
+        recommendation: 'suggested-improvements',
+      }],
+    });
+
+    const allText = payload.blocks
+      .filter((b) => b.type === 'section' && b.text)
+      .map((b) => b.text.text)
+      .join('\n');
+
+    // Backticks stripped → bare @media → then escaped with ZWS
+    assert.ok(
+      allText.includes(`@${ZWS}media`),
+      'After backtick stripping, @media must be escaped with zero-width space'
+    );
+    assert.ok(!allText.includes('`@media`'), 'Backtick span must be stripped');
+  });
+
   // ── Summary ──────────────────────────────────────────────────────────────────
   console.log(`\n  ${passed} passed, ${failed} failed\n`);
   process.exit(failed > 0 ? 1 : 0);
