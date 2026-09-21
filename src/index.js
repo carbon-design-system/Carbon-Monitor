@@ -457,6 +457,8 @@ async function reviewPRs(options = {}) {
             startedAt: runStartedAt,
             repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
             results: [],
+            maxPRs: MAX_PRS_PER_RUN,
+            daysBack: N_DAYS_SINCE_PR_CREATED,
             emitEvent,
           });
         }
@@ -918,6 +920,8 @@ async function reviewPRs(options = {}) {
         startedAt: runStartedAt,
         repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
         results: runResults,
+        maxPRs: MAX_PRS_PER_RUN,
+        daysBack: N_DAYS_SINCE_PR_CREATED,
         emitEvent,
       });
     }
