@@ -166,6 +166,10 @@ async function main() {
       context.elements[0].text.includes('reviewed'),
       'Footer must mention reviewed count'
     );
+    assert.ok(
+      context.elements[0].text.includes('ibm.biz/carbon-monitor'),
+      'Footer must contain a link to Carbon Monitor'
+    );
 
     // At least one divider
     const dividers = payload.blocks.filter((b) => b.type === 'divider');
