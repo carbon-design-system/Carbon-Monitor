@@ -220,7 +220,7 @@ function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
     parts.push(`${failedCount} failed`);
   if (parts.length === 0)
     parts.push('Run complete');
-  parts.push('<https://ibm.biz/carbon-monitor|⚙️ Edit schedule>');
+  parts.push('<https://ibm.biz/carbon-monitor|⚙️ Configure schedule>');
 
   blocks.push({
     type: 'context',
