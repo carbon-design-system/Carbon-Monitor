@@ -296,13 +296,16 @@ function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
     parts.push(`${reviewedCount} PR${reviewedCount !== 1 ? 's' : ''} reviewed`);
   if (failedCount > 0)
     parts.push(`${failedCount} failed`);
+  if (parts.length === 0)
+    parts.push('Run complete');
+  parts.push('<https://ibm.biz/carbon-monitor|⚙️ Configure schedule>');
 
   blocks.push({
     type: 'context',
     elements: [
       {
         type: 'mrkdwn',
-        text: parts.length > 0 ? parts.join(' · ') : 'Run complete',
+        text: parts.join(' · '),
       },
     ],
   });
