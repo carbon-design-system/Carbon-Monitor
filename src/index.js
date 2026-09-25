@@ -542,7 +542,7 @@ async function reviewPRs(options = {}) {
                 owner: GITHUB_OWNER,
                 repo: GITHUB_REPO,
                 pullNumber: pr.number,
-                body: `## Carbon Monitor — Review Skipped\n\nThis PR has **${files.length} changed files**, which exceeds the ${MAX_FILES_PER_PR}-file limit for automatic review. It has been marked as reviewed and will not be re-queued.\n\nTo request a manual AI review, visit the Carbon Monitor UI and enter this PR number directly.`,
+                body: `## Carbon Monitor — Review Skipped\n\nThis PR has **${files.length} changed files**, which exceeds the ${MAX_FILES_PER_PR}-file limit for automatic review. It has been marked as \`AIReviewed\` and will not be re-queued.\n\nTo request a manual AI review, visit the [Carbon Monitor UI](https://ibm.biz/carbon-monitor) and enter this PR number directly.`,
               });
             } catch (commentErr) {
               console.warn(`⚠️  Could not post skip comment on PR #${pr.number}: ${commentErr.message}`);
