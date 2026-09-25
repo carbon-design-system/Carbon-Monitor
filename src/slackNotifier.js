@@ -265,7 +265,7 @@ function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `⏭️  *<${result.prUrl}|PR #${result.prNumber}>* — skipped\n_${escapeAtSign(result.reason || 'Too large to review')}_`,
+            text: `⏭️  *<${result.prUrl}|PR #${result.prNumber}>* — Skipped\n_${escapeAtSign(result.reason || 'Too large to review')}_`,
           },
         });
       } else {
