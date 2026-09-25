@@ -42,6 +42,8 @@ const os = require('os');
 
 // Lazy-require so the module loads fine when esClient is unavailable in tests.
 const { esCall } = require('../observability/esClient');
+const { getBalance } = require('./bobCredits');
+const { postLowTokenAlert } = require('../slackNotifier');
 
 // ── State file location ──────────────────────────────────────────────────────
 
@@ -82,6 +84,7 @@ function getSchedulePath() {
 function defaultState() {
   return {
     enabled: false,
+    paused: false,
     timeEST: '09:00',
     lastRunAt: null,
     lastRunSkipped: false,
@@ -250,6 +253,13 @@ async function setSchedule(patch) {
       return { ok: false, error: '"enabled" must be a boolean' };
     }
     next.enabled = patch.enabled;
+  }
+
+  if (patch.paused !== undefined) {
+    if (typeof patch.paused !== 'boolean') {
+      return { ok: false, error: '"paused" must be a boolean' };
+    }
+    next.paused = patch.paused;
   }
 
   if (patch.timeEST !== undefined) {
@@ -468,9 +478,26 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   if (!_icuAvailable) return;
 
   // 3. Check if the current ET minute matches the configured time.
+  // This check must come before the paused bail-out so that reminders only
+  // fire once per day (on the scheduled minute), not on every 60-second tick.
   const now = new Date();
   const current = currentEstMinute();
   if (!current || current !== _state.timeEST) return;
+
+  // Paused bail-out — fires the daily reminder and exits without writing any
+  // idempotency token, so the reminder re-fires again on the next scheduled day.
+  if (_state.paused) {
+    console.log('[schedule] skipped — schedule is paused');
+    const balance = await getBalance();
+    const lowPct = Number(process.env.BOB_CREDITS_LOW_PCT || 10);
+    postLowTokenAlert({
+      percentRemaining: balance.percentRemaining,
+      threshold: lowPct,
+      repo: `${process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system'}/${process.env.GITHUB_AI_AGENT_REPO || 'carbon'}`,
+      isReminder: true,
+    });
+    return;
+  }
 
   // 4. Idempotency: build a token that includes the date so tomorrow's run
   //    is not blocked by today's.
@@ -498,6 +525,35 @@ async function tick(reviewPRs, reviewState, reviewLog) {
     };
     await saveSchedule(updated).catch((err) => {
       console.warn(`[schedule] could not persist skip record: ${err.message}`);
+    });
+    return;
+  }
+
+  // Low-token guard: check balance before committing to fire. If below the
+  // threshold, auto-pause and notify. Do NOT write the idempotency token so
+  // the next scheduled tick re-evaluates and re-notifies.
+  // IMPORTANT: balance unavailable (available:false) or null percentRemaining
+  // (uncapped plan) must never block a review — only a confirmed low reading pauses.
+  const balance = await getBalance();
+  const lowPct = Number(process.env.BOB_CREDITS_LOW_PCT || 10);
+  if (balance.available && balance.percentRemaining !== null && balance.percentRemaining < lowPct) {
+    console.warn(
+      `[schedule] auto-pausing — Bobcoins at ${balance.percentRemaining}% (threshold ${lowPct}%)`
+    );
+    const autoPaused = {
+      ..._state,
+      paused: true,
+      lastRunSkipped: true,
+      lastSkipReason: `Auto-paused: Bobcoins at ${balance.percentRemaining}% (below ${lowPct}% threshold)`,
+    };
+    await saveSchedule(autoPaused).catch((err) => {
+      console.warn(`[schedule] could not persist auto-pause state: ${err.message}`);
+    });
+    postLowTokenAlert({
+      percentRemaining: balance.percentRemaining,
+      threshold: lowPct,
+      repo: `${process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system'}/${process.env.GITHUB_AI_AGENT_REPO || 'carbon'}`,
+      isReminder: false,
     });
     return;
   }

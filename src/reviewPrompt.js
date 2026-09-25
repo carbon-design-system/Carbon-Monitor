@@ -3,6 +3,7 @@
  */
 
 const { CHARS_PER_TOKEN } = require('./constants');
+const { escapeAtSign } = require('./textUtils');
 
 /**
  * Estimate token usage for a PR review
@@ -69,9 +70,9 @@ const SEVERITY_GUIDANCE = {
  */
 function formatInlineComment(finding) {
   const guidance = SEVERITY_GUIDANCE[finding.severity] || '';
-  let comment = `**${finding.title}**\n\n`;
+  let comment = `**${escapeAtSign(finding.title)}**\n\n`;
   comment += `> **[${finding.severity}]** ${guidance}\n\n`;
-  comment += finding.body + '\n\n';
+  comment += escapeAtSign(finding.body) + '\n\n';
 
   // Only show verification badge for Carbon-specific findings
   if (finding.carbonVerified && finding.verificationSource === 'carbon-builder') {
@@ -160,8 +161,8 @@ function formatSummaryComment({
     comment += `| Area | Category | Severity | Finding | File |\n`;
     comment += `|------|----------|----------|---------|------|\n`;
     for (const row of findingsTable) {
-      // Sanitise cell values: strip pipes and newlines to prevent table breakage
-      const safe = v => String(v || '').replace(/[|\n\r]/g, ' ').trim();
+      // Sanitise cell values: strip pipes and newlines, then escape @ signs
+      const safe = v => escapeAtSign(String(v || '').replace(/[|\n\r]/g, ' ').trim());
       comment += `| ${safe(row.area)} | ${safe(row.category)} | ${safe(row.severity)} | ${safe(row.title)} | ${safe(row.file)} |\n`;
     }
     comment += '\n</details>\n\n';
@@ -169,7 +170,7 @@ function formatSummaryComment({
 
   // ── Agent summary (verbatim — this field is never mutated after parse) ──
   comment += `## Summary\n\n`;
-  comment += summaryMarkdown + '\n\n';
+  comment += escapeAtSign(summaryMarkdown) + '\n\n';
 
   // ── Details dropdown — open (unconditional) ─────────────────────────────
   comment += '\n<details>\n<summary>Details</summary>\n\n';
@@ -181,13 +182,13 @@ function formatSummaryComment({
 
     summaryFindings.forEach((finding, index) => {
       const guidance = SEVERITY_GUIDANCE[finding.severity] || '';
-      comment += `### ${index + 1}. ${finding.title}\n\n`;
+      comment += `### ${index + 1}. ${escapeAtSign(finding.title)}\n\n`;
       comment += `**File:** \`${finding.file}\``;
       if (finding.line) {
         comment += ` (Line ${finding.line})`;
       }
       comment += `\n**Severity:** ${finding.severity} — ${guidance}\n\n`;
-      comment += finding.body + '\n\n';
+      comment += escapeAtSign(finding.body) + '\n\n';
 
       if (finding.carbonVerified && finding.verificationSource === 'carbon-builder') {
         comment += `*✓ Verified with Carbon Builder + MCP*\n\n`;
@@ -579,7 +580,8 @@ module.exports = {
   formatSummaryComment,
   formatInlineComment,
   buildReviewPrompt,
-  estimateTokenUsage
+  estimateTokenUsage,
+  escapeAtSign
 };
 
 // Made with Bob

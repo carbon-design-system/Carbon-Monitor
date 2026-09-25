@@ -207,6 +207,7 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
   // Using separate pieces of state (not mirroring the whole schedule object)
   // so a partial edit does not mutate the prop.
   const [enabled, setEnabled] = useState(schedule?.enabled ?? false);
+  const [paused, setPaused] = useState(schedule?.paused ?? false);
   const [timeEST, setTimeEST] = useState(schedule?.timeEST ?? '09:00');
 
   // 12-hour display state derived from the stored ET value converted to the
@@ -224,6 +225,7 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
     : null;
 
   const [busy, setBusy] = useState(false);
+  const [pauseBusy, setPauseBusy] = useState(false);
   const [message, setMessage] = useState(null);
 
   // The last-saved values, used both to detect unsaved edits and to reset the
@@ -256,6 +258,7 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
   if (schedule !== lastSyncedSchedule && !busy && !isDirty) {
     setLastSyncedSchedule(schedule);
     setEnabled(schedule?.enabled ?? false);
+    setPaused(schedule?.paused ?? false);
     const synced24 = schedule?.timeEST ?? '09:00';
     const { display, period } = etToLocalDisplay(synced24, timezone);
     setTimeEST(synced24);
@@ -299,6 +302,28 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
     setMessage(null);
   }
 
+  async function handlePauseToggle() {
+    const next = !paused;
+    setPauseBusy(true);
+    setMessage(null);
+    try {
+      await api.setSchedule({ paused: next });
+      setPaused(next);
+      onChanged();
+      if (!next) {
+        setMessage({
+          kind: 'info',
+          title: 'Schedule resumed.',
+          subtitle: 'If token balance is still low, the schedule will re-pause automatically.',
+        });
+      }
+    } catch (err) {
+      setMessage({ kind: 'error', title: 'Could not update pause state', subtitle: err.message });
+    } finally {
+      setPauseBusy(false);
+    }
+  }
+
   const maxPRs = config?.maxPRs ?? null;
   const daysBack = config?.daysBack ?? null;
 
@@ -314,11 +339,21 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
         />
       )}
 
-      {schedule?.lastRunSkipped && (
+      {schedule?.lastRunSkipped && !schedule?.paused && (
         <InlineNotification
           kind="warning"
           title="Last scheduled run was skipped"
           subtitle={schedule.lastSkipReason || 'A manual review was in flight at the scheduled time.'}
+          hideCloseButton
+          className="cm-login__notification"
+        />
+      )}
+
+      {schedule?.enabled && schedule?.paused && (
+        <InlineNotification
+          kind="warning"
+          title="Scheduled reviews are paused."
+          subtitle={schedule?.lastSkipReason || 'Click Resume schedule to re-enable.'}
           hideCloseButton
           className="cm-login__notification"
         />
@@ -416,6 +451,26 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
           <Button kind="secondary" onClick={handleDiscard} disabled={!isDirty || busy}>
             Discard changes
           </Button>
+
+          {schedule?.enabled && (
+            paused ? (
+              <Button
+                kind="primary"
+                onClick={handlePauseToggle}
+                disabled={pauseBusy}
+              >
+                {pauseBusy ? 'Resuming…' : 'Resume schedule'}
+              </Button>
+            ) : (
+              <Button
+                kind="ghost"
+                onClick={handlePauseToggle}
+                disabled={pauseBusy}
+              >
+                {pauseBusy ? 'Pausing…' : 'Pause schedule'}
+              </Button>
+            )
+          )}
 
           {/*
             Spelled out in text, not colour alone (WCAG 1.4.1) — matching the
