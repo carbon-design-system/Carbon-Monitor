@@ -13,6 +13,10 @@ const REVIEW_AGENT = process.env.GITHUB_AI_AGENT_CLI || 'bob';
 const N_DAYS_SINCE_PR_CREATED = Number(process.env.GITHUB_AI_AGENT_DAYS_BACK || 21);
 const MAX_PRS_PER_RUN = Number(process.env.GITHUB_AI_AGENT_MAX_PRS || 5);
 
+// PRs over this file count are skipped in auto mode and labelled AIReviewed.
+// This is a review-quality cap, not a GitHub API limit — override via env var.
+const MAX_FILES_PER_PR = Number(process.env.GITHUB_AI_AGENT_MAX_FILES || 300);
+
 // Token-based input budget.
 //
 // Currency for AI is tokens, not chars. The limit is expressed in tokens so
@@ -59,6 +63,7 @@ module.exports = {
   PROMPT_OVERHEAD_TOKENS,
   ISSUE_CONTEXT_TOKENS,
   MAX_PRS_PER_RUN,
+  MAX_FILES_PER_PR,
 };
 
 // Made with Bob
