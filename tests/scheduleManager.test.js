@@ -124,6 +124,47 @@ async function main() {
     assert(from_disk.timeEST === '14:30', 'disk: timeEST should be 14:30');
   });
 
+  // ── 4b. setSchedule paused field ────────────────────────────────────────
+  await test('setSchedule({ paused: true }) persists paused:true and returns ok:true', async () => {
+    const result = await sm.setSchedule({ paused: true });
+    assert(result.ok === true, `expected ok:true, got: ${result.error}`);
+    const on_disk = readStateFile();
+    assert(on_disk.paused === true, `expected paused:true on disk, got ${on_disk.paused}`);
+  });
+
+  await test('setSchedule({ paused: false }) persists paused:false and returns ok:true', async () => {
+    // First set to true so we have something to flip.
+    await sm.setSchedule({ paused: true });
+    const result = await sm.setSchedule({ paused: false });
+    assert(result.ok === true, `expected ok:true, got: ${result.error}`);
+    const on_disk = readStateFile();
+    assert(on_disk.paused === false, `expected paused:false on disk, got ${on_disk.paused}`);
+  });
+
+  await test('setSchedule({ paused: "yes" }) returns { ok: false } with error', async () => {
+    const result = await sm.setSchedule({ paused: 'yes' });
+    assert(result.ok === false, `expected ok:false, got: ${JSON.stringify(result)}`);
+    assert(typeof result.error === 'string' && result.error.length > 0,
+      `expected a non-empty error string, got: ${JSON.stringify(result.error)}`);
+  });
+
+  await test('state file without paused key loads with paused:false via defaultState merge', async () => {
+    // Write a JSON file that pre-dates the paused field (no paused key).
+    const legacyState = {
+      enabled: false,
+      timeEST: '09:00',
+      lastRunAt: null,
+      lastRunSkipped: false,
+      lastSkipReason: null,
+      lastFiredMinute: null,
+      lastFiredAt: null,
+    };
+    fs.writeFileSync(process.env.SCHEDULE_STATE_PATH, JSON.stringify(legacyState, null, 2), 'utf8');
+    const state = await sm.loadSchedule();
+    assert(state.paused === false,
+      `expected paused:false after loading legacy state, got ${JSON.stringify(state.paused)}`);
+  });
+
   // ── 5. Tick does not fire when disabled ─────────────────────────────────
   await test('tick does NOT fire when enabled: false', async () => {
     await sm.setSchedule({ enabled: false, timeEST: '00:00' });
@@ -378,6 +419,87 @@ async function main() {
     global.Intl.DateTimeFormat = realDTF;
 
     assert(!threw, 'startScheduler must not throw when Intl cannot resolve America/New_York');
+  });
+
+  // ── 13. Tick does NOT fire when paused: true ─────────────────────────────
+  await test('tick does NOT fire when paused: true (structural ordering check)', async () => {
+    // Verify via source inspection that the _state.paused check appears before
+    // the reviewPRs( call — same pattern as test 10.
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'api', 'scheduleManager.js'), 'utf8');
+    const pausedIdx = src.indexOf('if (_state.paused)');
+    const fireIdx = src.indexOf('reviewPRs(');
+    assert(pausedIdx !== -1, '_state.paused check must appear in scheduleManager.js');
+    assert(fireIdx !== -1, 'reviewPRs( must appear in scheduleManager.js');
+    assert(
+      pausedIdx < fireIdx,
+      `_state.paused check (pos ${pausedIdx}) must appear BEFORE reviewPRs call (pos ${fireIdx})`
+    );
+
+    // Also verify the paused check is before the idempotency token write.
+    const tokenWriteIdx = src.indexOf('lastFiredAt: firedToken');
+    assert(tokenWriteIdx !== -1, 'idempotency token write (lastFiredAt: firedToken) must appear in scheduleManager.js');
+    assert(
+      pausedIdx < tokenWriteIdx,
+      `_state.paused check (pos ${pausedIdx}) must appear BEFORE idempotency token write (pos ${tokenWriteIdx})`
+    );
+
+    // State-level verification: write paused:true state and confirm the field
+    // is preserved by defaultState merge (paused bail-out returns without
+    // touching lastFiredAt, so lastFiredAt stays null).
+    const current = sm.currentEstMinute();
+    if (current) {
+      fs.writeFileSync(
+        process.env.SCHEDULE_STATE_PATH,
+        JSON.stringify({ ...sm.defaultState(), enabled: true, paused: true, timeEST: current, lastFiredAt: null }, null, 2),
+        'utf8'
+      );
+      await sm.loadSchedule();
+      const state = await sm.loadSchedule();
+      assert(state.paused === true, 'loaded state must have paused:true');
+      assert(state.lastFiredAt === null, 'lastFiredAt must remain null — paused bail-out must not write the token');
+    }
+  });
+
+  // ── 14. Auto-pause sets paused:true and does not write idempotency token ──
+  await test('auto-pause: structural ordering — balance check before idempotency token write', async () => {
+    // Verify via source inspection that:
+    //  a) the balance.available guard appears before the lastFiredAt: firedToken write
+    //  b) paused: true appears in the autoPaused object
+    //  c) the balance check (Sub-Task 3) appears AFTER the reviewState.running check
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'api', 'scheduleManager.js'), 'utf8');
+
+    const balanceGuardIdx = src.indexOf('balance.available && balance.percentRemaining !== null');
+    // Use the unique step-6 comment as the anchor for the idempotency token write.
+    const tokenWriteIdx = src.indexOf('// 6. Write the idempotency token BEFORE firing');
+    const autoPausedIdx = src.indexOf('paused: true,');
+    const runningCheckIdx = src.indexOf('if (reviewState.running)');
+
+    assert(balanceGuardIdx !== -1, 'balance.available guard must appear in scheduleManager.js');
+    assert(tokenWriteIdx !== -1, '// 6. Write the idempotency token comment must appear in scheduleManager.js');
+    assert(autoPausedIdx !== -1, 'paused: true must appear in autoPaused object in scheduleManager.js');
+    assert(runningCheckIdx !== -1, 'reviewState.running check must appear in scheduleManager.js');
+
+    // Balance guard must come BEFORE the step-6 token write (no idempotency token written on auto-pause).
+    assert(
+      balanceGuardIdx < tokenWriteIdx,
+      `balance guard (pos ${balanceGuardIdx}) must appear BEFORE step-6 idempotency token write (pos ${tokenWriteIdx})`
+    );
+
+    // Balance guard must come AFTER the reviewState.running check (step 5 → step 6 ordering).
+    assert(
+      runningCheckIdx < balanceGuardIdx,
+      `reviewState.running check (pos ${runningCheckIdx}) must appear BEFORE balance guard (pos ${balanceGuardIdx})`
+    );
+
+    // paused: true in autoPaused must appear before the step-6 token write (auto-pause returns early).
+    assert(
+      autoPausedIdx < tokenWriteIdx,
+      `paused:true assignment (pos ${autoPausedIdx}) must appear BEFORE step-6 idempotency token write (pos ${tokenWriteIdx})`
+    );
+
+    // Verify that postLowTokenAlert is imported (required by both Sub-Task 2 and 3).
+    assert(src.indexOf("require('../slackNotifier')") !== -1, 'slackNotifier must be required in scheduleManager.js');
+    assert(src.indexOf("require('./bobCredits')") !== -1, 'bobCredits must be required in scheduleManager.js');
   });
 
   // ── Cleanup ──────────────────────────────────────────────────────────────

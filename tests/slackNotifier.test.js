@@ -42,6 +42,7 @@ delete process.env.SLACK_WEBHOOK_URL;
 const notifier = require('../src/slackNotifier');
 const {
   _buildPayload,
+  _buildLowTokenPayload,
   _stripMarkdown,
   _truncateAtWord,
   _flagFor,
