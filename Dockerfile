@@ -36,8 +36,8 @@ ENV NODE_ENV=production
 # ships. Verified against the SHA-256 published alongside the tarball; override
 # both together at build time to move versions:
 #   podman build --build-arg BOB_VERSION=x.y.z --build-arg BOB_SHA256=... .
-ARG BOB_VERSION=2.0.0
-ARG BOB_SHA256=de2d773e7e7a79cddf671d1019c8852f58b4c4472f96eccf4a23b9feac620812
+ARG BOB_VERSION=2.0.5
+ARG BOB_SHA256=eff232eb1b69f34f984ddd295e6960470058ca922b1c751879c5a8d06199f566
 ARG BOB_DOWNLOAD_BASE=https://s3.us-south.cloud-object-storage.appdomain.cloud/bob-shell
 
 # curl for the download and the healthcheck; ca-certificates so TLS to the Carbon
