@@ -61,6 +61,7 @@ const {
   REVIEW_AGENT,
   N_DAYS_SINCE_PR_CREATED,
   MAX_PRS_PER_RUN,
+  MAX_FILES_PER_PR,
 } = require('./constants');
 
 // Load GitHub token from environment
@@ -480,6 +481,86 @@ async function reviewPRs(options = {}) {
         console.log(`   URL: ${pr.html_url}`);
         console.log(`${'='.repeat(80)}\n`);
 
+        // Fetch changed files FIRST — needed for the size gate before paying
+        // the cost of fetching the diff.
+        let filesFromTestFixture = false;
+        let files;
+        try {
+          const { data: filesFile } = await octokit.rest.repos.getContent({
+            owner: GITHUB_OWNER,
+            repo: GITHUB_REPO,
+            path: 'ORIGINAL_FILES.json',
+            ref: pr.head.sha
+          });
+          files = JSON.parse(Buffer.from(filesFile.content, 'base64').toString('utf8'));
+          filesFromTestFixture = true;
+          console.log(`✅ Files: ${files.length} changed (from ORIGINAL_FILES.json)`);
+        } catch {
+          files = await client.fetchPRFiles({
+            owner: GITHUB_OWNER,
+            repo: GITHUB_REPO,
+            pullNumber: pr.number
+          });
+          console.log(`✅ Files: ${files.length} changed`);
+        }
+        files.forEach(f => console.log(`   - ${f.filename} (+${f.additions}/-${f.deletions})`));
+
+        // Size gate — auto mode only. Explicit mode (--pr N) bypasses this so
+        // the operator can force-review any PR regardless of size.
+        if (target.mode === 'auto' && !filesFromTestFixture && files.length > MAX_FILES_PER_PR) {
+          console.warn(`⏭️  PR #${pr.number} skipped — ${files.length} files exceeds MAX_FILES_PER_PR (${MAX_FILES_PER_PR})`);
+
+          await emitEvent({
+            event_type: 'pr_skipped_too_large',
+            correlation_id: correlationId,
+            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            pr_number: pr.number,
+            agent: REVIEW_AGENT,
+            payload: { file_count: files.length, limit: MAX_FILES_PER_PR },
+          });
+
+          // Label first — it is the skip gate. Comment only posts if label succeeds,
+          // preventing repeated comments on subsequent runs if labelling fails.
+          let labelAdded = false;
+          try {
+            await client.addReviewedLabel({
+              owner: GITHUB_OWNER,
+              repo: GITHUB_REPO,
+              pullNumber: pr.number,
+              label: REVIEW_LABEL,
+            });
+            labelAdded = true;
+            console.log('✅ AIReviewed label added (too-large skip)');
+          } catch (labelErr) {
+            console.warn(`⚠️  Could not add AIReviewed label to PR #${pr.number}: ${labelErr.message}`);
+          }
+
+          const postSummary = process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
+          if (labelAdded && postSummary) {
+            try {
+              await client.postSummaryComment({
+                owner: GITHUB_OWNER,
+                repo: GITHUB_REPO,
+                pullNumber: pr.number,
+                body: `## Carbon Monitor — Review Skipped\n\nThis PR has **${files.length} changed files**, which exceeds the ${MAX_FILES_PER_PR}-file limit for automatic review. It has been marked as \`AIReviewed\` and will not be re-queued.\n\nTo request a manual AI review, visit the [Carbon Monitor UI](https://ibm.biz/carbon-monitor) and enter this PR number directly.`,
+              });
+            } catch (commentErr) {
+              console.warn(`⚠️  Could not post skip comment on PR #${pr.number}: ${commentErr.message}`);
+            }
+          }
+
+          runResults.push({
+            prNumber: pr.number,
+            prUrl: pr.html_url,
+            skipped: true,
+            reason: `${files.length} files exceeds limit of ${MAX_FILES_PER_PR}`,
+          });
+
+          continue; // bundle is still null — cleanupBundle(null) is a no-op
+        }
+
+        // pr_review_started is emitted here, after the size gate, so it only
+        // fires for PRs that will actually be reviewed.
         await emitEvent({
           event_type: 'pr_review_started',
           correlation_id: correlationId,
@@ -488,7 +569,7 @@ async function reviewPRs(options = {}) {
           agent: REVIEW_AGENT,
           commit_sha: pr.head.sha,
         });
-        
+
         // Fetch PR diff — prefer ORIGINAL_DIFF.patch if present (test PRs created
         // by create-test-pr.js embed the real Carbon diff there to preserve - lines)
         let diff;
@@ -509,28 +590,6 @@ async function reviewPRs(options = {}) {
           });
           console.log(`✅ Diff: ${diff.length} characters`);
         }
-        
-        // Fetch changed files — prefer ORIGINAL_FILES.json if present (test PRs
-        // created by create-test-pr.js store the real Carbon file list there)
-        let files;
-        try {
-          const { data: filesFile } = await octokit.rest.repos.getContent({
-            owner: GITHUB_OWNER,
-            repo: GITHUB_REPO,
-            path: 'ORIGINAL_FILES.json',
-            ref: pr.head.sha
-          });
-          files = JSON.parse(Buffer.from(filesFile.content, 'base64').toString('utf8'));
-          console.log(`✅ Files: ${files.length} changed (from ORIGINAL_FILES.json)`);
-        } catch {
-          files = await client.fetchPRFiles({
-            owner: GITHUB_OWNER,
-            repo: GITHUB_REPO,
-            pullNumber: pr.number
-          });
-          console.log(`✅ Files: ${files.length} changed`);
-        }
-        files.forEach(f => console.log(`   - ${f.filename} (+${f.additions}/-${f.deletions})`));
         
         // Build review bundle
         bundle = await buildReviewBundle({

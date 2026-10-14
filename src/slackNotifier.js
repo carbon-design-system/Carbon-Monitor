@@ -259,6 +259,15 @@ function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
             text: `⚠️  *PR #${result.prNumber}* — review failed\n_${escapeAtSign(result.error || 'Unknown error')}_`,
           },
         });
+      } else if (result.skipped) {
+        // Skipped PR — too large to review automatically
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `⏭️  *<${result.prUrl}|PR #${result.prNumber}>* — Skipped\n_${escapeAtSign(result.reason || 'Too large to review')}_`,
+          },
+        });
       } else {
         const { emoji, label } = flagFor(result.recommendation);
         const issueWord = result.findingsCount === 1 ? 'issue' : 'issues';
@@ -289,13 +298,16 @@ function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
   }
 
   // ── Footer ───────────────────────────────────────────────────────────────────
-  const reviewedCount = results.filter((r) => !r.failed).length;
-  const failedCount = results.filter((r) => r.failed).length;
+  const reviewedCount = results.filter((r) => !r.failed && !r.skipped).length;
+  const failedCount   = results.filter((r) => r.failed).length;
+  const skippedCount  = results.filter((r) => r.skipped).length;
   const parts = [];
   if (reviewedCount > 0)
     parts.push(`${reviewedCount} PR${reviewedCount !== 1 ? 's' : ''} reviewed`);
   if (failedCount > 0)
     parts.push(`${failedCount} failed`);
+  if (skippedCount > 0)
+    parts.push(`${skippedCount} skipped`);
   if (parts.length === 0)
     parts.push('Run complete');
   parts.push('<https://ibm.biz/carbon-monitor|⚙️ Configure schedule>');
@@ -376,6 +388,7 @@ function postToSlack(payload) {
  * @param {Array}   opts.results       - Array of per-PR result objects:
  *   Success shape: { prNumber, prUrl, findingsCount, summary, recommendation }
  *   Failure shape: { prNumber, failed: true, error }
+ *   Skipped shape: { prNumber, prUrl, skipped: true, reason }
  * @param {number}   [opts.maxPRs]     - selection cap (MAX_PRS_PER_RUN), shown in the Criteria line
  * @param {number}   [opts.daysBack]   - age window in days (N_DAYS_SINCE_PR_CREATED), shown in the Criteria line
  * @param {Function} [opts.emitEvent]  - optional emitEvent fn for ES observability
