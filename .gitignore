@@ -13,7 +13,8 @@ client/public/plex/
 .env
 .env.local
 .env.*.local
-# Elasticsearch CA cert — deployment-specific; shipped in the image from the local checkout
+# A CA cert holds no private key, so the committed one is safe in a public repo.
+# Any extra cert you add stays untracked.
 src/config/*.crt
 
 # Logs

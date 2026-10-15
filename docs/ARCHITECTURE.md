@@ -34,35 +34,36 @@ indefinitely**.
 ┌───────────────────────────────────────────────────────────────────────────┐
 │  IBM Cloud Code Engine · project $PROJECT · region $REGION                │
 │                                                                           │
-│  ┌─────────────────────────────────────────────────────────────────────┐ │
-│  │  App: carbon-monitor          min-scale 1 · max-scale 1 · 2 vCPU    │ │
-│  │  ┌───────────────────────────────────────────────────────────────┐  │ │
-│  │  │  node src/api/server.js            (port 8080)                │  │ │
-│  │  │                                                               │  │ │
-│  │  │   ┌──────────────┐   ┌──────────────┐   ┌─────────────────┐   │  │ │
-│  │  │   │ Carbon React │   │  REST API    │   │ Refresh timer   │   │  │ │
-│  │  │   │ console      │◄─►│  /api/*      │   │ every 60s       │   │  │ │
-│  │  │   │ (dist/client)│   │              │   │                 │   │  │ │
-│  │  │   └──────────────┘   └──────┬───────┘   └────────┬────────┘   │  │ │
-│  │  │                             │                    │            │  │ │
-│  │  │                             ▼                    ▼            │  │ │
-│  │  │                      ┌─────────────────────────────────┐      │  │ │
-│  │  │                      │ ~/.bob/settings/mcp.json        │      │  │ │
-│  │  │                      │   Authorization: Bearer <jwt>   │      │  │ │
-│  │  │                      │   X-MCP-Session: <session id>   │      │  │ │
-│  │  │                      └────────────────┬────────────────┘      │  │ │
-│  │  │                                       │ read by               │  │ │
-│  │  │                                       ▼                       │  │ │
-│  │  │                      ┌─────────────────────────────────┐      │  │ │
-│  │  │                      │ bob run  (spawned per review)   │      │  │ │
-│  │  │                      │   cwd = /workspace/<bundle>     │      │  │ │
-│  │  │                      └────────────────┬────────────────┘      │  │ │
-│  │  └───────────────────────────────────────┼───────────────────────┘  │ │
-│  └──────────────────────────────────────────┼──────────────────────────┘ │
-│                                             │                            │
-│  Secret: carbon-monitor-secrets ────────────┘                            │
-│    GITHUB_AI_AGENT_TOKEN · BOB_API_KEY · ES_USERNAME · ES_PASSWORD       │
-│    SESSION_SIGNING_KEY · API_SECRET                                      │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │  App: carbon-monitor          min-scale 1 · max-scale 1 · 1vCPU 2GB │  │
+│  │  ┌───────────────────────────────────────────────────────────────┐  │  │
+│  │  │  node src/api/server.js            (port 8080)                │  │  │
+│  │  │                                                               │  │  │
+│  │  │   ┌──────────────┐   ┌──────────────┐   ┌─────────────────┐   │  │  │
+│  │  │   │ Carbon React │   │  REST API    │   │ Refresh timer   │   │  │  │
+│  │  │   │ console      │◄─►│  /api/*      │   │ every 60s       │   │  │  │
+│  │  │   │ (dist/client)│   │              │   │                 │   │  │  │
+│  │  │   └──────────────┘   └──────┬───────┘   └────────┬────────┘   │  │  │
+│  │  │                             │                    │            │  │  │
+│  │  │                             ▼                    ▼            │  │  │
+│  │  │                      ┌─────────────────────────────────┐      │  │  │
+│  │  │                      │ ~/.bob/settings/mcp.json        │      │  │  │
+│  │  │                      │   Authorization: Bearer <jwt>   │      │  │  │
+│  │  │                      │   X-MCP-Session: <session id>   │      │  │  │
+│  │  │                      └────────────────┬────────────────┘      │  │  │
+│  │  │                                       │ read by               │  │  │
+│  │  │                                       ▼                       │  │  │
+│  │  │                      ┌─────────────────────────────────┐      │  │  │
+│  │  │                      │ bob run  (spawned per review)   │      │  │  │
+│  │  │                      │   cwd = /workspace/<bundle>     │      │  │  │
+│  │  │                      └────────────────┬────────────────┘      │  │  │
+│  │  └───────────────────────────────────────┼───────────────────────┘  │  │
+│  └──────────────────────────────────────────┼──────────────────────────┘  │
+│                                             │                             │
+│  Secret: carbon-monitor-secrets ────────────┘                             │
+│    GITHUB_AI_AGENT_TOKEN · BOB_API_KEY · CONSOLE_USERNAME/PASSWORD        │
+│    ES_URL · ES_USERNAME · ES_PASSWORD · SLACK_WEBHOOK_URL                 │
+│    SESSION_SIGNING_KEY · API_SECRET · …                                   │
 └───────────────────────────────────────────┬───────────────────────────────┘
                                             │
               ┌─────────────────────────────┼─────────────────────────────┐
@@ -109,8 +110,8 @@ build time. The Dockerfile performs the same steps it does, with the version and
 its checksum pinned:
 
 ```
-ARG BOB_VERSION=2.0.0
-ARG BOB_SHA256=de2d773e7e7a79cddf671d1019c8852f58b4c4472f96eccf4a23b9feac620812
+ARG BOB_VERSION=2.0.5
+ARG BOB_SHA256=eff232eb1b69f34f984ddd295e6960470058ca922b1c751879c5a8d06199f566
 
 curl -fsSL "${BASE}/bobshell-${BOB_VERSION}.tgz" -o /tmp/bobshell.tgz
 echo "${BOB_SHA256}  /tmp/bobshell.tgz" | sha256sum -c -
@@ -127,10 +128,11 @@ cannot simply be a `package.json` dependency.
 ### 3.3 Image layout
 
 ```
-/usr/local/lib/node_modules/bobshell/   Bob Shell 2.0.0 + node-pty-linux-x64
+/usr/local/lib/node_modules/bobshell/   Bob Shell 2.0.5 + node-pty-linux-x64
 /app/src/                               agent + API server
 /app/dist/client/                       pre-built Carbon React console
 /app/node_modules/                      production dependencies only
+/app/.bob/skills/carbon-builder/        Carbon Builder skill, copied into each review bundle
 /home/app/.bob/settings.json            licenseConsent seeded
 /home/app/.bob/trustedFolders.json      /workspace pre-trusted
 /home/app/.bob/settings/mcp.json        rewritten on every token refresh
@@ -203,7 +205,7 @@ PHASE 1 — BOOTSTRAP (human, once)
      │                      │  { id_token, refresh_token }
      │                      │◄───────────────────────────┤
      │                      │                            │
-     │                      ├─► /workspace/.mcp-state.json  (refresh_token, 0600)
+     │                      ├─► persist refresh_token (Elasticsearch, or /workspace/.mcp-state.json)
      │                      └─► ~/.bob/settings/mcp.json    (Authorization header)
      │   "Connected"        │
      │◄─────────────────────┤
@@ -238,7 +240,7 @@ PHASE 2 — STEADY STATE (unattended, forever)
 
 ### 4.3 Why `max-scale 1` is a correctness constraint
 
-Refresh state lives in the instance's own filesystem, and refresh tokens rotate.
+Refresh tokens rotate, and the current one must have a single owner.
 Two instances refreshing independently would invalidate each other's token and
 trip Carbon MCP's refresh-token *family invalidation*, dropping the connection
 entirely. `min-scale 1` is equally load-bearing: an app scaled to zero runs no
@@ -266,9 +268,9 @@ past expiry** still authorized, because the session id was present.
 
 ## 5. Authentication model
 
-**Sign-in is a feature flag, and it is OFF by default — including in production.**
-The standard deployment is open: the console loads straight to Operations with no
-login page, and every `/api/*` route answers without a credential.
+**Sign-in is a feature flag. It is OFF in code; `.env.example` and the `deploy_ce.sh`
+default turn it ON.** With the flag off the console loads straight to Operations with
+no login page, and every `/api/*` route answers without a credential.
 
 ```
    AUTH_REQUIRED unset / false  ── the default ─────────────────────────────┐
@@ -345,7 +347,7 @@ end.
         │
         ├─► buildReviewBundle()                  src/reviewBundle.js
         │      creates  $BOB_WORKSPACE_ROOT/<owner>__<repo>__pull-N-XXXX/
-        │      writes   pr.json · files.json · diff.patch · REVIEW.md
+        │      writes   pr.json · files.json · diff.patch · PR_REVIEW_REQUEST.md · .bob/
         │
         ├─► runAgent()                           src/agentRunner.js
         │      bob run --trust --accept-license [--team-id …] "<prompt>"
@@ -387,7 +389,7 @@ process on one port — Code Engine exposes a single port per app.
   │  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐       │  Grid narrow
   │  │ ✔ Bob     │ │ ✔ Carbon  │ │ ✔ GitHub  │ │ ○ Elastic │       │  4 cols @ lg
   │  │   Shell   │ │   MCP     │ │           │ │  search   │       │
-  │  │ v2.0.0    │ │ auto-     │ │ 4998/5000 │ │ Not       │       │  IconIndicator
+  │  │ v2.0.5    │ │ auto-     │ │ 4998/5000 │ │ Not       │       │  IconIndicator
   │  │ API key   │ │ refresh   │ │ calls     │ │ configured│       │  kind=…
   │  └───────────┘ └───────────┘ └───────────┘ └───────────┘       │
   │                                                                │
@@ -448,6 +450,8 @@ makes no third-party request.
         ▼
   ibmcloud login · ce project select
         ▼
+  ensure the registry secret exists
+        ▼
   sync carbon-monitor-secrets from .env   ← refuses to deploy without credentials
         ▼
   npm run build:client                    ← console built on the host
@@ -501,7 +505,7 @@ npm run api                # http://localhost:3000 — console + API
 npm run dev:client         # http://localhost:5173, proxies /api → :3000
 ```
 
-Sign-in is off by default everywhere. To exercise the real login flow:
+Sign-in is off in code (on in `.env.example`). To exercise the real login flow:
 
 ```bash
 AUTH_REQUIRED=true CONSOLE_USERNAME=operator CONSOLE_PASSWORD=secret \
@@ -556,6 +560,12 @@ See [`.env.example`](../.env.example) for the full set.
 | `POST` | `/api/mcp/test` | yes | Live probe (also repairs a session connection) |
 | `POST` | `/api/review/trigger` | yes | Start a review (202, background) |
 | `GET` | `/api/review/status` | yes | Current or last run |
+| `POST` | `/api/mcp/disconnect` | yes | Forget the stored grant and strip Bob's MCP headers |
+| `GET` | `/api/credits` | yes | Bobcoins balance |
+| `GET` | `/api/credits/history` | yes | Per-review spend |
+| `GET` | `/api/review/logs` | yes | Log tail of the current or last run |
+| `POST` | `/api/review/logs/clear` | yes | Clear that log |
+| `GET` / `POST` | `/api/schedule` | yes | Read or set the review schedule |
 
 `POST /api/mcp/refresh` keeps its original contract: a body carrying `token`
 and/or `sessionId` stores those credentials, exactly as the existing runbooks in
@@ -568,17 +578,30 @@ behaviour — force a refresh using the stored OAuth grant.
 
 ```
 src/
-├── index.js                  review orchestration (also runs standalone)
-├── agentRunner.js            spawns bob/claude/codex
+├── index.js                  review orchestration (also the CLI entrypoint)
+├── constants.js              env-driven defaults: owner, repo, label, limits
+├── loadEnv.js                dotenv bootstrap (.env wins over the shell)
+├── agentRunner.js            spawns bob (claude/codex paths exist, unsupported)
 ├── reviewBundle.js           builds the agent workspace  [getWorkspaceRoot]
+├── reviewPrompt.js           review prompt; summary and inline comment text
 ├── githubClient.js           PRs, diffs, comments, labels
 ├── reviewParser.js           parses agent output into findings
 ├── diffMapper.js             maps findings to diff line numbers
+├── slackNotifier.js          end-of-run digest to a Slack webhook
+├── textUtils.js              shared text helpers
+├── config/env.js             trimmed env reads for Elasticsearch
+├── observability/
+│   ├── esClient.js           Elasticsearch client with circuit breaker
+│   └── eventService.js       review events written to Elasticsearch
 └── api/
     ├── server.js             HTTP server, routing, static console
-    ├── mcpConnection.js      OAuth, refresh timer, mcp.json, probe   ★
+    ├── mcpConnection.js      OAuth, refresh timer, mcp.json, probe, ES state   ★
     ├── healthChecks.js       dependency probes for the status panel
     ├── sessionAuth.js        cookie sessions (ported from Carbon Migrate)
+    ├── bobCredits.js         Bobcoins balance from the Bob gateway
+    ├── creditLedger.js       per-review spend ledger
+    ├── reviewLog.js          log tail for the console
+    ├── scheduleManager.js    scheduled review runs
     └── tokenManager.js       compatibility shim → mcpConnection
 
 client/src/
@@ -586,10 +609,17 @@ client/src/
 ├── api.js                    fetch wrapper
 ├── pages/Login.jsx           ported from Carbon Migrate
 ├── pages/Console.jsx         status panel + controls
+├── pages/HelpGuide.jsx       in-app help guide
+├── utils/prPhrasing.js       PR phrasing helpers
 └── components/
     ├── StatusTile.jsx        IconIndicator tile
     ├── ExpiryCountdown.jsx   live token countdown
-    └── McpConnectionPanel.jsx  connect · test · refresh · manual entry
+    ├── McpConnectionPanel.jsx  connect · test · refresh · disconnect · manual entry
+    ├── BobcoinsPanel.jsx     balance and spend history
+    ├── SchedulePanel.jsx     scheduled reviews settings
+    ├── ReviewLog.jsx         live log tail
+    ├── AboutAi.jsx           about the AI review
+    └── ErrorBoundary.jsx     root error boundary
 ```
 
 ★ `mcpConnection.js` is the single writer of `~/.bob/settings/mcp.json`.
@@ -608,8 +638,9 @@ independent writers would silently clobber each other.
 - **OAuth needs one human, once.** Carbon MCP advertises no
   `device_authorization` grant, so a fully unattended cold start is not possible
   today. If that grant is added, the bootstrap could be automated entirely.
-- **`/workspace` is container-local.** A rescheduled instance keeps its refresh
-  token only if the path is backed by a persistent mount; otherwise an operator
-  signs in again.
+- **`/workspace` is container-local.** The cloud deploy sets
+  `MCP_STATE_BACKEND=elasticsearch`, so the refresh token survives an instance
+  replacement. Without Elasticsearch a rescheduled instance loses it and an
+  operator signs in again.
 
 <!-- Made with Bob -->
