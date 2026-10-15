@@ -22,13 +22,14 @@ const AUTH = `Basic ${Buffer.from(`${process.env.ES_USERNAME || 'elastic'}:${pro
 const DATA_VIEW_ID    = 'carbon-monitor-index-pattern';
 const INDEX_PATTERN   = 'carbon-monitor-events-*';
 const TIME_FIELD      = 'timestamp';
-const KIBANA_PORT     = 5601;
+const KIBANA_URL      = new URL(process.env.KIBANA_URL || 'http://localhost:5601');
+const transport       = KIBANA_URL.protocol === 'https:' ? require('https') : http;
 
 function kReq(method, path, body) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
-    const req = http.request({
-      hostname: 'localhost', port: KIBANA_PORT, method, path,
+    const req = transport.request(new URL(path, KIBANA_URL), {
+      method,
       headers: {
         'Authorization': AUTH,
         'kbn-xsrf': 'true',
@@ -55,8 +56,8 @@ async function main() {
   // 1. Check Kibana is reachable
   const status = await kReq('GET', '/api/status', null);
   if (status.status !== 200) {
-    console.error('❌ Cannot reach Kibana at localhost:5601. Is it running?');
-    console.error('   docker ps | grep kib01');
+    console.error(`❌ Cannot reach Kibana at ${KIBANA_URL.origin}. Is it running?`);
+    console.error('   docker ps');
     process.exit(1);
   }
   console.log(`✅ Kibana ${status.body?.version?.number ?? '(unknown version)'} reachable`);

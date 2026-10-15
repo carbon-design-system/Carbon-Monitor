@@ -22,7 +22,6 @@ scripts/
 tests/
 .git/
 .github/
-deployment/
 kibana/
 
 # NOTE: .bob/ is deliberately NOT excluded.

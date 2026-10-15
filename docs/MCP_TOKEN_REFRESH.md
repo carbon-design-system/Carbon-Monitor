@@ -1,5 +1,7 @@
 # Carbon MCP Token Refresh
 
+> Manual fallback. The console's **Sign in with IBMid** flow and unattended refresh (see [ARCHITECTURE.md §4](ARCHITECTURE.md)) supersede this for normal operation.
+
 ## Overview
 
 Carbon Monitor connects to Carbon MCP over streamable HTTP. The connection requires two credentials that expire approximately every 24 hours:

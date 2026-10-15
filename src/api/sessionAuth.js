@@ -26,7 +26,7 @@ const SESSION_MAX_AGE_SECONDS = Number(
 );
 
 /** Where a locked-out operator is told to request access to Carbon Monitor. */
-const ACCESS_CONTACT_EMAIL = 'Carbon.MCP@ibm.com';
+const ACCESS_CONTACT_EMAIL = (process.env.CONSOLE_CONTACT_EMAIL || '').trim() || null;
 
 /**
  * Feature flag: whether the console requires a sign-in.

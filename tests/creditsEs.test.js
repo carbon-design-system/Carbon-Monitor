@@ -83,7 +83,7 @@ function historyHit() {
     _source: {
       timestamp: '2026-09-10T14:26:51.967Z',
       pr_number: 158,
-      repo: 'Chance-Gong/carbon-pr-review-test',
+      repo: 'example-org/example-repo',
       correlation_id: 'test-correlation',
       payload: {
         coinsSpent: 0.219426,
@@ -118,7 +118,7 @@ async function main() {
     assert(JSON.stringify(body.entries[0]) === JSON.stringify({
       at: '2026-09-10T14:26:51.967Z',
       prNumber: 158,
-      repo: 'Chance-Gong/carbon-pr-review-test',
+      repo: 'example-org/example-repo',
       correlationId: 'test-correlation',
       coinsSpent: 0.219426,
       remainingAfter: 957.41365,

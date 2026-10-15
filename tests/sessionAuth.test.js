@@ -88,6 +88,7 @@ const CREDS = {
   CONSOLE_PASSWORD: 'correct-horse-battery',
   SESSION_SIGNING_KEY: 'test-signing-key',
   AUTH_REQUIRED: 'true',
+  CONSOLE_CONTACT_EMAIL: 'Carbon.MCP@ibm.com',
 };
 
 console.log('\n🔐 Session authentication tests\n');

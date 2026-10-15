@@ -13,6 +13,8 @@ client/public/plex/
 .env
 .env.local
 .env.*.local
+# Elasticsearch CA cert — deployment-specific; shipped in the image from the local checkout
+src/config/*.crt
 
 # Logs
 *.log

@@ -9,7 +9,7 @@ This directory contains the tooling to set up the **Carbon Monitor — PR Review
 | Component | Location | Notes |
 |---|---|---|
 | Elasticsearch | IBM Cloud (remote) | Credentials in `.env` — `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`, `ES_CA_CERT_PATH` |
-| Kibana | Local Docker container (`kib01`) | Must be pointed at the IBM Cloud ES cluster (see setup below) |
+| Kibana | Local Docker container | Must be pointed at the IBM Cloud ES cluster (see setup below) |
 | Carbon Monitor app | Local / Code Engine | Writes events to IBM Cloud ES via `esClient.js` |
 
 **Important:** Kibana and Elasticsearch are on _different hosts_. Kibana runs locally in Docker but queries the IBM Cloud ES cluster. Both must be configured to talk to the same cluster, or the dashboard will show "No results" even when data exists in ES.
@@ -20,7 +20,7 @@ This directory contains the tooling to set up the **Carbon Monitor — PR Review
 
 | Requirement | Notes |
 |---|---|
-| Docker | Kibana runs as a local Docker container (`kib01`) |
+| Docker | Kibana runs as a local Docker container |
 | Node.js 18+ | For running the setup scripts |
 | IBM Cloud ES credentials | `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`, `ES_CA_CERT_PATH` in `.env` |
 | At least one successful review run | So `carbon-monitor-events-*` indices exist in ES |
@@ -34,6 +34,8 @@ ES_PASSWORD=<your-password>
 ES_CA_CERT_PATH=./src/config/<your-cert>.crt
 ```
 
+Set `KIBANA_URL` in `.env` if Kibana is not at `http://localhost:5601`.
+
 > **Note:** Do **not** set `ES_API_KEY` when using the Kibana scripts. API keys authenticate direct ES access only — the Kibana API always requires `ES_USERNAME` / `ES_PASSWORD`. If `ES_API_KEY` is present in your environment, the Kibana scripts ignore it.
 
 ---
@@ -44,7 +46,7 @@ When starting fresh, or after a new team member clones the repo, Kibana's Docker
 
 ```bash
 # 1. Copy the IBM Cloud CA cert into the Kibana container
-docker cp src/config/<your-cert>.crt kib01:/usr/share/kibana/data/ibmcloud_ca.crt
+docker cp src/config/<your-cert>.crt <kibana-container>:/usr/share/kibana/data/ibmcloud_ca.crt
 
 # 2. Rewrite Kibana's config to point at IBM Cloud ES
 #    (runs from Carbon-Monitor/ — reads .env automatically)
@@ -61,10 +63,10 @@ elasticsearch.ssl.certificateAuthorities: [/usr/share/kibana/data/ibmcloud_ca.cr
 elasticsearch.ssl.verificationMode: certificate
 \`;
 process.stdout.write(cfg);
-" | docker exec -i kib01 tee /usr/share/kibana/config/kibana.yml
+" | docker exec -i <kibana-container> tee /usr/share/kibana/config/kibana.yml
 
 # 3. Restart Kibana so the new config takes effect
-docker restart kib01
+docker restart <kibana-container>
 
 # 4. Wait ~10 s for Kibana to finish starting, then create the data view
 node scripts/init-kibana.js
@@ -172,7 +174,7 @@ If you ever modify a panel manually in the Kibana UI and it stops working, run `
 
 The most common cause is Kibana pointing at the wrong Elasticsearch cluster. Verify:
 
-1. `docker exec kib01 grep elasticsearch.hosts /usr/share/kibana/config/kibana.yml`  
+1. `docker exec <kibana-container> grep elasticsearch.hosts /usr/share/kibana/config/kibana.yml`  
    — must show the IBM Cloud URL, not `localhost` or a Docker-internal IP like `10.89.0.2`.
 2. If it shows the wrong URL, re-run the [first-time setup](#first-time-setup-kibana-pointing-at-ibm-cloud-es) steps above.
 
@@ -203,7 +205,7 @@ ES returned an error and the circuit breaker tripped. It will auto-reset after 1
 **ES connection refused / TLS error**
 
 - IBM Cloud cluster: set `ES_CA_CERT_PATH` to the path of the PEM cert provided by IBM Cloud.
-- Copy the same cert into the Kibana container: `docker cp <cert> kib01:/usr/share/kibana/data/ibmcloud_ca.crt`
+- Copy the same cert into the Kibana container: `docker cp <cert> <kibana-container>:/usr/share/kibana/data/ibmcloud_ca.crt`
 
 ---
 
