@@ -22,7 +22,7 @@ Carbon-specific claims (component props, tokens, icons, accessibility patterns) 
 
    The issue content is capped at 5,000 tokens and truncated with a notice if it exceeds that. If no linked issue is found or fetching fails, the section is silently omitted and the review continues from the diff alone.
 
-3. **Review** — Runs Bob in advanced mode (`bob -p <prompt> --yolo --chat-mode advanced --allowed-mcp-server-names carbon-mcp`) against the bundle directory. Bob works through a structured protocol:
+3. **Review** — Runs Bob (`bob run --trust --accept-license [--team-id …] "<prompt>"`) against the bundle directory. Bob works through a structured protocol:
    - **Step 1** — Reads `PR_REVIEW_REQUEST.md` and writes a visible catalogue of every suspicious item per file, classified as Category 1 (Carbon API — requires MCP) or Category 2 (generic — diff-visible).
    - **Step 2** — Resolves every pending catalogue item. Category 1 items are verified using the Carbon Builder skill and Carbon MCP tools (`code_search`, `docs_search`, `get_charts`). Category 2 items are resolved from the diff alone.
    - **Step 3** — Compiles the confirmed findings list with severity (`blocking`, `major`, `minor`, `nit`).
@@ -41,27 +41,41 @@ Carbon-specific claims (component props, tokens, icons, accessibility patterns) 
 ```
 Carbon-Monitor/
 ├── src/
-│   ├── index.js           # Orchestrator — fetches PRs, coordinates all steps
-│   ├── githubClient.js    # GitHub API wrapper (fetch PRs/diffs/files, post comments, add labels)
-│   ├── reviewBundle.js    # Builds the temp workspace Bob runs inside
-│   ├── agentRunner.js     # Spawns the Bob process, captures output
-│   ├── reviewParser.js    # Parses Bob's JSON output, filters findings, computes recommendation
-│   ├── reviewPrompt.js    # Builds the review prompt; formats summary and inline comments
-│   ├── diffMapper.js      # Maps finding file+line to a GitHub diff position for inline comments
+│   ├── index.js             # Orchestrator — fetches PRs, coordinates all steps (CLI entrypoint)
+│   ├── constants.js         # Env-driven defaults: owner, repo, label, limits
+│   ├── loadEnv.js           # dotenv bootstrap
+│   ├── githubClient.js      # GitHub API wrapper (fetch PRs/diffs/files, post comments, add labels)
+│   ├── reviewBundle.js      # Builds the temp workspace Bob runs inside
+│   ├── agentRunner.js       # Spawns the Bob process, captures output
+│   ├── reviewParser.js      # Parses Bob's JSON output, filters findings, computes recommendation
+│   ├── reviewPrompt.js      # Builds the review prompt; formats summary and inline comments
+│   ├── diffMapper.js        # Maps finding file+line to a GitHub diff position for inline comments
+│   ├── slackNotifier.js     # End-of-run digest to Slack
+│   ├── textUtils.js         # Shared text helpers
+│   ├── config/env.js        # Trimmed env reads for Elasticsearch
+│   ├── observability/       # Elasticsearch client and review events
 │   └── api/
-│       ├── server.js      # REST API server (in development — see API Server section)
-│       └── tokenManager.js # Carbon MCP token refresh logic
-├── tests/
-│   ├── test-agent.js
-│   ├── test-parser.js
-│   ├── test-diff-mapper.js
-│   └── test-truncation-edge-cases.js
+│       ├── server.js        # Console + REST API (the Code Engine entrypoint)
+│       ├── mcpConnection.js # Carbon MCP OAuth, refresh timer, persisted state
+│       ├── healthChecks.js  # Dependency probes for the status tiles
+│       ├── sessionAuth.js   # Console sign-in and bearer auth
+│       ├── bobCredits.js    # Bobcoins balance
+│       ├── creditLedger.js  # Per-review spend
+│       ├── reviewLog.js     # Log tail for the console
+│       ├── scheduleManager.js  # Scheduled reviews
+│       └── tokenManager.js  # Compatibility shim → mcpConnection
+├── client/                  # Carbon React console (Vite)
+├── scripts/                 # Elasticsearch/Kibana setup, test-PR helpers, smoke test
+├── tests/                   # node tests/*.test.js — all of them: npm run test:all
 ├── docs/
-│   ├── AGENTIC_CARBON_PR_REVIEW_PORT_SPEC.md
-│   ├── CARBON_PORT_COMPARISON.md
+│   ├── ARCHITECTURE.md
+│   ├── INLINE_COMMENTS.md
+│   ├── MCP_TOKEN_REFRESH.md
 │   └── TOKEN_USAGE_TRACKING.md
-├── .env.example
-├── QUICKSTART.md
+├── kibana/README.md         # Dashboard setup
+├── .bob/skills/carbon-builder/  # Carbon Builder skill, copied into each review bundle
+├── Dockerfile · docker-compose.yml · deploy_ce.sh
+├── .env.example · QUICKSTART.md · CONTRIBUTING.md · LICENSE
 └── package.json
 ```
 
