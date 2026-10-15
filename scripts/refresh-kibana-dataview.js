@@ -19,14 +19,12 @@ const AUTH = `Basic ${Buffer.from(`${process.env.ES_USERNAME || 'elastic'}:${pro
 
 // The ID that all 9 Lens panels reference
 const DATA_VIEW_ID = 'carbon-monitor-index-pattern';
-const KIBANA_PORT  = 5601;
+const KIBANA_URL   = new URL(process.env.KIBANA_URL || 'http://localhost:5601');
+const transport    = KIBANA_URL.protocol === 'https:' ? https : http;
 
 function kRequest({ method = 'GET', path, body } = {}) {
   return new Promise((resolve, reject) => {
     const opts = {
-      hostname: 'localhost',
-      port: KIBANA_PORT,
-      path,
       method,
       headers: {
         'Authorization': AUTH,
@@ -35,7 +33,7 @@ function kRequest({ method = 'GET', path, body } = {}) {
       },
     };
 
-    const req = http.request(opts, res => {
+    const req = transport.request(new URL(path, KIBANA_URL), opts, res => {
       let data = '';
       res.on('data', d => data += d);
       res.on('end', () => {
@@ -93,7 +91,7 @@ async function run() {
       console.error(`    ❌ Both refresh methods failed. Status: ${put.status}`);
       console.error('    Response:', JSON.stringify(put.body));
       console.log('\n    Manual fallback:');
-      console.log(`    http://localhost:5601/app/management/kibana/dataViews`);
+      console.log(`    ${KIBANA_URL.origin}/app/management/kibana/dataViews`);
       console.log(`    → click "carbon-monitor-events-*" (id: ${DATA_VIEW_ID})`);
       console.log(`    → click the ↺ refresh icon next to the field list`);
     }
@@ -112,7 +110,7 @@ async function run() {
       console.warn(`    ⚠️  No payload.* fields visible yet.`);
       console.warn(`       This means no pr_review_completed events have been indexed,`);
       console.warn(`       OR the field list still needs a manual refresh in the UI.`);
-      console.warn(`\n       Go to: http://localhost:5601/app/management/kibana/dataViews`);
+      console.warn(`\n       Go to: ${KIBANA_URL.origin}/app/management/kibana/dataViews`);
       console.warn(`       Click the data view → hit the ↺ icon → save`);
     }
   }
@@ -122,7 +120,7 @@ async function run() {
   const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const to   = now.toISOString();
   console.log(`\n[4] Dashboard link (last 7 days, absolute range):`);
-  console.log(`    http://localhost:5601/app/dashboards#/view/carbon-monitor-dashboard?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${from}',to:'${to}'))`);
+  console.log(`    ${KIBANA_URL.origin}/app/dashboards#/view/carbon-monitor-dashboard?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${from}',to:'${to}'))`);
 
   console.log('\n────────────────────────────────────────────────────\n');
 }

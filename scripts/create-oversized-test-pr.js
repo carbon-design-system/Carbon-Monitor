@@ -15,14 +15,18 @@
 require('dotenv').config();
 
 const GITHUB_TOKEN = process.env.GITHUB_AI_AGENT_TOKEN;
-const OWNER = 'Chance-Gong';
-const REPO = 'carbon-pr-review-test';
+const OWNER = process.env.TEST_PR_OWNER;
+const REPO = process.env.TEST_PR_REPO;
 const BASE_BRANCH = 'main';
 const HEAD_BRANCH = `test/oversized-pr-gate-${Date.now()}`;
 const STALE_BRANCH_PREFIX = 'test/oversized-pr-gate-';
 
 if (!GITHUB_TOKEN) {
   console.error('❌  GITHUB_AI_AGENT_TOKEN is not set');
+  process.exit(1);
+}
+if (!OWNER || !REPO) {
+  console.error('❌  TEST_PR_OWNER and TEST_PR_REPO are not set (use a scratch repo, never the one being reviewed)');
   process.exit(1);
 }
 
@@ -149,7 +153,7 @@ async function main() {
   console.log(`   PR number:  #${pr.number}`);
   console.log('\n💡 To test the gate:');
   console.log('   1. Set GITHUB_AI_AGENT_MAX_FILES=1 in .env');
-  console.log('   2. Set GITHUB_AI_AGENT_OWNER=Chance-Gong and GITHUB_AI_AGENT_REPO=carbon-pr-review-test in .env');
+  console.log(`   2. Set GITHUB_AI_AGENT_OWNER=${OWNER} and GITHUB_AI_AGENT_REPO=${REPO} in .env`);
   console.log('   3. Trigger a scheduled run');
   console.log(`   4. Expect: ⏭️  PR #${pr.number} skipped — 3 files exceeds MAX_FILES_PER_PR (1)\n`);
 }

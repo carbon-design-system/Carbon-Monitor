@@ -14,20 +14,6 @@
  *   lens-010  Total Token Usage              (line — Total)
  *
  * Usage:  node scripts/rebuild-dashboard.js
- *
- * Panels (7 total after removals):
- *   lens-001  PRs AI Reviewed per Day        (bar, X=date, Y=PRs AI Reviewed)
- *   lens-003  Total PRs This Run             (metric tile)
- *   lens-004  AI Recommendation Summary      (donut, renamed values)
- *   lens-005  Findings by Severity           (vertical stacked bar, X=PR #)
- *   lens-006  Carbon vs Non-Carbon Issues    (stacked bar, renamed labels)
- *   lens-007  Agent Reliability              (stacked bar)
- *   lens-008  Token Cost — Input & Output    (line, X=PR #, Y=Token Count)
- *   lens-010  Token Cost — Total Tokens      (line, X=PR #, Y=Token Count)
- *
- * Removed:
- *   lens-002  PRs Reviewed per Week          (deleted per request)
- *   lens-009  Run Health                     (deleted per request)
  */
 'use strict';
 
@@ -38,13 +24,15 @@ const http = require('http');
 // ES_API_KEY is set — API keys are for direct ES access, not the Kibana API.
 const AUTH = `Basic ${Buffer.from(`${process.env.ES_USERNAME || 'elastic'}:${process.env.ES_PASSWORD || ''}`).toString('base64')}`;
 const DV_ID = 'carbon-monitor-index-pattern';
+const KIBANA_URL = new URL(process.env.KIBANA_URL || 'http://localhost:5601');
+const transport = KIBANA_URL.protocol === 'https:' ? require('https') : http;
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 function kReq(method, path, body) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
     const opts = {
-      hostname: 'localhost', port: 5601, method, path,
+      method,
       headers: {
         'Authorization': AUTH,
         'kbn-xsrf': 'true',
@@ -52,7 +40,7 @@ function kReq(method, path, body) {
         ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
       },
     };
-    const req = http.request(opts, res => {
+    const req = transport.request(new URL(path, KIBANA_URL), opts, res => {
       let d = '';
       res.on('data', c => d += c);
       res.on('end', () => {
@@ -377,24 +365,11 @@ async function buildLensObjects() {
 // IMPORTANT: always register both fields together — a single POST to
 // /api/data_views/data_view/:id overwrites the entire runtimeFieldMap.
 // Sending them separately causes the second call to wipe the first.
-//
-// To add a new PR mapping: add an 'else if' line to prLabelScript below,
-// then run:  node scripts/rebuild-dashboard.js
 async function registerRuntimeFields() {
-  // pr_label — test repo PR# → Carbon PR last-3-digit label
-  // Add new entries here as more PRs are reviewed against the Carbon repo.
+  // pr_label — '#<pr_number>' keyword for axis labels
   const prLabelScript = `
     long n = doc['pr_number'].value;
-    if      (n == 157) { emit('#864'); }
-    else if (n == 156) { emit('#855'); }
-    else if (n == 155) { emit('#867'); }
-    else if (n == 154) { emit('#872'); }
-    else if (n == 152) { emit('#887'); }
-    else if (n == 145) { emit('#773'); }
-    else if (n == 144) { emit('#759'); }
-    else if (n == 143) { emit('#760'); }
-    else if (n == 142) { emit('#777'); }
-    else               { emit('#' + n); }
+    emit('#' + n);
   `.trim();
 
   // payload.recommendation_label — friendly donut slice labels
@@ -425,7 +400,7 @@ async function registerRuntimeFields() {
 
 // ── Build the dashboard ───────────────────────────────────────────────────────
 async function buildDashboard() {
-  // 6 panels — lens-002, lens-003, lens-007, lens-009 removed
+  // 7 panels
   const panels = [
     // Row 1 — throughput (full width)
     { i:'p1', x:0,  y:0,  w:48, h:10, id:'lens-001', title:'PRs Reviewed per Day' },
@@ -476,7 +451,7 @@ async function main() {
 
   const status = await kReq('GET', '/api/status', null);
   if (status.status !== 200) {
-    console.error('❌ Cannot reach Kibana at localhost:5601. Is it running?');
+    console.error(`❌ Cannot reach Kibana at ${KIBANA_URL.origin}. Is it running?`);
     process.exit(1);
   }
   console.log(`✅ Kibana ${status.body?.version?.number} reachable\n`);
@@ -502,7 +477,7 @@ async function main() {
   const from = new Date(now - 30 * 86400e3).toISOString();
   console.log(`
 ✅ Done. Open:
-   http://localhost:5601/app/dashboards#/view/carbon-monitor-dashboard?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${from}',to:'${now.toISOString()}'))
+   ${KIBANA_URL.origin}/app/dashboards#/view/carbon-monitor-dashboard?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'${from}',to:'${now.toISOString()}'))
 `);
 }
 

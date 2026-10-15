@@ -4,8 +4,8 @@ Get Carbon Monitor running in 5 minutes.
 
 ## Prerequisites
 
-- Node.js >= 18.0.0
-- GitHub personal access token (repo + write:discussion scopes)
+- Node.js >= 22.15.0
+- GitHub personal access token (see README → GitHub token)
 - Bob Shell CLI (IBM network or VPN required)
 - Access to the Carbon MCP streamable-HTTP endpoint
 
@@ -27,7 +27,7 @@ Required variables:
 ```bash
 GITHUB_AI_AGENT_TOKEN=ghp_your_github_token_here
 GITHUB_AI_AGENT_CLI=bob
-BOBSHELL_API_KEY=your_bob_api_key_here
+BOB_API_KEY=your_bob_api_key_here
 ```
 
 ## Step 3: Install Bob Shell
@@ -127,7 +127,7 @@ which bob
 ```
 
 ### "Carbon MCP not connected"
-Open Bob shell and run `/mcp list`. If carbon-mcp is not showing as Ready, check `~/.bob/settings/mcp.json` and confirm your IBM JWT token and session ID are current. See `docs/TOKEN_REFRESH.md` for the full refresh process.
+Open Bob shell and run `/mcp list`. If carbon-mcp is not showing as Ready, check `~/.bob/settings/mcp.json` and confirm your IBM JWT token and session ID are current. See `docs/MCP_TOKEN_REFRESH.md` for the full refresh process.
 
 ### "Bob Shell Cloudflare blocking"
 Bob requires IBM office network or VPN. Connect to IBM VPN and retry.
@@ -148,7 +148,7 @@ The bundle directory is printed to the console and contains `agent-output.txt` a
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `GITHUB_AI_AGENT_TOKEN` | ✅ | — | GitHub personal access token |
-| `BOBSHELL_API_KEY` | ✅ | — | Bob Shell API key |
+| `BOB_API_KEY` | ✅ | — | Bob Shell API key |
 | `GITHUB_AI_AGENT_OWNER` | ❌ | `carbon-design-system` | Repository owner |
 | `GITHUB_AI_AGENT_REPO` | ❌ | `carbon` | Repository name |
 | `GITHUB_AI_AGENT_CLI` | ❌ | `bob` | Agent to use — only `bob` is supported |

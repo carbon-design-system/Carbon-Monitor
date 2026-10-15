@@ -3,8 +3,8 @@
  *
  * The real implementation now lives in ./mcpConnection, which additionally
  * handles OAuth discovery and unattended refresh. This module remains so the
- * function names referenced by docs/MCP_TOKEN_REFRESH.md and the deployment
- * runbooks keep working, and it delegates rather than reimplementing:
+ * function names referenced by docs/MCP_TOKEN_REFRESH.md keep working, and it
+ * delegates rather than reimplementing:
  * two independent writers of Bob's mcp.json would silently clobber each other.
  *****************************************************************************/
 

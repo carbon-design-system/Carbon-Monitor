@@ -1,6 +1,6 @@
 {
   "name": "carbon-monitor",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "AI-powered PR review agent for Carbon Design System",
   "main": "src/index.js",
   "scripts": {
@@ -37,6 +37,9 @@
   ],
   "author": "IBM",
   "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "git+https://github.com/carbon-design-system/Carbon-Monitor.git" },
+  "bugs": { "url": "https://github.com/carbon-design-system/Carbon-Monitor/issues" },
+  "homepage": "https://github.com/carbon-design-system/Carbon-Monitor#readme",
   "dependencies": {
     "@carbon/charts": "^1.27.18",
     "@carbon/charts-react": "^1.27.18",

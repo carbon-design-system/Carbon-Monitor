@@ -2,7 +2,7 @@
 /**
  * create-test-pr.js
  *
- * Creates a test PR in Chance-Gong/carbon-pr-review-test with two deliberate
+ * Creates a test PR in TEST_PR_OWNER/TEST_PR_REPO with two deliberate
  * findings so Carbon Monitor's inline comment posting can be exercised:
  *
  *   Cat 1 (Carbon API):  ActionableNotification story uses kind="outlined" on a
@@ -31,14 +31,18 @@
 require('dotenv').config();
 
 const GITHUB_TOKEN = process.env.GITHUB_AI_AGENT_TOKEN;
-const OWNER = 'Chance-Gong';
-const REPO = 'carbon-pr-review-test';
+const OWNER = process.env.TEST_PR_OWNER;
+const REPO = process.env.TEST_PR_REPO;
 const BASE_BRANCH = 'main';
 const HEAD_BRANCH = `test/inline-comment-findings-${Date.now()}`;
 const STALE_BRANCH_PREFIX = 'test/inline-comment-findings-';
 
 if (!GITHUB_TOKEN) {
   console.error('❌  GITHUB_AI_AGENT_TOKEN is not set');
+  process.exit(1);
+}
+if (!OWNER || !REPO) {
+  console.error('❌  TEST_PR_OWNER and TEST_PR_REPO are not set (use a scratch repo, never the one being reviewed)');
   process.exit(1);
 }
 

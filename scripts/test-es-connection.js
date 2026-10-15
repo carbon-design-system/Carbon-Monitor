@@ -186,7 +186,7 @@ async function run() {
 
   // ── 7. Data view check ───────────────────────────────────────────────────────
   console.log('\nSTEP 6 — Check Kibana data view (best-effort)');
-  const kibanaBase = ES_URL.replace(':9200', ':5601').replace('elasticsearch', 'kibana');
+  const kibanaBase = process.env.KIBANA_URL || 'http://localhost:5601';
   console.log(`  If Kibana is at ${kibanaBase}, go to:`);
   console.log(`  ${kibanaBase}/app/management/kibana/dataViews`);
   console.log(`  and confirm the data view "carbon-monitor-events-*" exists.`);

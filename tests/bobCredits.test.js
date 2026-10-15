@@ -177,7 +177,7 @@ async function main() {
 
   /** A response in the real gateway shape. */
   const liveShape = (teams, instanceOverrides = {}) => ({
-    user_id: 'carbon.mcp@ibm.com',
+    user_id: 'Carbon.MCP@ibm.com',
     instances: [
       {
         subscription_id: 'sub-1',

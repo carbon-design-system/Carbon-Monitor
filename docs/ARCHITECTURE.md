@@ -32,7 +32,7 @@ indefinitely**.
                                             │ HTTPS
                                             ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
-│  IBM Cloud Code Engine · project "mcp-ce" · region us-south               │
+│  IBM Cloud Code Engine · project $PROJECT · region $REGION                │
 │                                                                           │
 │  ┌─────────────────────────────────────────────────────────────────────┐ │
 │  │  App: carbon-monitor          min-scale 1 · max-scale 1 · 2 vCPU    │ │
@@ -281,7 +281,7 @@ login page, and every `/api/*` route answers without a credential.
                                                               │   └─────────────────┘
    ┌──────────────┐  session cookie (HttpOnly, SameSite=Strict, HMAC-signed)
    │  Operator    ├──────────────────────────────────────────────┐
-   │  (browser)   │  sign in with ES_USERNAME / ES_PASSWORD      │
+   │  (browser)   │  CONSOLE_USERNAME / CONSOLE_PASSWORD         │
    └──────────────┘                                              ▼
                                                         ┌─────────────────┐
    ┌──────────────┐  Authorization: Bearer <API_SECRET>  │  either passes  │
@@ -320,8 +320,7 @@ rather than quietly treated as false. Every start logs the resulting posture:
 ### When the flag is on
 
 The sign-in page and its cookie session are **ported from Carbon Migrate's
-agent-dispatcher** and accept the **same credentials** (`ES_USERNAME` /
-`ES_PASSWORD`), so operators meet one identity across both consoles. The console
+agent-dispatcher** and accept `CONSOLE_USERNAME` / `CONSOLE_PASSWORD`. The console
 hides its "Sign out" control when the flag is off, since there is no session to
 end.
 
@@ -432,24 +431,24 @@ makes no third-party request.
 
 ## 8. Deployment
 
-`./deploy_ce.sh` targets the **same account, region, resource group,
-Code Engine project and registry namespace** as `carbon-mcp`:
+`./deploy_ce.sh` reads its target from `.env` (see `.env.example`):
 
-| Setting | Value |
-| ------- | ----- |
-| Region | `us-south` (registry `us.icr.io`) |
-| Resource group | `Carbon Experience Platform STAGING` |
-| CE project | `mcp-ce` |
-| Registry namespace | `cxp-mcp` |
-| App / image | `carbon-monitor` |
-| Secret | `carbon-monitor-secrets` (separate from `mcp-ce-secrets`) |
+| Variable | Example |
+| -------- | ------- |
+| `REGION` | `us-south` (registry `us.icr.io`) |
+| `RESOURCE_GROUP` | `my-resource-group` |
+| `PROJECT` | `my-code-engine-project` |
+| `NAMESPACE` | `my-registry-namespace` |
+| `APP` / `IMAGE_NAME` | `carbon-monitor` |
+| `SECRET_NAME` | `carbon-monitor-secrets` |
+| `REGISTRY_SECRET` | `icr-secret` |
 
 ```
   verify Bob download host reachable      ← fails in ms, not minutes
         ▼
   ibmcloud login · ce project select
         ▼
-  verify carbon-monitor-secrets exists    ← refuses to deploy without credentials
+  sync carbon-monitor-secrets from .env   ← refuses to deploy without credentials
         ▼
   npm run build:client                    ← console built on the host
         ▼
@@ -477,16 +476,11 @@ Code Engine project and registry namespace** as `carbon-mcp`:
 ### First run
 
 ```bash
-ibmcloud ce secret create --name carbon-monitor-secrets \
-  --from-literal GITHUB_AI_AGENT_TOKEN=ghp_xxx \
-  --from-literal BOB_API_KEY=xxx \
-  --from-literal ES_USERNAME=xxx \
-  --from-literal ES_PASSWORD=xxx \
-  --from-literal SESSION_SIGNING_KEY=$(openssl rand -hex 32) \
-  --from-literal API_SECRET=$(openssl rand -hex 32)
+cp .env.example .env   # fill in credentials and the deployment target
+./deploy_ce.sh         # syncs the secret from .env, builds, pushes, deploys
 ```
 
-Then `./deploy_ce.sh`, open the console, sign in, and press **Sign in with
+Open the console, sign in, and press **Sign in with
 IBMid** once. After that the container renews its own token.
 
 > `SESSION_SIGNING_KEY` should be set explicitly. Without it the server falls
@@ -510,7 +504,7 @@ npm run dev:client         # http://localhost:5173, proxies /api → :3000
 Sign-in is off by default everywhere. To exercise the real login flow:
 
 ```bash
-AUTH_REQUIRED=true ES_USERNAME=operator ES_PASSWORD=secret \
+AUTH_REQUIRED=true CONSOLE_USERNAME=operator CONSOLE_PASSWORD=secret \
   SESSION_SIGNING_KEY=dev-key npm run api
 ```
 
@@ -526,7 +520,8 @@ npm run test:all
 | -------- | ------- | ------- |
 | `PORT` | HTTP port (Code Engine injects this) | `API_PORT`, then `3000` |
 | `BASE_URL` | Public URL; the OAuth `redirect_uri` derives from it | request headers |
-| `ES_USERNAME` / `ES_PASSWORD` | Elasticsearch — and console sign-in when `AUTH_REQUIRED` is on | — |
+| `ES_USERNAME` / `ES_PASSWORD` | Elasticsearch | — |
+| `CONSOLE_USERNAME` / `CONSOLE_PASSWORD` | Console sign-in when `AUTH_REQUIRED` is on | — |
 | `AUTH_REQUIRED` | **Feature flag** — require a console sign-in | `false` (open) |
 | `SESSION_SIGNING_KEY` | HMAC key for session cookies | `API_SECRET`, else per-process random |
 | `API_SECRET` | Bearer token for machine callers | — |

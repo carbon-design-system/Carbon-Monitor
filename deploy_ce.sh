@@ -1,5 +1,4 @@
 #!/usr/bin/env zsh
-# or: #!/usr/bin/env bash
 
 # sed -i '' 's/\r$//' ./deploy_ce.sh
 # chmod +x ./deploy_ce.sh
@@ -7,24 +6,24 @@
 set -euo pipefail
 
 # Deploys Carbon Monitor to IBM Cloud Code Engine.
-#
+# Requires zsh, podman, ibmcloud CLI (code-engine + container-registry plugins), kubectl, npm.
 
 export NODE_ENV=production
 
 [ -f .env ] && set -o allexport && source .env && set +o allexport
 
 # -------- Config (override via env or .env) --------
-: "${REGION:=us-south}"
-: "${RESOURCE_GROUP:=Carbon Experience Platform STAGING}"
-: "${PROJECT:=mcp-ce}"
-: "${NAMESPACE:=cxp-mcp}"
+# REGION, RESOURCE_GROUP, PROJECT and NAMESPACE are read from .env.
 
 : "${APP:=carbon-monitor}"
 : "${IMAGE_NAME:=carbon-monitor}"
-: "${VERSION:=1.2.0}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
+: "${VERSION:=1.2.1}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
 
 # Secret holding this app's credentials. 
 : "${SECRET_NAME:=carbon-monitor-secrets}"
+
+# Registry secret for ICR pulls; created below if missing.
+: "${REGISTRY_SECRET:=icr-secret}"
 
 # ── Scaling ──────────────────────────────────────────────────────────────────
 #
@@ -150,8 +149,7 @@ verify_timeout() {
 }
 
 # Code Engine gives every app in a project the SAME domain suffix, so the URL of
-# a not-yet-created app can be derived from any sibling app — carbon-mcp is
-# already deployed in this project, which makes the derivation reliable here.
+# a not-yet-created app can be derived from any existing app in the project.
 #
 # Why it matters: BASE_URL is the OAuth redirect_uri this app registers with
 # Carbon MCP. A first revision without it would send operators to a callback on
@@ -260,6 +258,11 @@ ibmcloud config --check-version=false >/dev/null
 ibmcloud config --http-timeout 600
 ibmcloud login --apikey "${IBMCLOUD_API_KEY:?Set IBMCLOUD_API_KEY}" -r "$REGION" -g "$RESOURCE_GROUP"
 ibmcloud ce project select --name "$PROJECT" 1>/dev/null || die "CE project '$PROJECT' not found; run setup first."
+if ! ibmcloud ce registry get --name "$REGISTRY_SECRET" >/dev/null 2>&1; then
+  log "Creating registry secret '${REGISTRY_SECRET}' for ${REG_HOST}…"
+  ibmcloud ce registry create --name "$REGISTRY_SECRET" --server "$REG_HOST" --username iamapikey --password "$IBMCLOUD_API_KEY" >/dev/null
+  ok "Created registry secret '${REGISTRY_SECRET}'"
+fi
 
 # -------- Sync the runtime secret from .env --------
 #
@@ -424,7 +427,7 @@ fi
 typeset -a COMMON_FLAGS
 COMMON_FLAGS=(
   --image "${DEPLOY_IMAGE}"
-  --registry-secret icr-secret
+  --registry-secret "${REGISTRY_SECRET}"
   --env-from-secret "${SECRET_NAME}"
   --port 8080
   --cpu "${CPU}"
@@ -436,11 +439,9 @@ COMMON_FLAGS=(
   --request-timeout "${REQUEST_TIMEOUT}"
   --scale-down-delay "${SCALE_DOWN_DELAY}"
   --env NODE_ENV=production
-  --env LOG_LEVEL=info
-  # Console sign-in feature flag. OFF by default: the standard deployment is
-  # open. Set AUTH_REQUIRED=true in .env (or the environment) to require a login,
-  # which also needs CONSOLE_USERNAME / CONSOLE_PASSWORD in the secret.
+  --env "LOG_LEVEL=${LOG_LEVEL:-info}"
   --env "AUTH_REQUIRED=${AUTH_REQUIRED}"
+  --env "CONSOLE_CONTACT_EMAIL=${CONSOLE_CONTACT_EMAIL:-}"
   --env GITHUB_AI_AGENT_CLI=bob
   --env GITHUB_AI_AGENT_OWNER="${GITHUB_AI_AGENT_OWNER:-carbon-design-system}"
   --env GITHUB_AI_AGENT_REPO="${GITHUB_AI_AGENT_REPO:-carbon}"
@@ -451,7 +452,7 @@ COMMON_FLAGS=(
   --env MCP_STATE_PATH=/workspace/.mcp-state.json
   # Durable Carbon MCP state lives in Elasticsearch
   # (readState/writeState) and the 'carbon-monitor-mcp-state' index.
-  --env MCP_STATE_BACKEND=elasticsearch
+  --env "MCP_STATE_BACKEND=${MCP_STATE_BACKEND:-elasticsearch}"
 )
 
 if [ "$APP_EXISTS" = "1" ]; then

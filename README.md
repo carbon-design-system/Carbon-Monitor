@@ -349,23 +349,33 @@ API_ENABLE_AUTH=true                     # only has effect when AUTH_REQUIRED=tr
 
 #### Triggering a review over HTTP
 
+Examples use `$BASE`. Set it once to whichever instance you are driving:
+
+```bash
+# Local
+BASE=http://localhost:3000
+
+# Deployed (IBM Cloud Code Engine)
+BASE=https://<app>.<project-id>.<region>.codeengine.appdomain.cloud   # printed at the end of ./deploy_ce.sh
+```
+
 **Review one specific PR** — copy, paste, change the number:
 
 ```bash
-curl -X POST https://carbon-monitor.1zvnn29on9q1.us-south.codeengine.appdomain.cloud/api/review/trigger -H "Content-Type: application/json" -d '{"prNumbers":[22971]}'
+curl -X POST "$BASE/api/review/trigger" -H "Content-Type: application/json" -d '{"prNumbers":[22971]}'
 ```
 
 **Check on it** — the trigger returns `202` immediately and runs in the
 background, so the outcome is polled, not awaited:
 
 ```bash
-curl https://carbon-monitor.1zvnn29on9q1.us-south.codeengine.appdomain.cloud/api/review/status
+curl "$BASE/api/review/status"
 ```
 
 **Review the most recent PRs instead** — no body at all:
 
 ```bash
-curl -X POST https://carbon-monitor.1zvnn29on9q1.us-south.codeengine.appdomain.cloud/api/review/trigger
+curl -X POST "$BASE/api/review/trigger"
 ```
 
 > Each of these posts **real** inline comments, a summary comment and the
@@ -393,22 +403,10 @@ Two things follow from that, and both are deliberate:
   `AUTH_REQUIRED=true`, add `-H "Authorization: Bearer $API_SECRET"` to every
   call — see **With authentication on** at the end of this section.
 
-Examples use `$BASE`. Set it once to whichever instance you are driving:
-
-```bash
-# Local
-BASE=http://localhost:3000
-
-# Deployed (IBM Cloud Code Engine)
-BASE=https://carbon-monitor.1zvnn29on9q1.us-south.codeengine.appdomain.cloud
-```
-
 **1. Auto mode — no body**
 
 ```bash
-curl -X POST http://localhost:3000/api/review/trigger
-
-curl -X POST https://carbon-monitor.1zvnn29on9q1.us-south.codeengine.appdomain.cloud/api/review/trigger
+curl -X POST "$BASE/api/review/trigger"
 ```
 
 An empty body, or no body at all, means auto mode: exactly what `npm start`
@@ -741,30 +739,17 @@ Bob Shell packaging, the Carbon MCP OAuth bootstrap and unattended refresh, the
 authentication model, and the Code Engine topology, with diagrams.
 
 ```bash
-# One-time: create the secret holding this app's credentials
-ibmcloud ce secret create --name carbon-monitor-secrets \
-  --from-literal GITHUB_AI_AGENT_TOKEN=ghp_xxx \
-  --from-literal BOB_API_KEY=xxx \
-  --from-literal ES_USERNAME=xxx \
-  --from-literal ES_PASSWORD=xxx \
-  --from-literal SESSION_SIGNING_KEY=$(openssl rand -hex 32) \
-  --from-literal API_SECRET=$(openssl rand -hex 32)
-
-# Build the console, build the image, push to ICR, deploy
-./deploy_ce.sh
+cp .env.example .env   # fill in credentials and the deployment target
+./deploy_ce.sh         # syncs the secret from .env, builds, pushes, deploys
 ```
 
 Then open the console and press **Sign in with IBMid** once. After that the
 container renews its own Carbon MCP token — the connection no longer dies every
 two hours.
 
-The console requires **no authentication by default**. To put it behind a
-password, set `AUTH_REQUIRED=true` and add `ES_USERNAME` / `ES_PASSWORD` (and
-ideally `SESSION_SIGNING_KEY`) to the secret — see
-[Console sign-in](#console-sign-in-optional).
+Sign-in is off in code but **on in `.env.example` and in the `deploy_ce.sh` default**. It needs `CONSOLE_USERNAME` / `CONSOLE_PASSWORD` (and ideally `SESSION_SIGNING_KEY`) in `.env` — see [Console sign-in](#console-sign-in-optional).
 
-The deployment targets the same account, region, resource group, Code Engine
-project (`mcp-ce`) and registry namespace (`cxp-mcp`) as `carbon-mcp`.
+The deployment target (`REGION`, `RESOURCE_GROUP`, `PROJECT`, `NAMESPACE`) comes from `.env`; see `.env.example`.
 
 ### The operator console
 
@@ -791,13 +776,12 @@ The console is **open by default** — no login page, everywhere, including
 production. Password protection is a feature flag:
 
 ```bash
-AUTH_REQUIRED=true ES_USERNAME=operator ES_PASSWORD=secret \
+AUTH_REQUIRED=true CONSOLE_USERNAME=operator CONSOLE_PASSWORD=secret \
   SESSION_SIGNING_KEY=$(openssl rand -hex 32) npm run api
 ```
 
-With it on, the console shows the sign-in page ported from Carbon Migrate and
-accepts the same credentials (`ES_USERNAME` / `ES_PASSWORD`), so one identity
-works across both tools. With it off, the "Sign out" control is hidden — there is
+With it on, the console shows a sign-in page that accepts
+`CONSOLE_USERNAME` / `CONSOLE_PASSWORD`. With it off, the "Sign out" control is hidden — there is
 no session to end.
 
 The flag accepts `true`/`1`/`yes`/`on`; anything unrecognised is reported at

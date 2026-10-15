@@ -11,11 +11,11 @@
 # real summary comment and the AIReviewed label to the named PR, so it is opt-in
 # and confirmed rather than something you can trigger by running the script.
 #
-# Override the target with BASE=... to test a different deployment or localhost.
+# Defaults to localhost; set BASE=https://… to target a deployment.
 
 set -uo pipefail
 
-BASE="${BASE:-https://carbon-monitor.1zvnn29on9q1.us-south.codeengine.appdomain.cloud}"
+BASE="${BASE:-http://localhost:${API_PORT:-3000}}"
 PR=""
 [ "${1:-}" = "--review" ] && PR="${2:-}"
 
