@@ -513,5 +513,3 @@ module.exports = {
   DEFAULT_BASE_URL,
   ADMIN_SERVICE_PATH,
 };
-
-// Made with Bob

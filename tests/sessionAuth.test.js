@@ -88,7 +88,7 @@ const CREDS = {
   CONSOLE_PASSWORD: 'correct-horse-battery',
   SESSION_SIGNING_KEY: 'test-signing-key',
   AUTH_REQUIRED: 'true',
-  CONSOLE_CONTACT_EMAIL: 'Carbon.MCP@ibm.com',
+  CONSOLE_CONTACT_EMAIL: 'ops@example.com',
 };
 
 console.log('\n🔐 Session authentication tests\n');
@@ -119,7 +119,7 @@ test('rejects a wrong password', () => {
 test('a failed sign-in returns a generic message and the access-request contact', () => {
   const result = auth.login(fakeRes(), { username: 'operator', password: 'wrong' });
   assert(
-    result.body.contact === 'Carbon.MCP@ibm.com',
+    result.body.contact === 'ops@example.com',
     `expected the Carbon MCP contact address, got ${result.body.contact}`
   );
   // Generic on purpose — it must never reveal WHICH field was wrong, which would

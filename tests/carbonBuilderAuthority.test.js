@@ -434,5 +434,3 @@ if (failed > 0) {
 } else {
   console.log('✅ All carbon-builder authority tests passed!');
 }
-
-// Made with Bob

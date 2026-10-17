@@ -17,7 +17,7 @@ export NODE_ENV=production
 
 : "${APP:=carbon-monitor}"
 : "${IMAGE_NAME:=carbon-monitor}"
-: "${VERSION:=1.2.1}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
+: "${VERSION:=1.3.0}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
 
 # Secret holding this app's credentials. 
 : "${SECRET_NAME:=carbon-monitor-secrets}"
@@ -280,22 +280,10 @@ fi
 # IBMCLOUD_API_KEY is deliberately NOT included: it authenticates this deploy,
 # and the running app has no use for it. Shipping it would hand every reviewer
 # process a credential that can redeploy the app.
-typeset -a SECRET_KEYS
-SECRET_KEYS=(
-  GITHUB_AI_AGENT_TOKEN
-  BOB_API_KEY
-  BOB_TEAM_ID
-  BOB_INSTANCE_ID
-  ES_URL
-  ES_USERNAME
-  ES_PASSWORD
-  ES_CA_CERT_PATH
-  CONSOLE_USERNAME
-  CONSOLE_PASSWORD
-  SESSION_SIGNING_KEY
-  API_SECRET
-  SLACK_WEBHOOK_URL
-)
+# Space separated; another job sets SECRET_KEYS in .env instead of editing this.
+: "${SECRET_KEYS:=GITHUB_AI_AGENT_TOKEN BOB_API_KEY BOB_TEAM_ID BOB_INSTANCE_ID ES_URL ES_USERNAME ES_PASSWORD ES_CA_CERT_PATH CONSOLE_USERNAME CONSOLE_PASSWORD SESSION_SIGNING_KEY API_SECRET SLACK_WEBHOOK_URL}"
+typeset -a SECRET_KEY_LIST
+SECRET_KEY_LIST=(${=SECRET_KEYS})
 
 log "Syncing secret '${SECRET_NAME}' from .env…"
 
@@ -318,7 +306,7 @@ trap 'rm -f "$SECRET_ENV_FILE"' EXIT INT TERM
 
 typeset -a SYNCED
 SYNCED=()
-for key in "${SECRET_KEYS[@]}"; do
+for key in "${SECRET_KEY_LIST[@]}"; do
   value="${(P)key:-}"
   [ -n "$value" ] || continue
   print -r -- "${key}=${value}" >> "$SECRET_ENV_FILE"
@@ -440,12 +428,13 @@ COMMON_FLAGS=(
   --scale-down-delay "${SCALE_DOWN_DELAY}"
   --env NODE_ENV=production
   --env "LOG_LEVEL=${LOG_LEVEL:-info}"
+  --env "SCHEDULE_TIMEZONE=${SCHEDULE_TIMEZONE:-America/Chicago}"
   --env "AUTH_REQUIRED=${AUTH_REQUIRED}"
   --env "CONSOLE_CONTACT_EMAIL=${CONSOLE_CONTACT_EMAIL:-}"
   --env GITHUB_AI_AGENT_CLI=bob
   --env GITHUB_AI_AGENT_OWNER="${GITHUB_AI_AGENT_OWNER:-carbon-design-system}"
   --env GITHUB_AI_AGENT_REPO="${GITHUB_AI_AGENT_REPO:-carbon}"
-  --env GITHUB_AI_AGENT_MAX_PRS="${GITHUB_AI_AGENT_MAX_PRS:-5}"
+  --env GITHUB_AI_AGENT_MAX_PRS="${GITHUB_AI_AGENT_MAX_PRS:-10}"
   --env GITHUB_AI_AGENT_DAYS_BACK="${GITHUB_AI_AGENT_DAYS_BACK:-21}"
   --env GITHUB_AI_AGENT_REVIEW_LABEL="${GITHUB_AI_AGENT_REVIEW_LABEL:-AIReviewed}"
   --env BOB_WORKSPACE_ROOT=/workspace

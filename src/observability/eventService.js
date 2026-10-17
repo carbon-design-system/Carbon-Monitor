@@ -136,5 +136,3 @@ async function emitEvent({
 }
 
 module.exports = { emitEvent };
-
-// Made with Bob

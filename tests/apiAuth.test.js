@@ -146,5 +146,3 @@ async function main() {
 }
 
 main();
-
-// Made with Bob

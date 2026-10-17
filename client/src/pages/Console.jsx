@@ -31,7 +31,7 @@ import StatusTile from '../components/StatusTile';
 import McpConnectionPanel from '../components/McpConnectionPanel';
 import BobcoinsPanel, { BobcoinsLedger } from '../components/BobcoinsPanel';
 import ReviewLog from '../components/ReviewLog';
-import SchedulePanel, { toLocalTz, detectBrowserTimezone } from '../components/SchedulePanel';
+import SchedulePanel, { toLocalTz, DEFAULT_TIMEZONE } from '../components/SchedulePanel';
 import { pluralPRs, targetWindowText, reviewButtonLabel } from '../utils/prPhrasing';
 
 /** How often the status panel re-polls, in milliseconds. */
@@ -136,7 +136,7 @@ function Console({ authRequired = false, onSignOut }) {
   const [scheduleConfig, setScheduleConfig] = useState(null);
   // IANA timezone for displaying schedule times — initialised from the browser's
   // detected zone and updated when the operator changes it in the Schedule panel.
-  const [timezone, setTimezone] = useState(detectBrowserTimezone);
+  const [timezone, setTimezone] = useState(DEFAULT_TIMEZONE);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [prInput, setPrInput] = useState('');

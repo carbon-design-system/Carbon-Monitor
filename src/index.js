@@ -305,11 +305,6 @@ function resolveReviewTargets(options = {}, targetPr = TARGET_PR) {
  *        outranking --pr and GITHUB_AI_AGENT_PR_NUMBER
  */
 async function reviewPRs(options = {}) {
-  // CI/CD safety check - only run on main branch in Travis CI
-  if (process.env.TRAVIS_BRANCH && process.env.TRAVIS_BRANCH !== 'main') {
-    return;
-  }
-
   // Decided before anything expensive happens, and reported like every other
   // run parameter — "which PRs" is the first question asked of a run's logs.
   //
@@ -537,12 +532,14 @@ async function reviewPRs(options = {}) {
 
           const postSummary = process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
           if (labelAdded && postSummary) {
+            const baseUrl = (process.env.BASE_URL || '').trim();
+            const consoleRef = baseUrl ? `the [Carbon Monitor console](${baseUrl})` : 'the Carbon Monitor console';
             try {
               await client.postSummaryComment({
                 owner: GITHUB_OWNER,
                 repo: GITHUB_REPO,
                 pullNumber: pr.number,
-                body: `## Carbon Monitor — Review Skipped\n\nThis PR has **${files.length} changed files**, which exceeds the ${MAX_FILES_PER_PR}-file limit for automatic review. It has been marked as \`AIReviewed\` and will not be re-queued.\n\nTo request a manual AI review, visit the [Carbon Monitor UI](https://ibm.biz/carbon-monitor) and enter this PR number directly.`,
+                body: `## Carbon Monitor — Review Skipped\n\nThis PR has **${files.length} changed files**, which exceeds the ${MAX_FILES_PER_PR}-file limit for automatic review. It has been marked as \`AIReviewed\` and will not be re-queued.\n\nTo request a manual AI review, visit ${consoleRef} and enter this PR number directly.`,
               });
             } catch (commentErr) {
               console.warn(`⚠️  Could not post skip comment on PR #${pr.number}: ${commentErr.message}`);
@@ -626,7 +623,7 @@ async function reviewPRs(options = {}) {
             agent,
             cwd: bundle.dir,
             prompt: bundle.prompt,
-            timeout: 10 * 60 * 1000 // 10 minutes per spec
+            timeout: 10 * 60 * 1000 // 10 minutes
           });
           agentSucceeded = true;
         } catch (agentErr) {
@@ -1024,5 +1021,3 @@ if (require.main === module) {
     process.exit(1);
   });
 }
-
-// Made with Bob

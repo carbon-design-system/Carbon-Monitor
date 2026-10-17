@@ -147,7 +147,7 @@ export const api = {
   /**
    * Save a partial schedule update.
    *
-   * Body: { enabled?: boolean, timeEST?: string }
+   * Body: { enabled?: boolean, timeLocal?: string }
    * The server validates all fields and returns 400 with a descriptive message
    * on invalid input.
    */

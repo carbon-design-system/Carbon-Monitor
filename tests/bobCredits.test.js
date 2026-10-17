@@ -170,14 +170,14 @@ async function main() {
   });
 
   // ── The shape the live gateway actually returns ──────────────────────────
-  // Captured verbatim from api.us-east.bob.ibm.com/admin/v1/profile. The billing
+  // Captured from api.us-east.bob.ibm.com/admin/v1/profile, identifiers replaced. The billing
   // figures live on a TEAM nested inside an INSTANCE, not on the profile root —
   // parsing only the root reported `available` with a null budget, which is what
   // left the console showing no balance against a perfectly valid API key.
 
   /** A response in the real gateway shape. */
   const liveShape = (teams, instanceOverrides = {}) => ({
-    user_id: 'Carbon.MCP@ibm.com',
+    user_id: 'monitor@example.com',
     instances: [
       {
         subscription_id: 'sub-1',

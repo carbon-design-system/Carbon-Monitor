@@ -151,7 +151,7 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
       JSON.stringify(files, null, 2)
     );
 
-    // 5. Write diff (with truncation if needed per spec lines 62-67)
+    // 5. Write diff (with truncation if needed)
     let diffToWrite = diff;
     let diffTruncated = false;
     
@@ -322,5 +322,3 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
 }
 
 module.exports = { buildReviewBundle, getWorkspaceRoot };
-
-// Made with Bob

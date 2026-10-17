@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 /**
+ * Runs a REAL review and posts to GitHub. Run deliberately: npm run test:live
  * Test script for Carbon PR Review Agent
  * Verifies environment configuration and runs a test review
  */
@@ -62,10 +63,10 @@ async function testAgent() {
   console.log(`   Selected agent: ${agent}`);
   
   if (agent === 'bob') {
-    if (process.env.BOBSHELL_API_KEY) {
-      console.log('   ✅ BOBSHELL_API_KEY: Set');
+    if (process.env.BOB_API_KEY) {
+      console.log('   ✅ BOB_API_KEY: Set');
     } else {
-      console.log('   ❌ BOBSHELL_API_KEY: Not set (required for Bob)');
+      console.log('   ❌ BOB_API_KEY: Not set (required for Bob)');
       allRequired = false;
     }
   } else if (agent === 'claude') {
@@ -142,5 +143,3 @@ testAgent().catch(error => {
   console.error('Fatal error:', error);
   process.exit(1);
 });
-
-// Made with Bob

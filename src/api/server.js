@@ -347,7 +347,7 @@ function handleConfig(req, res) {
       owner: process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system',
       repo: process.env.GITHUB_AI_AGENT_REPO || 'carbon',
       label: process.env.GITHUB_AI_AGENT_REVIEW_LABEL || 'AIReviewed',
-      maxPRs: parseInt(process.env.GITHUB_AI_AGENT_MAX_PRS || '5', 10),
+      maxPRs: parseInt(process.env.GITHUB_AI_AGENT_MAX_PRS || '10', 10),
       daysBack: parseInt(process.env.GITHUB_AI_AGENT_DAYS_BACK || '21', 10),
       targetPR: process.env.GITHUB_AI_AGENT_PR_NUMBER || null,
       postInlineComments: process.env.GITHUB_AI_AGENT_POST_INLINE_COMMENTS !== 'false',
@@ -784,7 +784,7 @@ async function handleScheduleGet(req, res) {
 }
 
 /**
- * POST /api/schedule — save a partial update { enabled?, timeEST?, paused? }.
+ * POST /api/schedule — save a partial update { enabled?, timeLocal?, paused? }.
  *
  * Validates before writing. Returns 400 with a descriptive message on invalid
  * input; the server is the authority, not the UI's own field constraints.
@@ -1102,5 +1102,3 @@ if (require.main === module) {
   // required), so it is not repeated here.
   startServer();
 }
-
-// Made with Bob

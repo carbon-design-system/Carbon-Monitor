@@ -37,5 +37,3 @@ volumes:
 networks:
   carbon-network:
     driver: bridge
-
-# Made with Bob

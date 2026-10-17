@@ -158,5 +158,3 @@ if (result5 && result5.findings.length === 0) {
 console.log();
 
 console.log('🏁 Edge case tests complete');
-
-// Made with Bob

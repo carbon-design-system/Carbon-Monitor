@@ -135,11 +135,13 @@ async function main() {
 
   // ── 3. Block Kit structure for a mixed run ───────────────────────────────────
   await test('buildPayload produces valid Block Kit structure', () => {
+    process.env.BASE_URL = 'https://monitor.example.com';
     const payload = _buildPayload({
       startedAt: new Date('2025-07-28T18:05:00Z').getTime(),
       repo: 'carbon-design-system/carbon',
       results: [SAMPLE_SUCCESS, SAMPLE_FAILURE, SAMPLE_GOOD],
     });
+    delete process.env.BASE_URL;
 
     assert.ok(Array.isArray(payload.blocks), 'payload.blocks must be an array');
 
@@ -168,8 +170,19 @@ async function main() {
       'Footer must mention reviewed count'
     );
     assert.ok(
-      context.elements[0].text.includes('ibm.biz/carbon-monitor'),
-      'Footer must contain a link to Carbon Monitor'
+      context.elements[0].text.includes('<https://monitor.example.com|'),
+      'Footer must link to BASE_URL'
+    );
+
+    const noBase = _buildPayload({
+      startedAt: Date.now(),
+      repo: 'carbon-design-system/carbon',
+      results: [SAMPLE_SUCCESS],
+    });
+    const noBaseContext = noBase.blocks.find((b) => b.type === 'context');
+    assert.ok(
+      !noBaseContext.elements[0].text.includes('Configure schedule'),
+      'Footer must omit the schedule link when BASE_URL is unset'
     );
 
     // At least one divider

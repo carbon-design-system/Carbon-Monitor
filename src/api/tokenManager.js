@@ -185,5 +185,3 @@ module.exports = {
   isBobAvailable,
   isCarbonMcpAvailable,
 };
-
-// Made with Bob

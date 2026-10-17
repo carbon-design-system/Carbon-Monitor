@@ -257,5 +257,3 @@ if (failed > 0) {
 } else {
   console.log('✅ All hasCatalogue tests passed!');
 }
-
-// Made with Bob

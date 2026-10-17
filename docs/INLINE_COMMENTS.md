@@ -78,7 +78,7 @@ The mapper:
 
 ### Comment Format
 
-Inline comments use the [`formatInlineComment()`](../src/reviewPrompt.js:65-76) function:
+Inline comments use the [`formatInlineComment()`](../src/reviewPrompt.js) function:
 
 ```markdown
 **Finding Title**
@@ -104,7 +104,7 @@ Detailed explanation of the issue and how to fix it.
 
 ### API Integration
 
-Uses GitHub's review API via [`githubClient.js`](../src/githubClient.js:88-126):
+Uses GitHub's review API via [`githubClient.js`](../src/githubClient.js):
 
 ```javascript
 await client.postReviewComments({
@@ -133,7 +133,7 @@ This implementation complies with the spec requirements:
 - Fallback to summary if mapping fails ✓
 
 ✅ **Lines 336**: "If inline mapping fails, include those findings in the summary comment instead of dropping them"
-- Implemented in [`index.js:169-175`](../src/index.js:169-175)
+- Implemented in [`index.js`](../src/index.js)
 
 ## Testing
 

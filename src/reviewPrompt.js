@@ -583,5 +583,3 @@ module.exports = {
   estimateTokenUsage,
   escapeAtSign
 };
-
-// Made with Bob

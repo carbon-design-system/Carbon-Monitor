@@ -214,7 +214,7 @@ function filterUnverifiedCarbonFindings(findings, transcriptMetadata = {}) {
       return true;
     }
 
-    // REJECT: Unverified Carbon claims are not allowed — per spec, omit them.
+    // REJECT: Unverified Carbon claims are not allowed — omit them.
     filteredCount++;
     console.log(`❌ FILTERED unverified Carbon finding: "${finding.title}"`);
     console.log(`   Reason: carbonVerified=${finding.carbonVerified}, verificationSource=${finding.verificationSource}`);
@@ -1040,5 +1040,3 @@ module.exports = {
   countBySeverity,
   computeRecommendation
 };
-
-// Made with Bob

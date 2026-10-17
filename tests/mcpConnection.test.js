@@ -71,9 +71,9 @@ async function main() {
   console.log('\n🔗 Carbon MCP connection tests\n');
 
   await test('decodeJwt reads the payload of a well-formed token', () => {
-    const claims = mcp.decodeJwt(makeJwt({ email: 'a@ibm.com', exp: 1234567890 }));
+    const claims = mcp.decodeJwt(makeJwt({ email: 'a@example.com', exp: 1234567890 }));
     assert(claims !== null, 'claims should decode');
-    assert(claims.email === 'a@ibm.com', `unexpected email: ${claims.email}`);
+    assert(claims.email === 'a@example.com', `unexpected email: ${claims.email}`);
     assert(claims.exp === 1234567890, `unexpected exp: ${claims.exp}`);
   });
 
@@ -96,7 +96,7 @@ async function main() {
   });
 
   await test('secondsUntilExpiry is null without an exp claim', () => {
-    assert(mcp.secondsUntilExpiry(makeJwt({ email: 'a@ibm.com' })) === null, 'expected null');
+    assert(mcp.secondsUntilExpiry(makeJwt({ email: 'a@example.com' })) === null, 'expected null');
     assert(mcp.secondsUntilExpiry('opaque-token') === null, 'expected null for a non-JWT');
   });
 
@@ -159,7 +159,7 @@ async function main() {
 
   await test('getStatus reports expiry and never leaks the token or the operator email', async () => {
     const future = Math.floor(Date.now() / 1000) + 1800;
-    await mcp.writeBobMcpHeaders({ token: makeJwt({ exp: future, email: 'op@ibm.com' }) });
+    await mcp.writeBobMcpHeaders({ token: makeJwt({ exp: future, email: 'op@example.com' }) });
 
     const status = await mcp.getStatus();
     assert(status.configured === true, 'should report configured');
@@ -175,7 +175,7 @@ async function main() {
     const serialized = JSON.stringify(status);
     assert(!serialized.includes('Bearer '), 'status must not include the Authorization header');
     assert(!serialized.includes('session-one'), 'status must not include the session id');
-    assert(!serialized.includes('op@ibm.com'), 'status must not expose the operator email address');
+    assert(!serialized.includes('op@example.com'), 'status must not expose the operator email address');
   });
 
   // Restore the environment and remove the scratch directory.

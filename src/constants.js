@@ -1,7 +1,6 @@
 /**
  * Constants Module
  * Centralized configuration with environment variable defaults
- * Per spec lines 124-147
  */
 
 const GITHUB_OWNER = process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system';
@@ -11,7 +10,7 @@ const SKIP_LABELS = ['DO NOT MERGE', 'status: WIP 👩‍💻'];
 const REVIEW_AGENT = process.env.GITHUB_AI_AGENT_CLI || 'bob';
 
 const N_DAYS_SINCE_PR_CREATED = Number(process.env.GITHUB_AI_AGENT_DAYS_BACK || 21);
-const MAX_PRS_PER_RUN = Number(process.env.GITHUB_AI_AGENT_MAX_PRS || 5);
+const MAX_PRS_PER_RUN = Number(process.env.GITHUB_AI_AGENT_MAX_PRS || 10);
 
 // PRs over this file count are skipped in auto mode and labelled AIReviewed.
 // This is a review-quality cap, not a GitHub API limit — override via env var.
@@ -65,5 +64,3 @@ module.exports = {
   MAX_PRS_PER_RUN,
   MAX_FILES_PER_PR,
 };
-
-// Made with Bob

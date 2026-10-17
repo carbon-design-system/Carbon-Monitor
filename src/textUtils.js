@@ -23,5 +23,3 @@ function escapeAtSign(text) {
 }
 
 module.exports = { escapeAtSign };
-
-// Made with Bob

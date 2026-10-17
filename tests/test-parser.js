@@ -112,5 +112,3 @@ if (result3 && result3.findings.length === 1) {
 console.log();
 
 console.log('🏁 Tests complete');
-
-// Made with Bob

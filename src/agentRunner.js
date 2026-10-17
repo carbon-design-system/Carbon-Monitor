@@ -230,5 +230,3 @@ module.exports = {
   isAgentAvailable,
   getConfiguredAgent
 };
-
-// Made with Bob

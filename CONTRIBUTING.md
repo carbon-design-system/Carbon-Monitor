@@ -23,12 +23,15 @@ npm start -- --pr <number>            # review a single PR from the CLI
 ## Tests
 
 ```bash
-npm run test:all
+npm run test:all   # or npm test, which runs the same suite
 ```
+
+These run without a `.env`. `npm run test:live` is different:
+it runs a real review and posts real comments to GitHub, so run it only on purpose.
 
 ## Deploy
 
-`./deploy_ce.sh` reads everything it needs from `.env`. See README → Deployment.
+`./deploy_ce.sh` reads everything it needs from `.env`. See [README → Deploy](README.md#deploy).
 
 ## Pull requests
 

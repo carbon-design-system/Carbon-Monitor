@@ -73,5 +73,3 @@ if (roundUsage.input === 3) {
 }
 
 console.log('✅ All token usage tests passed!');
-
-// Made with Bob

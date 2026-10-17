@@ -358,6 +358,7 @@ end.
         │
         ├─► parseReviewOutput()                  src/reviewParser.js
         └─► post inline + summary comments, apply the AIReviewed label
+        └─► Slack digest (scheduled runs only, when SLACK_WEBHOOK_URL is set)
 ```
 
 **Container portability fixes** that make this work off a Mac:
@@ -398,7 +399,7 @@ process on one port — Code Engine exposes a single port per app.
   │  │  Status    Connected             │ │  State    Idle       │ │
   │  │  Renewal   Automatic             │ │  Target   3 open PRs │ │
   │  │  Cached    1:47:12               │ │                      │ │
-  │  │  Signed in you@ibm.com           │ │  [Run review now]    │ │
+  │  │  Signed in you@example.com       │ │  [Run review now]    │ │
   │  │                                  │ │                      │ │
   │  │  [Sign in with IBMid]            │ └──────────────────────┘ │
   │  │  [Test connection] [Refresh now] │                          │
@@ -536,6 +537,7 @@ npm run test:all
 | `MCP_STATE_PATH` | Where the rotating refresh token is persisted | `~/.config/carbon-monitor/mcp-state.json` |
 | `MCP_REFRESH_MARGIN_SEC` | Renew this far before expiry | `900` |
 | `MCP_REFRESH_CHECK_MS` | Timer interval | `60000` |
+| `SCHEDULE_TIMEZONE` | Zone of the scheduled run time; the console converts for display | `America/Chicago` |
 | `CARBON_MCP_URL` | Carbon MCP endpoint | `https://mcp.carbondesignsystem.com/mcp` |
 | `GITHUB_AI_AGENT_TOKEN` | GitHub API access | — |
 
@@ -642,5 +644,3 @@ independent writers would silently clobber each other.
   `MCP_STATE_BACKEND=elasticsearch`, so the refresh token survives an instance
   replacement. Without Elasticsearch a rescheduled instance loses it and an
   operator signs in again.
-
-<!-- Made with Bob -->

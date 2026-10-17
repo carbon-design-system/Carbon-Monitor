@@ -496,5 +496,3 @@ runTests().catch(err => {
   console.error('Fatal error:', err);
   process.exit(1);
 });
-
-// Made with Bob

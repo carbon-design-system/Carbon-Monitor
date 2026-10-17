@@ -310,7 +310,9 @@ function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
     parts.push(`${skippedCount} skipped`);
   if (parts.length === 0)
     parts.push('Run complete');
-  parts.push('<https://ibm.biz/carbon-monitor|⚙️ Configure schedule>');
+  const baseUrl = (process.env.BASE_URL || '').trim();
+  if (baseUrl)
+    parts.push(`<${baseUrl}|⚙️ Configure schedule>`);
 
   blocks.push({
     type: 'context',
@@ -485,5 +487,3 @@ module.exports = {
   _flagFor: flagFor,
   _isEnabled: () => _enabled,
 };
-
-// Made with Bob

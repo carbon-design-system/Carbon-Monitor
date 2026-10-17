@@ -216,5 +216,3 @@ if (inlineFindings.length === expectedInline && summaryFindings.length === expec
   console.error(`❌ Test failed: Expected ${expectedInline} inline and ${expectedSummary} summary, got ${inlineFindings.length} and ${summaryFindings.length}`);
   process.exit(1);
 }
-
-// Made with Bob

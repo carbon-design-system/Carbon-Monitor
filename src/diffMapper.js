@@ -221,5 +221,3 @@ module.exports = {
   mapFindingToDiffPosition,
   splitFindings
 };
-
-// Made with Bob

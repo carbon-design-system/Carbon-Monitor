@@ -7,10 +7,10 @@
  * Covers:
  *  1. Missing schedule file returns defaults with enabled: false
  *  2. Corrupt schedule file resets to defaults and overwrites (not permanently broken)
- *  3. setSchedule rejects invalid timeEST values
+ *  3. setSchedule rejects invalid timeLocal values
  *  4. setSchedule accepts a valid patch and persists it atomically
  *  5. Tick does NOT fire when enabled: false
- *  6. Tick does NOT fire when current minute does not match timeEST
+ *  6. Tick does NOT fire when current minute does not match timeLocal
  *  7. Tick fires when enabled, time matches, and lastFiredAt differs
  *  8. Tick does NOT fire a second time in the same minute (idempotency)
  *  9. Tick skips and records skip reason when reviewState.running === true
@@ -86,7 +86,7 @@ async function main() {
     // Reset internal cache by calling loadSchedule directly.
     const state = await sm.loadSchedule();
     assert(state.enabled === false, `expected enabled:false, got ${state.enabled}`);
-    assert(typeof state.timeEST === 'string', 'timeEST should be a string');
+    assert(typeof state.timeLocal === 'string', 'timeLocal should be a string');
     assert(state.lastRunAt === null, 'lastRunAt should be null');
   });
 
@@ -100,28 +100,28 @@ async function main() {
     assert(written.enabled === false, 'overwritten file should have enabled:false');
   });
 
-  // ── 3. Invalid timeEST values rejected ──────────────────────────────────
-  await test('setSchedule rejects invalid timeEST values', async () => {
+  // ── 3. Invalid timeLocal values rejected ──────────────────────────────────
+  await test('setSchedule rejects invalid timeLocal values', async () => {
     const invalids = ['9:00', '25:00', '09:60', '9am', '', 123, null];
     for (const v of invalids) {
-      const result = await sm.setSchedule({ timeEST: v });
+      const result = await sm.setSchedule({ timeLocal: v });
       assert(
         result.ok === false,
-        `expected { ok: false } for timeEST=${JSON.stringify(v)}, got ${JSON.stringify(result)}`
+        `expected { ok: false } for timeLocal=${JSON.stringify(v)}, got ${JSON.stringify(result)}`
       );
     }
   });
 
   // ── 4. Valid patch persists atomically ──────────────────────────────────
   await test('setSchedule accepts a valid patch and persists it', async () => {
-    const result = await sm.setSchedule({ enabled: true, timeEST: '14:30' });
+    const result = await sm.setSchedule({ enabled: true, timeLocal: '14:30' });
     assert(result.ok === true, `expected ok:true, got: ${result.error}`);
     assert(result.state.enabled === true, 'enabled should be true');
-    assert(result.state.timeEST === '14:30', 'timeEST should be 14:30');
+    assert(result.state.timeLocal === '14:30', 'timeLocal should be 14:30');
     // Verify persistence — reload from disk
     const from_disk = readStateFile();
     assert(from_disk.enabled === true, 'disk: enabled should be true');
-    assert(from_disk.timeEST === '14:30', 'disk: timeEST should be 14:30');
+    assert(from_disk.timeLocal === '14:30', 'disk: timeLocal should be 14:30');
   });
 
   // ── 4b. setSchedule paused field ────────────────────────────────────────
@@ -152,7 +152,7 @@ async function main() {
     // Write a JSON file that pre-dates the paused field (no paused key).
     const legacyState = {
       enabled: false,
-      timeEST: '09:00',
+      timeLocal: '09:00',
       lastRunAt: null,
       lastRunSkipped: false,
       lastSkipReason: null,
@@ -167,17 +167,17 @@ async function main() {
 
   // ── 5. Tick does not fire when disabled ─────────────────────────────────
   await test('tick does NOT fire when enabled: false', async () => {
-    await sm.setSchedule({ enabled: false, timeEST: '00:00' });
+    await sm.setSchedule({ enabled: false, timeLocal: '00:00' });
     let fired = false;
     const fakeReviewPRs = async () => { fired = true; };
     const fakeReviewState = { running: false };
     const fakeReviewLog = { start: () => {}, stop: () => {} };
 
     // Directly test the tick logic by using a time that would match '00:00'.
-    // We do this by temporarily setting timeEST to whatever currentEstMinute returns.
-    const currentMinute = sm.currentEstMinute();
+    // We do this by temporarily setting timeLocal to whatever currentLocalMinute returns.
+    const currentMinute = sm.currentLocalMinute();
     if (currentMinute) {
-      await sm.setSchedule({ enabled: false, timeEST: currentMinute });
+      await sm.setSchedule({ enabled: false, timeLocal: currentMinute });
     }
     // Force a fresh load then run the internal tick indirectly via setSchedule state.
     // Since the module doesn't export tick directly, we verify via side-effect: a
@@ -190,10 +190,10 @@ async function main() {
   });
 
   // ── 6. Tick does not fire when time does not match ───────────────────────
-  await test('tick does NOT fire when current minute does not match timeEST', async () => {
+  await test('tick does NOT fire when current minute does not match timeLocal', async () => {
     // Set to a time that definitely is not now (far in the future).
-    await sm.setSchedule({ enabled: true, timeEST: '03:47' });
-    const current = sm.currentEstMinute();
+    await sm.setSchedule({ enabled: true, timeLocal: '03:47' });
+    const current = sm.currentLocalMinute();
     if (current === '03:47') {
       // Astronomically unlikely, but skip rather than false-fail.
       console.log('      (skipped: current ET time is 03:47)');
@@ -203,14 +203,14 @@ async function main() {
     // Verify the non-matching guard: a tick at current time must not fire for 03:47.
     const state = await sm.loadSchedule();
     assert(
-      state.timeEST !== current,
-      `timeEST (${state.timeEST}) should not equal current ET (${current})`
+      state.timeLocal !== current,
+      `timeLocal (${state.timeLocal}) should not equal the current minute (${current})`
     );
   });
 
   // ── 7. Tick fires when conditions are met ───────────────────────────────
   await test('tick fires when enabled, time matches, and lastFiredAt differs', async () => {
-    const current = sm.currentEstMinute();
+    const current = sm.currentLocalMinute();
     if (!current) {
       console.log('      (skipped: Intl unavailable in this environment)');
       passed--;
@@ -218,10 +218,10 @@ async function main() {
     }
 
     // Set up: enabled, time = now, no prior fire today.
-    await sm.setSchedule({ enabled: true, timeEST: current });
+    await sm.setSchedule({ enabled: true, timeLocal: current });
     // Clear the idempotency token by rewriting state.
     const cleared = { ...(await sm.loadSchedule()), lastFiredAt: null };
-    await sm.setSchedule({ enabled: cleared.enabled, timeEST: cleared.timeEST });
+    await sm.setSchedule({ enabled: cleared.enabled, timeLocal: cleared.timeLocal });
     // Write lastFiredAt: null directly.
     fs.writeFileSync(
       process.env.SCHEDULE_STATE_PATH,
@@ -244,23 +244,23 @@ async function main() {
     // immediately in tests via a setInterval shortcut — see below). Since startScheduler
     // uses a 60s interval, we cannot wait that long. Instead, assert the path directly
     // by checking that setSchedule correctly saved the enabled+time state and that
-    // the validateTimeEST permits the current minute.
+    // the validateTimeLocal permits the current minute.
     sm.stopScheduler();
 
-    const err = sm.validateTimeEST(current);
-    assert(err === null, `currentEstMinute() "${current}" should be a valid timeEST: ${err}`);
+    const err = sm.validateTimeLocal(current);
+    assert(err === null, `currentLocalMinute() "${current}" should be a valid timeLocal: ${err}`);
     assert(typeof current === 'string' && /^\d{2}:\d{2}$/.test(current),
-      `currentEstMinute() returned unexpected format: ${current}`);
+      `currentLocalMinute() returned unexpected format: ${current}`);
   });
 
   // ── 8. Idempotency — same minute does not fire twice ────────────────────
   await test('same lastFiredAt token prevents a second fire in the same minute', async () => {
-    const current = sm.currentEstMinute();
+    const current = sm.currentLocalMinute();
     if (!current) { console.log('      (skipped: Intl unavailable)'); passed--; return; }
 
     // Build the token the scheduler would write.
     const today = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/New_York',
+      timeZone: sm.SCHEDULE_TIMEZONE,
       year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(new Date());
     const token = `${today}T${current}`;
@@ -269,7 +269,7 @@ async function main() {
     const state = await sm.loadSchedule();
     fs.writeFileSync(
       process.env.SCHEDULE_STATE_PATH,
-      JSON.stringify({ ...state, enabled: true, timeEST: current, lastFiredAt: token }, null, 2),
+      JSON.stringify({ ...state, enabled: true, timeLocal: current, lastFiredAt: token }, null, 2),
       'utf8'
     );
     await sm.loadSchedule(); // re-warm cache
@@ -282,15 +282,15 @@ async function main() {
     // overwritten if a new fire happened).
     assertEqual(before.lastFiredAt, token, 'lastFiredAt should be the existing token');
     // A second call to setSchedule with the same values must not reset it.
-    await sm.setSchedule({ enabled: true, timeEST: current });
+    await sm.setSchedule({ enabled: true, timeLocal: current });
     const after = readStateFile();
-    // setSchedule only updates enabled/timeEST — it must not clear lastFiredAt.
+    // setSchedule only updates enabled/timeLocal — it must not clear lastFiredAt.
     assertEqual(after.lastFiredAt, token, 'setSchedule must not clear lastFiredAt');
   });
 
   // ── 9. Skip when reviewState.running ────────────────────────────────────
   await test('tick skips and records skip reason when reviewState.running is true', async () => {
-    const current = sm.currentEstMinute();
+    const current = sm.currentLocalMinute();
     if (!current) { console.log('      (skipped: Intl unavailable)'); passed--; return; }
 
     // Set up: enabled, time = now, no prior fire.
@@ -299,7 +299,7 @@ async function main() {
       JSON.stringify({
         ...(sm.defaultState()),
         enabled: true,
-        timeEST: current,
+        timeLocal: current,
         lastFiredAt: null,
       }, null, 2),
       'utf8'
@@ -337,7 +337,7 @@ async function main() {
 
   // ── 11. nextRunAt is always in the future ───────────────────────────────
   await test('nextRunAt is in the future', async () => {
-    const result = await sm.setSchedule({ enabled: true, timeEST: '23:59' });
+    const result = await sm.setSchedule({ enabled: true, timeLocal: '23:59' });
     assert(result.ok, `setSchedule failed: ${result.error}`);
     const nextRunAt = result.state.nextRunAt;
     if (nextRunAt === null) {
@@ -352,14 +352,14 @@ async function main() {
   });
 
   // ── 13. computeNextRunAt offset sign — ET wall clock matches nextRunAt ───
-  await test('computeNextRunAt produces UTC time that matches the ET wall clock (sign check)', async () => {
+  await test('computeNextRunAt produces UTC time that matches the schedule-zone wall clock (sign check)', async () => {
     // This test guards against the sign-flip bug where "- etOffsetMs" was used
     // instead of "+ etOffsetMs", causing nextRunAt to be ~8h off in summer.
     //
-    // For any stored timeEST value, when we format the returned nextRunAt ISO
-    // string back as America/New_York, the HH:MM must equal timeEST.
-    const timeEST = '09:00';
-    const nextRunAt = sm.computeNextRunAt(timeEST);
+    // For any stored timeLocal value, when we format the returned nextRunAt ISO
+    // string back in sm.SCHEDULE_TIMEZONE, the HH:MM must equal timeLocal.
+    const timeLocal = '09:00';
+    const nextRunAt = sm.computeNextRunAt(timeLocal);
     if (!nextRunAt) {
       console.log('      (skipped: Intl unavailable)');
       passed--;
@@ -367,7 +367,7 @@ async function main() {
     }
 
     const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
+      timeZone: sm.SCHEDULE_TIMEZONE,
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
@@ -380,8 +380,8 @@ async function main() {
 
     assertEqual(
       displayed,
-      timeEST,
-      `nextRunAt formatted back to ET should equal timeEST — got ${displayed}`
+      timeLocal,
+      `nextRunAt formatted back in the schedule zone should equal timeLocal — got ${displayed}`
     );
   });
 
@@ -390,7 +390,7 @@ async function main() {
     // Save the real Intl.DateTimeFormat
     const realDTF = global.Intl.DateTimeFormat;
 
-    // Simulate a stripped ICU build that cannot resolve America/New_York.
+    // Simulate a stripped ICU build that cannot resolve the schedule zone.
     global.Intl.DateTimeFormat = function (locale, options) {
       const instance = new realDTF(locale, options);
       return {
@@ -418,7 +418,7 @@ async function main() {
     // Restore real Intl immediately.
     global.Intl.DateTimeFormat = realDTF;
 
-    assert(!threw, 'startScheduler must not throw when Intl cannot resolve America/New_York');
+    assert(!threw, 'startScheduler must not throw when Intl cannot resolve the schedule zone');
   });
 
   // ── 13. Tick does NOT fire when paused: true ─────────────────────────────
@@ -446,11 +446,11 @@ async function main() {
     // State-level verification: write paused:true state and confirm the field
     // is preserved by defaultState merge (paused bail-out returns without
     // touching lastFiredAt, so lastFiredAt stays null).
-    const current = sm.currentEstMinute();
+    const current = sm.currentLocalMinute();
     if (current) {
       fs.writeFileSync(
         process.env.SCHEDULE_STATE_PATH,
-        JSON.stringify({ ...sm.defaultState(), enabled: true, paused: true, timeEST: current, lastFiredAt: null }, null, 2),
+        JSON.stringify({ ...sm.defaultState(), enabled: true, paused: true, timeLocal: current, lastFiredAt: null }, null, 2),
         'utf8'
       );
       await sm.loadSchedule();

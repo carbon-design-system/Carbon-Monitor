@@ -245,5 +245,3 @@ function _reset() {
 }
 
 module.exports = { getClient, esCall, _reset, breaker };
-
-// Made with Bob

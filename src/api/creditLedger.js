@@ -360,5 +360,3 @@ module.exports = {
   getLedgerPath,
   getMaxEntries,
 };
-
-// Made with Bob

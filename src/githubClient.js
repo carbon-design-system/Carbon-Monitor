@@ -299,5 +299,3 @@ function createGitHubClient(octokit) {
 }
 
 module.exports = { createGitHubClient };
-
-// Made with Bob

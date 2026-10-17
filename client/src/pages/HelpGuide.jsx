@@ -34,7 +34,7 @@ function HelpGuide() {
           <h1 className="cm-help__title">Help &amp; usage guide</h1>
           <p className="cm-help__lede">
             Carbon Monitor runs an AI agent (Bob Shell) that reviews open pull
-            requests in <code>carbon-design-system/carbon</code> and posts its
+            requests in the configured GitHub repository and posts its
             findings back to GitHub. This guide walks through the screen. Each
             lettered badge on the images matches a letter below it.
           </p>
