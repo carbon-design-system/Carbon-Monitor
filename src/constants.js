@@ -1,17 +1,19 @@
 /**
  * Constants Module
  * Centralized configuration with environment variable defaults
- * Per spec lines 124-147
  */
 
-const GITHUB_OWNER = process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system';
+const GITHUB_OWNER =
+  process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system';
 const GITHUB_REPO = process.env.GITHUB_AI_AGENT_REPO || 'carbon';
 const REVIEW_LABEL = process.env.GITHUB_AI_AGENT_REVIEW_LABEL || 'AIReviewed';
 const SKIP_LABELS = ['DO NOT MERGE', 'status: WIP 👩‍💻'];
 const REVIEW_AGENT = process.env.GITHUB_AI_AGENT_CLI || 'bob';
 
-const N_DAYS_SINCE_PR_CREATED = Number(process.env.GITHUB_AI_AGENT_DAYS_BACK || 21);
-const MAX_PRS_PER_RUN = Number(process.env.GITHUB_AI_AGENT_MAX_PRS || 5);
+const N_DAYS_SINCE_PR_CREATED = Number(
+  process.env.GITHUB_AI_AGENT_DAYS_BACK || 21
+);
+const MAX_PRS_PER_RUN = Number(process.env.GITHUB_AI_AGENT_MAX_PRS || 10);
 
 // PRs over this file count are skipped in auto mode and labelled AIReviewed.
 // This is a review-quality cap, not a GitHub API limit — override via env var.
@@ -41,14 +43,18 @@ const MAX_FILES_PER_PR = Number(process.env.GITHUB_AI_AGENT_MAX_FILES || 300);
 // If the prompt is significantly extended in future, re-measure and update
 // PROMPT_OVERHEAD_TOKENS accordingly.
 const CHARS_PER_TOKEN = 4;
-const MAX_INPUT_TOKENS = Number(process.env.GITHUB_AI_AGENT_MAX_INPUT_TOKENS || 140000);
+const MAX_INPUT_TOKENS = Number(
+  process.env.GITHUB_AI_AGENT_MAX_INPUT_TOKENS || 140000
+);
 const PROMPT_OVERHEAD_TOKENS = 12000;
 const ISSUE_CONTEXT_TOKENS = 5000;
 // MAX_DIFF_CHARS always reserves the ISSUE_CONTEXT_TOKENS slice regardless of whether
 // a linked issue is found for a given PR. This is intentional worst-case budgeting —
 // the diff budget is always the reduced size so the token total never exceeds
 // MAX_INPUT_TOKENS even when both a large diff and a large issue body are present.
-const MAX_DIFF_CHARS = (MAX_INPUT_TOKENS - PROMPT_OVERHEAD_TOKENS - ISSUE_CONTEXT_TOKENS) * CHARS_PER_TOKEN;
+const MAX_DIFF_CHARS =
+  (MAX_INPUT_TOKENS - PROMPT_OVERHEAD_TOKENS - ISSUE_CONTEXT_TOKENS) *
+  CHARS_PER_TOKEN;
 
 module.exports = {
   GITHUB_OWNER,
@@ -65,5 +71,3 @@ module.exports = {
   MAX_PRS_PER_RUN,
   MAX_FILES_PER_PR,
 };
-
-// Made with Bob

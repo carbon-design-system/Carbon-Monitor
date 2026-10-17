@@ -46,20 +46,36 @@ function getLedgerPath() {
   if (process.env.CREDIT_LEDGER_PATH) return process.env.CREDIT_LEDGER_PATH;
 
   if (process.env.MCP_STATE_PATH) {
-    return path.join(path.dirname(process.env.MCP_STATE_PATH), 'carbon-monitor-credit-ledger.jsonl');
+    return path.join(
+      path.dirname(process.env.MCP_STATE_PATH),
+      'carbon-monitor-credit-ledger.jsonl'
+    );
   }
 
-  const newPath = path.join(os.homedir(), '.config', 'carbon-monitor', 'credit-ledger.jsonl');
-  const oldPath = path.join(os.homedir(), '.bob', 'carbon-monitor-credit-ledger.jsonl');
+  const newPath = path.join(
+    os.homedir(),
+    '.config',
+    'carbon-monitor',
+    'credit-ledger.jsonl'
+  );
+  const oldPath = path.join(
+    os.homedir(),
+    '.bob',
+    'carbon-monitor-credit-ledger.jsonl'
+  );
 
   const fssync = require('fs');
   if (fssync.existsSync(oldPath) && !fssync.existsSync(newPath)) {
     try {
       fssync.mkdirSync(path.dirname(newPath), { recursive: true });
       fssync.renameSync(oldPath, newPath);
-      console.warn('[creditLedger] migrated ledger to ~/.config/carbon-monitor/credit-ledger.jsonl');
+      console.warn(
+        '[creditLedger] migrated ledger to ~/.config/carbon-monitor/credit-ledger.jsonl'
+      );
     } catch (e) {
-      console.warn(`[creditLedger] migration skipped, using legacy path: ${e.message}`);
+      console.warn(
+        `[creditLedger] migration skipped, using legacy path: ${e.message}`
+      );
       return oldPath;
     }
   }
@@ -115,7 +131,8 @@ async function readAll() {
     if (!trimmed) continue;
     try {
       const parsed = JSON.parse(trimmed);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) entries.push(parsed);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+        entries.push(parsed);
     } catch (_) {
       // Truncated or corrupt line — skip it and keep the rest of the history.
     }
@@ -135,7 +152,10 @@ async function readAll() {
  * @returns {Promise<Object[]>}
  */
 async function readRecent(limit = 100) {
-  const n = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : 100;
+  const n =
+    Number.isFinite(Number(limit)) && Number(limit) > 0
+      ? Math.floor(Number(limit))
+      : 100;
   const entries = await readAll();
   return entries.slice(-n).reverse();
 }
@@ -145,7 +165,12 @@ async function readRecent(limit = 100) {
 /** Coerce to a number, or null — keeps each field's type stable for charting. */
 function numberOrNull(value) {
   const n = Number(value);
-  return value === null || value === undefined || value === '' || !Number.isFinite(n) ? null : n;
+  return value === null ||
+    value === undefined ||
+    value === '' ||
+    !Number.isFinite(n)
+    ? null
+    : n;
 }
 
 /**
@@ -160,7 +185,8 @@ function normalize(entry = {}) {
     at: entry.at || new Date().toISOString(),
     prNumber: numberOrNull(entry.prNumber),
     repo: typeof entry.repo === 'string' ? entry.repo : '',
-    correlationId: typeof entry.correlationId === 'string' ? entry.correlationId : '',
+    correlationId:
+      typeof entry.correlationId === 'string' ? entry.correlationId : '',
     coinsSpent: numberOrNull(entry.coinsSpent),
     remainingAfter: numberOrNull(entry.remainingAfter),
     durationMs: numberOrNull(entry.durationMs),
@@ -232,10 +258,14 @@ async function record(entry) {
     // good one too, permanently, since the next prune rewrites without it.
     const separator = (await endsWithNewline(ledgerPath)) ? '' : '\n';
 
-    await fs.appendFile(ledgerPath, `${separator}${JSON.stringify(normalize(entry))}\n`, {
-      encoding: 'utf8',
-      mode: 0o600,
-    });
+    await fs.appendFile(
+      ledgerPath,
+      `${separator}${JSON.stringify(normalize(entry))}\n`,
+      {
+        encoding: 'utf8',
+        mode: 0o600,
+      }
+    );
 
     // Checked on every write rather than on a timer, so the cap holds even for a
     // process that is restarted before any timer would have fired. Reads cost
@@ -292,7 +322,8 @@ async function summary() {
       if (lastAt === null || at > lastAt) lastAt = at;
     }
 
-    const spent = typeof entry.coinsSpent === 'number' ? entry.coinsSpent : null;
+    const spent =
+      typeof entry.coinsSpent === 'number' ? entry.coinsSpent : null;
     if (spent === null) continue;
 
     totalSpent += spent;
@@ -346,7 +377,8 @@ function buildCumulative(entries = []) {
       at: entry.at,
       spent,
       cumulativeSpent: running,
-      remaining: typeof entry.remainingAfter === 'number' ? entry.remainingAfter : null,
+      remaining:
+        typeof entry.remainingAfter === 'number' ? entry.remainingAfter : null,
     };
   });
 }
@@ -360,5 +392,3 @@ module.exports = {
   getLedgerPath,
   getMaxEntries,
 };
-
-// Made with Bob

@@ -11,11 +11,11 @@ Carbon Monitor drives the **Bob Shell CLI** to review pull requests, and Bob
 reaches Carbon design-system knowledge through the **Carbon MCP** server. Both
 dependencies assume a developer's laptop:
 
-| Dependency | On a laptop | In a container |
-| ---------- | ----------- | -------------- |
-| Bob Shell CLI | Installed globally, authenticated by browser SSO | No browser — SSO cannot complete |
-| Carbon MCP token | A w3id JWT Bob renews via browser | Expires in ~2 hours and stays expired |
-| Review workspace | `/private/tmp`, pre-trusted by Bob | Path does not exist |
+| Dependency       | On a laptop                                      | In a container                        |
+| ---------------- | ------------------------------------------------ | ------------------------------------- |
+| Bob Shell CLI    | Installed globally, authenticated by browser SSO | No browser — SSO cannot complete      |
+| Carbon MCP token | A w3id JWT Bob renews via browser                | Expires in ~2 hours and stays expired |
+| Review workspace | `/private/tmp`, pre-trusted by Bob               | Path does not exist                   |
 
 The container therefore has to solve three things: **get Bob installed**,
 **authenticate Bob without a browser**, and **keep the Carbon MCP token fresh
@@ -156,7 +156,7 @@ Reading [`carbon-mcp/src/middleware/auth.js`](https://github.com/carbon-design-s
 
 1. **The session id is the durable credential, not the bearer token.** Given a
    valid `X-MCP-Session`, the server refreshes server-side — branch (B) mints a
-   fresh `id_token` when there is *no bearer at all*, and branch (D) refreshes
+   fresh `id_token` when there is _no bearer at all_, and branch (D) refreshes
    after a failed verify. The session→refresh-token mapping is Redis-backed with
    a 350-day TTL.
 2. **`X-MCP-Force-Refresh: true` forces that refresh**, which makes the console's
@@ -170,7 +170,7 @@ headless container therefore cannot bootstrap a session by itself.
 ### 4.2 The two-phase solution
 
 Because the Code Engine app has a public HTTPS URL and serves a browser UI, it
-can run the authorization-code flow *itself*. A human is needed exactly once.
+can run the authorization-code flow _itself_. A human is needed exactly once.
 
 ```
 PHASE 1 — BOOTSTRAP (human, once)
@@ -242,7 +242,7 @@ PHASE 2 — STEADY STATE (unattended, forever)
 
 Refresh tokens rotate, and the current one must have a single owner.
 Two instances refreshing independently would invalidate each other's token and
-trip Carbon MCP's refresh-token *family invalidation*, dropping the connection
+trip Carbon MCP's refresh-token _family invalidation_, dropping the connection
 entirely. `min-scale 1` is equally load-bearing: an app scaled to zero runs no
 timer, so the token lapses.
 
@@ -258,8 +258,8 @@ an accordion because it is the path that leads to expiry. A pasted **session id*
 still survives, since Carbon MCP refreshes it server-side; a bare bearer token
 does not, and the status tile says so explicitly:
 
-> *Connected — no refresh path. This bearer token cannot be renewed and will
-> expire.*
+> _Connected — no refresh path. This bearer token cannot be renewed and will
+> expire._
 
 This behaviour was confirmed against the live server: a cached bearer **24 hours
 past expiry** still authorized, because the session id was present.
@@ -316,7 +316,7 @@ rather than quietly treated as false. Every start logs the resulting posture:
 > **What "open" costs.** The Code Engine app has a public HTTPS URL. With the flag
 > off, anyone holding that URL can read status and trigger a review. No secret is
 > exposed — `/api/config`, `/api/mcp/status` and `/api/credits` never return
-> tokens, keys or passwords — but the *actions* are unauthenticated. Turn the flag
+> tokens, keys or passwords — but the _actions_ are unauthenticated. Turn the flag
 > on for a deployment where that matters.
 
 ### When the flag is on
@@ -358,16 +358,17 @@ end.
         │
         ├─► parseReviewOutput()                  src/reviewParser.js
         └─► post inline + summary comments, apply the AIReviewed label
+        └─► Slack digest (scheduled runs only, when SLACK_WEBHOOK_URL is set)
 ```
 
 **Container portability fixes** that make this work off a Mac:
 
-| Concern | Laptop | Container |
-| ------- | ------ | --------- |
-| Bundle root | `/private/tmp` (in Bob's trusted folders) | `$BOB_WORKSPACE_ROOT=/workspace` |
-| Folder trust | pre-existing `trustedFolders.json` | seeded in the image **and** `--trust` |
-| License gate | accepted interactively | seeded **and** `--accept-license` |
-| Bob auth | browser SSO | `BOB_API_KEY` (+ `BOB_TEAM_ID` for `general`-type keys) |
+| Concern      | Laptop                                    | Container                                               |
+| ------------ | ----------------------------------------- | ------------------------------------------------------- |
+| Bundle root  | `/private/tmp` (in Bob's trusted folders) | `$BOB_WORKSPACE_ROOT=/workspace`                        |
+| Folder trust | pre-existing `trustedFolders.json`        | seeded in the image **and** `--trust`                   |
+| License gate | accepted interactively                    | seeded **and** `--accept-license`                       |
+| Bob auth     | browser SSO                               | `BOB_API_KEY` (+ `BOB_TEAM_ID` for `general`-type keys) |
 
 `--trust` and `--accept-license` are idempotent no-ops on a laptop that has
 already trusted the folder, so one code path serves both environments.
@@ -398,7 +399,7 @@ process on one port — Code Engine exposes a single port per app.
   │  │  Status    Connected             │ │  State    Idle       │ │
   │  │  Renewal   Automatic             │ │  Target   3 open PRs │ │
   │  │  Cached    1:47:12               │ │                      │ │
-  │  │  Signed in you@ibm.com           │ │  [Run review now]    │ │
+  │  │  Signed in you@example.com       │ │  [Run review now]    │ │
   │  │                                  │ │                      │ │
   │  │  [Sign in with IBMid]            │ └──────────────────────┘ │
   │  │  [Test connection] [Refresh now] │                          │
@@ -435,15 +436,15 @@ makes no third-party request.
 
 `./deploy_ce.sh` reads its target from `.env` (see `.env.example`):
 
-| Variable | Example |
-| -------- | ------- |
-| `REGION` | `us-south` (registry `us.icr.io`) |
-| `RESOURCE_GROUP` | `my-resource-group` |
-| `PROJECT` | `my-code-engine-project` |
-| `NAMESPACE` | `my-registry-namespace` |
-| `APP` / `IMAGE_NAME` | `carbon-monitor` |
-| `SECRET_NAME` | `carbon-monitor-secrets` |
-| `REGISTRY_SECRET` | `icr-secret` |
+| Variable             | Example                           |
+| -------------------- | --------------------------------- |
+| `REGION`             | `us-south` (registry `us.icr.io`) |
+| `RESOURCE_GROUP`     | `my-resource-group`               |
+| `PROJECT`            | `my-code-engine-project`          |
+| `NAMESPACE`          | `my-registry-namespace`           |
+| `APP` / `IMAGE_NAME` | `carbon-monitor`                  |
+| `SECRET_NAME`        | `carbon-monitor-secrets`          |
+| `REGISTRY_SECRET`    | `icr-secret`                      |
 
 ```
   verify Bob download host reachable      ← fails in ms, not minutes
@@ -469,7 +470,7 @@ makes no third-party request.
 
 **Two ordering contracts, inherited from the carbon-mcp exemplar:**
 
-1. `BASE_URL` is resolved *before* the write and folded into the same revision.
+1. `BASE_URL` is resolved _before_ the write and folded into the same revision.
    It is the OAuth `redirect_uri`, so a revision without it sends operators to a
    callback on the wrong host and "Sign in with IBMid" fails.
 2. `annotate_kservice` must be **last**. Code Engine exposes no flag for
@@ -520,24 +521,25 @@ npm run test:all
 
 ## 10. Configuration reference
 
-| Variable | Purpose | Default |
-| -------- | ------- | ------- |
-| `PORT` | HTTP port (Code Engine injects this) | `API_PORT`, then `3000` |
-| `BASE_URL` | Public URL; the OAuth `redirect_uri` derives from it | request headers |
-| `ES_USERNAME` / `ES_PASSWORD` | Elasticsearch | — |
-| `CONSOLE_USERNAME` / `CONSOLE_PASSWORD` | Console sign-in when `AUTH_REQUIRED` is on | — |
-| `AUTH_REQUIRED` | **Feature flag** — require a console sign-in | `false` (open) |
-| `SESSION_SIGNING_KEY` | HMAC key for session cookies | `API_SECRET`, else per-process random |
-| `API_SECRET` | Bearer token for machine callers | — |
-| `BOB_API_KEY` | Bob Shell headless auth | — |
-| `BOB_TEAM_ID` | Adds `--team-id`; only for `general`-type keys | unset |
-| `BOB_WORKSPACE_ROOT` | Review bundle root | `/private/tmp` on macOS, else `os.tmpdir()` |
-| `BOB_CHECK_TIMEOUT_MS` | Health-check budget for `bob --version` | `20000` |
-| `MCP_STATE_PATH` | Where the rotating refresh token is persisted | `~/.config/carbon-monitor/mcp-state.json` |
-| `MCP_REFRESH_MARGIN_SEC` | Renew this far before expiry | `900` |
-| `MCP_REFRESH_CHECK_MS` | Timer interval | `60000` |
-| `CARBON_MCP_URL` | Carbon MCP endpoint | `https://mcp.carbondesignsystem.com/mcp` |
-| `GITHUB_AI_AGENT_TOKEN` | GitHub API access | — |
+| Variable                                | Purpose                                                          | Default                                     |
+| --------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
+| `PORT`                                  | HTTP port (Code Engine injects this)                             | `API_PORT`, then `3000`                     |
+| `BASE_URL`                              | Public URL; the OAuth `redirect_uri` derives from it             | request headers                             |
+| `ES_USERNAME` / `ES_PASSWORD`           | Elasticsearch                                                    | —                                           |
+| `CONSOLE_USERNAME` / `CONSOLE_PASSWORD` | Console sign-in when `AUTH_REQUIRED` is on                       | —                                           |
+| `AUTH_REQUIRED`                         | **Feature flag** — require a console sign-in                     | `false` (open)                              |
+| `SESSION_SIGNING_KEY`                   | HMAC key for session cookies                                     | `API_SECRET`, else per-process random       |
+| `API_SECRET`                            | Bearer token for machine callers                                 | —                                           |
+| `BOB_API_KEY`                           | Bob Shell headless auth                                          | —                                           |
+| `BOB_TEAM_ID`                           | Adds `--team-id`; only for `general`-type keys                   | unset                                       |
+| `BOB_WORKSPACE_ROOT`                    | Review bundle root                                               | `/private/tmp` on macOS, else `os.tmpdir()` |
+| `BOB_CHECK_TIMEOUT_MS`                  | Health-check budget for `bob --version`                          | `20000`                                     |
+| `MCP_STATE_PATH`                        | Where the rotating refresh token is persisted                    | `~/.config/carbon-monitor/mcp-state.json`   |
+| `MCP_REFRESH_MARGIN_SEC`                | Renew this far before expiry                                     | `900`                                       |
+| `MCP_REFRESH_CHECK_MS`                  | Timer interval                                                   | `60000`                                     |
+| `SCHEDULE_TIMEZONE`                     | Zone of the scheduled run time; the console converts for display | `America/Chicago`                           |
+| `CARBON_MCP_URL`                        | Carbon MCP endpoint                                              | `https://mcp.carbondesignsystem.com/mcp`    |
+| `GITHUB_AI_AGENT_TOKEN`                 | GitHub API access                                                | —                                           |
 
 See [`.env.example`](../.env.example) for the full set.
 
@@ -545,27 +547,27 @@ See [`.env.example`](../.env.example) for the full set.
 
 ## 11. API surface
 
-| Method | Path | Auth | Purpose |
-| ------ | ---- | ---- | ------- |
-| `GET` | `/api/health` | none | Liveness probe |
-| `GET` | `/api/auth/status` | none | Whether sign-in is required / satisfied |
-| `POST` | `/api/auth/login` | none | Exchange credentials for a session cookie |
-| `POST` | `/api/auth/logout` | none | Clear the session |
-| `GET` | `/api/mcp/callback` | state + PKCE | OAuth redirect target |
-| `GET` | `/api/status` | yes | All dependency checks |
-| `GET` | `/api/config` | yes | Sanitized configuration |
-| `GET` | `/api/mcp/status` | yes | Connection detail, no secrets |
-| `POST` | `/api/mcp/connect` | yes | Begin the OAuth bootstrap |
-| `POST` | `/api/mcp/refresh` | yes | Force refresh, or store pasted credentials |
-| `POST` | `/api/mcp/test` | yes | Live probe (also repairs a session connection) |
-| `POST` | `/api/review/trigger` | yes | Start a review (202, background) |
-| `GET` | `/api/review/status` | yes | Current or last run |
-| `POST` | `/api/mcp/disconnect` | yes | Forget the stored grant and strip Bob's MCP headers |
-| `GET` | `/api/credits` | yes | Bobcoins balance |
-| `GET` | `/api/credits/history` | yes | Per-review spend |
-| `GET` | `/api/review/logs` | yes | Log tail of the current or last run |
-| `POST` | `/api/review/logs/clear` | yes | Clear that log |
-| `GET` / `POST` | `/api/schedule` | yes | Read or set the review schedule |
+| Method         | Path                     | Auth         | Purpose                                             |
+| -------------- | ------------------------ | ------------ | --------------------------------------------------- |
+| `GET`          | `/api/health`            | none         | Liveness probe                                      |
+| `GET`          | `/api/auth/status`       | none         | Whether sign-in is required / satisfied             |
+| `POST`         | `/api/auth/login`        | none         | Exchange credentials for a session cookie           |
+| `POST`         | `/api/auth/logout`       | none         | Clear the session                                   |
+| `GET`          | `/api/mcp/callback`      | state + PKCE | OAuth redirect target                               |
+| `GET`          | `/api/status`            | yes          | All dependency checks                               |
+| `GET`          | `/api/config`            | yes          | Sanitized configuration                             |
+| `GET`          | `/api/mcp/status`        | yes          | Connection detail, no secrets                       |
+| `POST`         | `/api/mcp/connect`       | yes          | Begin the OAuth bootstrap                           |
+| `POST`         | `/api/mcp/refresh`       | yes          | Force refresh, or store pasted credentials          |
+| `POST`         | `/api/mcp/test`          | yes          | Live probe (also repairs a session connection)      |
+| `POST`         | `/api/review/trigger`    | yes          | Start a review (202, background)                    |
+| `GET`          | `/api/review/status`     | yes          | Current or last run                                 |
+| `POST`         | `/api/mcp/disconnect`    | yes          | Forget the stored grant and strip Bob's MCP headers |
+| `GET`          | `/api/credits`           | yes          | Bobcoins balance                                    |
+| `GET`          | `/api/credits/history`   | yes          | Per-review spend                                    |
+| `GET`          | `/api/review/logs`       | yes          | Log tail of the current or last run                 |
+| `POST`         | `/api/review/logs/clear` | yes          | Clear that log                                      |
+| `GET` / `POST` | `/api/schedule`          | yes          | Read or set the review schedule                     |
 
 `POST /api/mcp/refresh` keeps its original contract: a body carrying `token`
 and/or `sessionId` stores those credentials, exactly as the existing runbooks in
@@ -642,5 +644,3 @@ independent writers would silently clobber each other.
   `MCP_STATE_BACKEND=elasticsearch`, so the refresh token survives an instance
   replacement. Without Elasticsearch a rescheduled instance loses it and an
   operator signs in again.
-
-<!-- Made with Bob -->

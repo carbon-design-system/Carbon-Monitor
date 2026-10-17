@@ -1,7 +1,7 @@
 /******************************************************************************
  * Schedule Manager
  *
- * Owns the daily scheduled review: persistence, the EST time check, the
+ * Owns the daily scheduled review: persistence, the schedule-zone time check, the
  * idempotency token that prevents double-firing, and the tick loop that runs
  * once a minute inside the API server.
  *
@@ -14,7 +14,7 @@
  *    the write and the run, that minute is skipped — acceptable. Firing twice
  *    posts duplicate comments to every PR in the run — not acceptable.
  *
- * 3. Fail loud, never fire wrong. If Intl cannot resolve America/New_York
+ * 3. Fail loud, never fire wrong. If Intl cannot resolve the schedule zone
  *    (stripped ICU build), the scheduler disables itself with a clear warning
  *    rather than firing at the wrong time silently.
  *
@@ -58,20 +58,36 @@ function getSchedulePath() {
   if (process.env.SCHEDULE_STATE_PATH) return process.env.SCHEDULE_STATE_PATH;
 
   if (process.env.MCP_STATE_PATH) {
-    return path.join(path.dirname(process.env.MCP_STATE_PATH), 'carbon-monitor-schedule.json');
+    return path.join(
+      path.dirname(process.env.MCP_STATE_PATH),
+      'carbon-monitor-schedule.json'
+    );
   }
 
-  const newPath = path.join(os.homedir(), '.config', 'carbon-monitor', 'schedule.json');
-  const oldPath = path.join(os.homedir(), '.bob', 'carbon-monitor-schedule.json');
+  const newPath = path.join(
+    os.homedir(),
+    '.config',
+    'carbon-monitor',
+    'schedule.json'
+  );
+  const oldPath = path.join(
+    os.homedir(),
+    '.bob',
+    'carbon-monitor-schedule.json'
+  );
 
   const fssync = require('fs');
   if (fssync.existsSync(oldPath) && !fssync.existsSync(newPath)) {
     try {
       fssync.mkdirSync(path.dirname(newPath), { recursive: true });
       fssync.renameSync(oldPath, newPath);
-      console.warn('[scheduleManager] migrated schedule to ~/.config/carbon-monitor/schedule.json');
+      console.warn(
+        '[scheduleManager] migrated schedule to ~/.config/carbon-monitor/schedule.json'
+      );
     } catch (e) {
-      console.warn(`[scheduleManager] migration skipped, using legacy path: ${e.message}`);
+      console.warn(
+        `[scheduleManager] migration skipped, using legacy path: ${e.message}`
+      );
       return oldPath;
     }
   }
@@ -81,11 +97,73 @@ function getSchedulePath() {
 
 // ── Default state ────────────────────────────────────────────────────────────
 
+// Zone of the stored run time. Configurable so a team sets its own; the console
+// converts for whatever zone the operator picks.
+const SCHEDULE_TIMEZONE = (
+  process.env.SCHEDULE_TIMEZONE || 'America/Chicago'
+).trim();
+
+/**
+ * Convert a wall-clock "HH:MM" from one IANA zone to another, on today's date.
+ * Returns null when the value is malformed or Intl cannot resolve a zone.
+ */
+function convertWallClock(hhmm, fromTz, toTz) {
+  if (!/^\d{2}:\d{2}$/.test(hhmm || '')) return null;
+  try {
+    const [h, m] = hhmm.split(':').map(Number);
+    const now = new Date();
+    const day = new Intl.DateTimeFormat('en-CA', {
+      timeZone: fromTz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
+    const utcMs =
+      Date.parse(
+        `${day}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00Z`
+      ) + getZoneOffsetMs(now, fromTz);
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: toTz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date(utcMs));
+    const hh = parts.find((p) => p.type === 'hour')?.value;
+    const mm = parts.find((p) => p.type === 'minute')?.value;
+    if (!hh || !mm) return null;
+    return `${hh === '24' ? '00' : hh}:${mm}`;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * State written before SCHEDULE_TIMEZONE existed holds `timeEST`, a wall-clock
+ * time in America/New_York. Convert it once so the absolute firing time is kept.
+ */
+function migrateState(state) {
+  if (
+    !state ||
+    typeof state !== 'object' ||
+    state.timeEST === undefined ||
+    state.timeLocal !== undefined
+  ) {
+    return state;
+  }
+  const { timeEST, ...rest } = state;
+  return {
+    ...rest,
+    timeLocal:
+      convertWallClock(timeEST, 'America/New_York', SCHEDULE_TIMEZONE) ||
+      timeEST,
+  };
+}
+
 function defaultState() {
   return {
     enabled: false,
     paused: false,
-    timeEST: '09:00',
+    timeLocal: '09:00',
     lastRunAt: null,
     lastRunSkipped: false,
     lastSkipReason: null,
@@ -169,8 +247,11 @@ async function loadSchedule() {
     // when the file exists it is always preferred (faster, no network hop).
     const esState = await esLoadSchedule();
     if (esState) {
-      console.log('[schedule] restored state from Elasticsearch (no local file found)');
-      _state = esState;
+      console.log(
+        '[schedule] restored state from Elasticsearch (no local file found)'
+      );
+      _state = migrateState(esState);
+      if (esState.timeEST !== undefined) saveSchedule(_state).catch(() => {});
       return _state;
     }
     _state = defaultState();
@@ -184,7 +265,8 @@ async function loadSchedule() {
     }
     // Merge parsed fields onto defaults so a state file written by an older
     // version of the app (missing new fields) still works correctly.
-    _state = { ...defaultState(), ...parsed };
+    _state = { ...defaultState(), ...migrateState(parsed) };
+    if (parsed.timeEST !== undefined) saveSchedule(_state).catch(() => {});
     return _state;
   } catch (err) {
     console.warn(
@@ -217,7 +299,9 @@ async function saveSchedule(state) {
   // failure must never prevent the idempotency token from being recorded
   // (design principle #2). The file is always written first.
   esSaveSchedule(state).catch((err) => {
-    console.warn(`[schedule] could not upsert state to Elasticsearch: ${err.message}`);
+    console.warn(
+      `[schedule] could not upsert state to Elasticsearch: ${err.message}`
+    );
   });
 }
 
@@ -226,12 +310,16 @@ async function saveSchedule(state) {
 /**
  * Current schedule state plus a computed nextRunAt.
  *
- * nextRunAt is the next wall-clock occurrence of timeEST in America/New_York,
+ * nextRunAt is the next wall-clock occurrence of timeLocal in the schedule zone,
  * as a UTC ISO string. Always in the future.
  */
 async function getSchedule() {
   if (!_state) await loadSchedule();
-  return { ..._state, nextRunAt: computeNextRunAt(_state.timeEST) };
+  return {
+    ..._state,
+    timezone: SCHEDULE_TIMEZONE,
+    nextRunAt: computeNextRunAt(_state.timeLocal),
+  };
 }
 
 /**
@@ -240,7 +328,7 @@ async function getSchedule() {
  * Unknown fields are silently dropped. Returns an error string on invalid
  * input rather than throwing — the HTTP handler turns that into a 400.
  *
- * @param {Object} patch - { enabled?: boolean, timeEST?: string }
+ * @param {Object} patch - { enabled?: boolean, timeLocal?: string }
  * @returns {{ ok: boolean, state?: Object, error?: string }}
  */
 async function setSchedule(patch) {
@@ -262,46 +350,54 @@ async function setSchedule(patch) {
     next.paused = patch.paused;
   }
 
-  if (patch.timeEST !== undefined) {
-    const err = validateTimeEST(patch.timeEST);
+  if (patch.timeEST !== undefined && patch.timeLocal === undefined)
+    patch = { ...patch, timeLocal: patch.timeEST };
+  if (patch.timeLocal !== undefined) {
+    const err = validateTimeLocal(patch.timeLocal);
     if (err) return { ok: false, error: err };
-    next.timeEST = patch.timeEST;
+    next.timeLocal = patch.timeLocal;
   }
 
   await saveSchedule(next);
-  return { ok: true, state: { ...next, nextRunAt: computeNextRunAt(next.timeEST) } };
+  return {
+    ok: true,
+    state: { ...next, nextRunAt: computeNextRunAt(next.timeLocal) },
+  };
 }
 
 // ── Validation ───────────────────────────────────────────────────────────────
 
 /**
- * Validate a timeEST value.
+ * Validate a timeLocal value.
  * @param {*} value
  * @returns {string|null} Error message, or null if valid
  */
-function validateTimeEST(value) {
-  if (typeof value !== 'string') return '"timeEST" must be a string in HH:MM format';
-  if (!/^\d{2}:\d{2}$/.test(value)) return '"timeEST" must be in HH:MM format (e.g. "09:00")';
+function validateTimeLocal(value) {
+  if (typeof value !== 'string')
+    return '"timeLocal" must be a string in HH:MM format';
+  if (!/^\d{2}:\d{2}$/.test(value))
+    return '"timeLocal" must be in HH:MM format (e.g. "09:00")';
   const [h, m] = value.split(':').map(Number);
-  if (h < 0 || h > 23) return `"timeEST" hour must be 00–23, got "${value}"`;
-  if (m < 0 || m > 59) return `"timeEST" minute must be 00–59, got "${value}"`;
+  if (h < 0 || h > 23) return `"timeLocal" hour must be 00–23, got "${value}"`;
+  if (m < 0 || m > 59)
+    return `"timeLocal" minute must be 00–59, got "${value}"`;
   return null;
 }
 
-// ── Intl / EST helpers ───────────────────────────────────────────────────────
+// ── Intl / zone helpers ───────────────────────────────────────────────────────
 
-/** Whether Intl can resolve America/New_York (checked once at startup). */
+/** Whether Intl can resolve the schedule zone (checked once at startup). */
 let _icuAvailable = null;
 
 /**
- * Return the current wall-clock time in America/New_York as "HH:MM".
+ * Return the current wall-clock time in the schedule zone as "HH:MM".
  * Returns null if Intl is unavailable.
  */
-function currentEstMinute() {
+function currentLocalMinute() {
   if (_icuAvailable === false) return null;
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
+      timeZone: SCHEDULE_TIMEZONE,
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
@@ -318,25 +414,25 @@ function currentEstMinute() {
 }
 
 /**
- * Compute the next UTC ISO timestamp at which timeEST will occur in ET.
+ * Compute the next UTC ISO timestamp at which timeLocal will occur in the schedule zone.
  *
  * Finds today's occurrence; if it is in the past (or already this minute),
  * advances to tomorrow. Returns an ISO string in UTC.
  *
- * @param {string} timeEST - "HH:MM"
+ * @param {string} timeLocal - "HH:MM"
  * @returns {string|null}
  */
-function computeNextRunAt(timeEST) {
-  if (!timeEST || !_icuAvailable) return null;
+function computeNextRunAt(timeLocal) {
+  if (!timeLocal || !_icuAvailable) return null;
 
   try {
-    const [hStr, mStr] = timeEST.split(':');
+    const [hStr, mStr] = timeLocal.split(':');
     const targetH = Number(hStr);
     const targetM = Number(mStr);
 
     const now = new Date();
 
-    // Build a candidate: today at timeEST in ET, expressed as UTC.
+    // Build a candidate: today at timeLocal in ET, expressed as UTC.
     // We iterate day by day until we find one strictly in the future.
     for (let daysAhead = 0; daysAhead <= 1; daysAhead++) {
       // Get the ET date for (now + daysAhead days)
@@ -344,7 +440,7 @@ function computeNextRunAt(timeEST) {
 
       // Find what YYYY-MM-DD it is in ET
       const etDate = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/New_York',
+        timeZone: SCHEDULE_TIMEZONE,
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -353,7 +449,7 @@ function computeNextRunAt(timeEST) {
       // Build a Date in ET by constructing an ISO string and letting the
       // browser/Node normalise it. We use a temp UTC parse then adjust — the
       // reliable cross-platform way is to use Intl to get the ET offset.
-      const etOffsetMs = getEtOffsetMs(candidate);
+      const etOffsetMs = getZoneOffsetMs(candidate);
       // etDate is "YYYY-MM-DD"; form "YYYY-MM-DDTHH:MM:00" in ET, convert to UTC.
       const etStr = `${etDate}T${String(targetH).padStart(2, '0')}:${String(targetM).padStart(2, '0')}:00`;
       // Parse as if UTC, then add the ET→UTC offset (ET is behind UTC, so
@@ -372,25 +468,33 @@ function computeNextRunAt(timeEST) {
 }
 
 /**
- * Returns the ET offset from UTC in milliseconds for a given Date.
+ * Returns a zone's offset from UTC in milliseconds for a given Date.
  * Positive = ET is behind UTC (e.g. EST = -5h = -18000000ms).
  *
  * Derived by asking Intl what the ET wall-clock time is for a known UTC
  * timestamp, then computing the difference.
  */
-function getEtOffsetMs(date) {
+function getZoneOffsetMs(date, tz = SCHEDULE_TIMEZONE) {
   // Format the same instant in ET and UTC, compare the difference.
   const utcParts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'UTC',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
     hour12: false,
   }).formatToParts(date);
 
-  const etParts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  const zoneParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
     hour12: false,
   }).formatToParts(date);
 
@@ -399,10 +503,17 @@ function getEtOffsetMs(date) {
       const val = parts.find((p) => p.type === type)?.value ?? '0';
       return Number(val === '24' ? '0' : val);
     };
-    return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+    return Date.UTC(
+      get('year'),
+      get('month') - 1,
+      get('day'),
+      get('hour'),
+      get('minute'),
+      get('second')
+    );
   }
 
-  return toMs(utcParts) - toMs(etParts);
+  return toMs(utcParts) - toMs(zoneParts);
 }
 
 // ── Scheduler tick ───────────────────────────────────────────────────────────
@@ -424,16 +535,16 @@ function startScheduler(reviewPRs, reviewState, reviewLog) {
   // ICU probe — must succeed before any tick fires.
   try {
     const resolved = new Intl.DateTimeFormat('en', {
-      timeZone: 'America/New_York',
+      timeZone: SCHEDULE_TIMEZONE,
     }).resolvedOptions().timeZone;
 
-    if (resolved !== 'America/New_York') {
+    if (resolved !== SCHEDULE_TIMEZONE) {
       throw new Error(`resolved to "${resolved}"`);
     }
     _icuAvailable = true;
   } catch (err) {
     console.warn(
-      `[schedule] Intl cannot resolve America/New_York (${err.message}) — ` +
+      `[schedule] Intl cannot resolve ${SCHEDULE_TIMEZONE} (${err.message}) — ` +
         'scheduled reviews disabled. This Node build may lack full ICU data.'
     );
     _icuAvailable = false;
@@ -442,7 +553,9 @@ function startScheduler(reviewPRs, reviewState, reviewLog) {
 
   // Warm the in-memory cache before the first tick.
   loadSchedule().catch((err) => {
-    console.warn(`[schedule] could not pre-load schedule state: ${err.message}`);
+    console.warn(
+      `[schedule] could not pre-load schedule state: ${err.message}`
+    );
   });
 
   _tickInterval = setInterval(() => {
@@ -477,12 +590,12 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   if (!_state.enabled) return;
   if (!_icuAvailable) return;
 
-  // 3. Check if the current ET minute matches the configured time.
+  // 3. Check if the current schedule-zone minute matches the configured time.
   // This check must come before the paused bail-out so that reminders only
   // fire once per day (on the scheduled minute), not on every 60-second tick.
   const now = new Date();
-  const current = currentEstMinute();
-  if (!current || current !== _state.timeEST) return;
+  const current = currentLocalMinute();
+  if (!current || current !== _state.timeLocal) return;
 
   // Paused bail-out — fires the daily reminder and exits without writing any
   // idempotency token, so the reminder re-fires again on the next scheduled day.
@@ -502,7 +615,7 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   // 4. Idempotency: build a token that includes the date so tomorrow's run
   //    is not blocked by today's.
   const etDateStr = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/New_York',
+    timeZone: SCHEDULE_TIMEZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -536,7 +649,11 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   // (uncapped plan) must never block a review — only a confirmed low reading pauses.
   const balance = await getBalance();
   const lowPct = Number(process.env.BOB_CREDITS_LOW_PCT || 10);
-  if (balance.available && balance.percentRemaining !== null && balance.percentRemaining < lowPct) {
+  if (
+    balance.available &&
+    balance.percentRemaining !== null &&
+    balance.percentRemaining < lowPct
+  ) {
     console.warn(
       `[schedule] auto-pausing — Bobcoins at ${balance.percentRemaining}% (threshold ${lowPct}%)`
     );
@@ -547,7 +664,9 @@ async function tick(reviewPRs, reviewState, reviewLog) {
       lastSkipReason: `Auto-paused: Bobcoins at ${balance.percentRemaining}% (below ${lowPct}% threshold)`,
     };
     await saveSchedule(autoPaused).catch((err) => {
-      console.warn(`[schedule] could not persist auto-pause state: ${err.message}`);
+      console.warn(
+        `[schedule] could not persist auto-pause state: ${err.message}`
+      );
     });
     postLowTokenAlert({
       percentRemaining: balance.percentRemaining,
@@ -588,7 +707,9 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   reviewState.mode = 'auto';
   reviewState.prNumbers = null;
 
-  console.log(`[schedule] triggering scheduled review at ${current} ET`);
+  console.log(
+    `[schedule] triggering scheduled review at ${current} ${SCHEDULE_TIMEZONE}`
+  );
 
   // 8. Start log capture so the console can show output, same as a manual run.
   reviewLog.start(reviewState.startedAt);
@@ -631,10 +752,9 @@ module.exports = {
   startScheduler,
   stopScheduler,
   // Exported for tests
-  currentEstMinute,
+  currentLocalMinute,
   computeNextRunAt,
-  validateTimeEST,
+  validateTimeLocal,
   defaultState,
+  SCHEDULE_TIMEZONE,
 };
-
-// Made with Bob

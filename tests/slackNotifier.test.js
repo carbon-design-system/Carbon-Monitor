@@ -104,7 +104,11 @@ async function main() {
       https.request = origRequest;
     }
 
-    assert.strictEqual(networkCallMade, false, 'No HTTP request should be made when disabled');
+    assert.strictEqual(
+      networkCallMade,
+      false,
+      'No HTTP request should be made when disabled'
+    );
   });
 
   // ── 2. Malformed URL emits static warning — URL never logged ────────────────
@@ -118,8 +122,15 @@ async function main() {
       // no captured warning (from any prior initialisation path) contains a
       // raw webhook token.
       const flag = _flagFor('unknown-value');
-      assert.strictEqual(flag.emoji, '⚪', 'Unknown recommendation should get ⚪');
-      assert.ok(!flag.label.includes('https://'), 'Flag label must not contain a URL');
+      assert.strictEqual(
+        flag.emoji,
+        '⚪',
+        'Unknown recommendation should get ⚪'
+      );
+      assert.ok(
+        !flag.label.includes('https://'),
+        'Flag label must not contain a URL'
+      );
 
       // Any warning logged anywhere in this suite must not expose a webhook credential.
       for (const w of warnings) {
@@ -135,11 +146,13 @@ async function main() {
 
   // ── 3. Block Kit structure for a mixed run ───────────────────────────────────
   await test('buildPayload produces valid Block Kit structure', () => {
+    process.env.BASE_URL = 'https://monitor.example.com';
     const payload = _buildPayload({
       startedAt: new Date('2025-07-28T18:05:00Z').getTime(),
       repo: 'carbon-design-system/carbon',
       results: [SAMPLE_SUCCESS, SAMPLE_FAILURE, SAMPLE_GOOD],
     });
+    delete process.env.BASE_URL;
 
     assert.ok(Array.isArray(payload.blocks), 'payload.blocks must be an array');
 
@@ -168,8 +181,19 @@ async function main() {
       'Footer must mention reviewed count'
     );
     assert.ok(
-      context.elements[0].text.includes('ibm.biz/carbon-monitor'),
-      'Footer must contain a link to Carbon Monitor'
+      context.elements[0].text.includes('<https://monitor.example.com|'),
+      'Footer must link to BASE_URL'
+    );
+
+    const noBase = _buildPayload({
+      startedAt: Date.now(),
+      repo: 'carbon-design-system/carbon',
+      results: [SAMPLE_SUCCESS],
+    });
+    const noBaseContext = noBase.blocks.find((b) => b.type === 'context');
+    assert.ok(
+      !noBaseContext.elements[0].text.includes('Configure schedule'),
+      'Footer must omit the schedule link when BASE_URL is unset'
     );
 
     // At least one divider
@@ -217,7 +241,10 @@ async function main() {
     assert.ok(!stripped.includes('##'), 'Should remove ## heading markers');
     assert.ok(!stripped.includes('**'), 'Should remove ** bold markers');
     assert.ok(!stripped.includes('`'), 'Should remove backtick code markers');
-    assert.ok(!stripped.includes('_Tooltip_'), 'Should remove _italic_ markers');
+    assert.ok(
+      !stripped.includes('_Tooltip_'),
+      'Should remove _italic_ markers'
+    );
     assert.ok(stripped.includes('Button'), 'Should preserve prose content');
 
     // Truncation
@@ -226,7 +253,10 @@ async function main() {
       truncated.length <= 155,
       `Truncated string should be near 150 chars, got ${truncated.length}`
     );
-    assert.ok(truncated.endsWith('…'), 'Truncated string must end with ellipsis');
+    assert.ok(
+      truncated.endsWith('…'),
+      'Truncated string must end with ellipsis'
+    );
     // No trailing space before ellipsis
     assert.ok(
       !truncated.slice(0, -1).endsWith(' '),
@@ -241,7 +271,11 @@ async function main() {
     );
 
     // Edge cases
-    assert.strictEqual(_truncateAtWord('', 150), '', 'Empty string returns empty');
+    assert.strictEqual(
+      _truncateAtWord('', 150),
+      '',
+      'Empty string returns empty'
+    );
     assert.strictEqual(_stripMarkdown(''), '', 'Empty string returns empty');
   });
 
@@ -270,13 +304,15 @@ async function main() {
     const payload = _buildPayload({
       startedAt: Date.now(),
       repo: 'carbon-design-system/carbon',
-      results: [{
-        prNumber: 1,
-        prUrl: 'https://github.com/carbon-design-system/carbon/pull/1',
-        findingsCount: 1,
-        summary: 'PR adds @media (forced-colors) patches to select.scss.',
-        recommendation: 'suggested-improvements',
-      }],
+      results: [
+        {
+          prNumber: 1,
+          prUrl: 'https://github.com/carbon-design-system/carbon/pull/1',
+          findingsCount: 1,
+          summary: 'PR adds @media (forced-colors) patches to select.scss.',
+          recommendation: 'suggested-improvements',
+        },
+      ],
     });
 
     const allText = payload.blocks
@@ -288,7 +324,10 @@ async function main() {
       allText.includes(`@${ZWS}media`),
       'Bare @media must be escaped with zero-width space'
     );
-    assert.ok(!allText.includes(' @media '), 'Raw @media must not appear unescaped');
+    assert.ok(
+      !allText.includes(' @media '),
+      'Raw @media must not appear unescaped'
+    );
   });
 
   // ── 8. `@media` in backtick span is stripped then escaped ───────────────────
@@ -297,13 +336,15 @@ async function main() {
     const payload = _buildPayload({
       startedAt: Date.now(),
       repo: 'carbon-design-system/carbon',
-      results: [{
-        prNumber: 2,
-        prUrl: 'https://github.com/carbon-design-system/carbon/pull/2',
-        findingsCount: 1,
-        summary: 'PR adds `@media` (forced-colors) patches to select.scss.',
-        recommendation: 'suggested-improvements',
-      }],
+      results: [
+        {
+          prNumber: 2,
+          prUrl: 'https://github.com/carbon-design-system/carbon/pull/2',
+          findingsCount: 1,
+          summary: 'PR adds `@media` (forced-colors) patches to select.scss.',
+          recommendation: 'suggested-improvements',
+        },
+      ],
     });
 
     const allText = payload.blocks

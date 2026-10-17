@@ -26,7 +26,9 @@ if (!GITHUB_TOKEN) {
   process.exit(1);
 }
 if (!OWNER || !REPO) {
-  console.error('❌  TEST_PR_OWNER and TEST_PR_REPO are not set (use a scratch repo, never the one being reviewed)');
+  console.error(
+    '❌  TEST_PR_OWNER and TEST_PR_REPO are not set (use a scratch repo, never the one being reviewed)'
+  );
   process.exit(1);
 }
 
@@ -54,7 +56,11 @@ async function ghFetch(path, options = {}) {
 
   const text = await res.text();
   let data;
-  try { data = JSON.parse(text); } catch { data = text; }
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = text;
+  }
 
   if (!res.ok) {
     throw new Error(
@@ -72,8 +78,12 @@ async function main() {
 
   // 0. Close stale PRs from previous runs
   console.log('🧹 Closing stale test PRs...');
-  const openPRs = await ghFetch(`/repos/${OWNER}/${REPO}/pulls?state=open&per_page=100`);
-  const stale = openPRs.filter((p) => p.head.ref.startsWith(STALE_BRANCH_PREFIX));
+  const openPRs = await ghFetch(
+    `/repos/${OWNER}/${REPO}/pulls?state=open&per_page=100`
+  );
+  const stale = openPRs.filter((p) =>
+    p.head.ref.startsWith(STALE_BRANCH_PREFIX)
+  );
   if (stale.length === 0) console.log('   No stale PRs found');
   for (const p of stale) {
     await ghFetch(`/repos/${OWNER}/${REPO}/pulls/${p.number}`, {
@@ -85,7 +95,9 @@ async function main() {
 
   // 1. Get base branch SHA
   console.log('\n📌 Getting base branch SHA...');
-  const baseRef = await ghFetch(`/repos/${OWNER}/${REPO}/git/ref/heads/${BASE_BRANCH}`);
+  const baseRef = await ghFetch(
+    `/repos/${OWNER}/${REPO}/git/ref/heads/${BASE_BRANCH}`
+  );
   const baseSha = baseRef.object.sha;
   console.log(`   Base SHA: ${baseSha}`);
 
@@ -100,9 +112,18 @@ async function main() {
   // 3. Create blobs — 3 dummy files, NO ORIGINAL_FILES.json or ORIGINAL_DIFF.patch
   console.log('\n📝 Creating blobs...');
   const [blobA, blobB, blobC] = await Promise.all([
-    ghFetch(`/repos/${OWNER}/${REPO}/git/blobs`, { method: 'POST', body: { content: FILE_A, encoding: 'utf-8' } }),
-    ghFetch(`/repos/${OWNER}/${REPO}/git/blobs`, { method: 'POST', body: { content: FILE_B, encoding: 'utf-8' } }),
-    ghFetch(`/repos/${OWNER}/${REPO}/git/blobs`, { method: 'POST', body: { content: FILE_C, encoding: 'utf-8' } }),
+    ghFetch(`/repos/${OWNER}/${REPO}/git/blobs`, {
+      method: 'POST',
+      body: { content: FILE_A, encoding: 'utf-8' },
+    }),
+    ghFetch(`/repos/${OWNER}/${REPO}/git/blobs`, {
+      method: 'POST',
+      body: { content: FILE_B, encoding: 'utf-8' },
+    }),
+    ghFetch(`/repos/${OWNER}/${REPO}/git/blobs`, {
+      method: 'POST',
+      body: { content: FILE_C, encoding: 'utf-8' },
+    }),
   ]);
   console.log('   ✅ Blobs created');
 
@@ -112,9 +133,24 @@ async function main() {
     body: {
       base_tree: baseSha,
       tree: [
-        { path: 'test/dummy-a.js', mode: '100644', type: 'blob', sha: blobA.sha },
-        { path: 'test/dummy-b.js', mode: '100644', type: 'blob', sha: blobB.sha },
-        { path: 'test/dummy-c.js', mode: '100644', type: 'blob', sha: blobC.sha },
+        {
+          path: 'test/dummy-a.js',
+          mode: '100644',
+          type: 'blob',
+          sha: blobA.sha,
+        },
+        {
+          path: 'test/dummy-b.js',
+          mode: '100644',
+          type: 'blob',
+          sha: blobB.sha,
+        },
+        {
+          path: 'test/dummy-c.js',
+          mode: '100644',
+          type: 'blob',
+          sha: blobC.sha,
+        },
       ],
     },
   });
@@ -123,7 +159,8 @@ async function main() {
   const commit = await ghFetch(`/repos/${OWNER}/${REPO}/git/commits`, {
     method: 'POST',
     body: {
-      message: 'test: oversized PR gate — 3 dummy files, no ORIGINAL_FILES.json',
+      message:
+        'test: oversized PR gate — 3 dummy files, no ORIGINAL_FILES.json',
       tree: tree.sha,
       parents: [baseSha],
     },
@@ -153,9 +190,13 @@ async function main() {
   console.log(`   PR number:  #${pr.number}`);
   console.log('\n💡 To test the gate:');
   console.log('   1. Set GITHUB_AI_AGENT_MAX_FILES=1 in .env');
-  console.log(`   2. Set GITHUB_AI_AGENT_OWNER=${OWNER} and GITHUB_AI_AGENT_REPO=${REPO} in .env`);
+  console.log(
+    `   2. Set GITHUB_AI_AGENT_OWNER=${OWNER} and GITHUB_AI_AGENT_REPO=${REPO} in .env`
+  );
   console.log('   3. Trigger a scheduled run');
-  console.log(`   4. Expect: ⏭️  PR #${pr.number} skipped — 3 files exceeds MAX_FILES_PER_PR (1)\n`);
+  console.log(
+    `   4. Expect: ⏭️  PR #${pr.number} skipped — 3 files exceeds MAX_FILES_PER_PR (1)\n`
+  );
 }
 
 main().catch((err) => {

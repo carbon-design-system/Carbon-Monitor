@@ -17,11 +17,16 @@
 // always validates the live pattern, not a stale copy.
 // ---------------------------------------------------------------------------
 const fs = require('fs');
-const parserSrc = fs.readFileSync(require.resolve('../src/reviewParser.js'), 'utf8');
+const parserSrc = fs.readFileSync(
+  require.resolve('../src/reviewParser.js'),
+  'utf8'
+);
 const { parseReviewOutput } = require('../src/reviewParser');
 
 // Pull the regex literal from the source: hasCatalogue = /<regex>/m.test(...)
-const regexMatch = parserSrc.match(/hasCatalogue\s*=\s*(\/.*?\/[gimsuy]*)\s*\.test/);
+const regexMatch = parserSrc.match(
+  /hasCatalogue\s*=\s*(\/.*?\/[gimsuy]*)\s*\.test/
+);
 if (!regexMatch) {
   console.error('❌ Could not extract hasCatalogue regex from reviewParser.js');
   process.exit(1);
@@ -96,18 +101,10 @@ test(
 );
 
 // Hypothetical: SKIP line for test fixture
-test(
-  'bare SKIP line',
-  'SKIP fixtures/test.ts — fixture',
-  true
-);
+test('bare SKIP line', 'SKIP fixtures/test.ts — fixture', true);
 
 // Hypothetical: bullet-prefixed SKIP
-test(
-  'bullet-prefixed SKIP',
-  '- SKIP __testfixtures__/foo.ts — fixture',
-  true
-);
+test('bullet-prefixed SKIP', '- SKIP __testfixtures__/foo.ts — fixture', true);
 
 // Multiline: catalogue entry is NOT the first line (typical — step heading comes first)
 test(
@@ -182,11 +179,7 @@ test(
   false
 );
 
-test(
-  'agent step heading with em-dash',
-  '## Catalogue entries:',
-  false
-);
+test('agent step heading with em-dash', '## Catalogue entries:', false);
 
 // ---------------------------------------------------------------------------
 // step2Window / hasStep2 — ordering-independent resolution detection
@@ -199,11 +192,14 @@ test(
 console.log('\n── step2Window / hasStep2: resolution ordering ───────────────');
 
 // Minimal valid JSON suffix reused across all three fixtures.
-const _json = 'BEGIN_REVIEW_JSON\n{"summaryMarkdown":"Clean.","findings":[]}\nEND_REVIEW_JSON';
+const _json =
+  'BEGIN_REVIEW_JSON\n{"summaryMarkdown":"Clean.","findings":[]}\nEND_REVIEW_JSON';
 
 function testStep2(description, agentOutput, expectWarning) {
   const result = parseReviewOutput(agentOutput);
-  const hasWarning = result !== null && result.catalogueWarning !== null &&
+  const hasWarning =
+    result !== null &&
+    result.catalogueWarning !== null &&
     result.catalogueWarning.toLowerCase().includes('pending');
   const ok = hasWarning === expectWarning;
   if (ok) {
@@ -212,7 +208,9 @@ function testStep2(description, agentOutput, expectWarning) {
   } else {
     failed++;
     console.log(`  ❌ ${description}`);
-    console.log(`     expected warning=${expectWarning}, got warning=${hasWarning}`);
+    console.log(
+      `     expected warning=${expectWarning}, got warning=${hasWarning}`
+    );
     console.log(`     catalogueWarning: ${result?.catalogueWarning}`);
   }
 }
@@ -223,9 +221,10 @@ function testStep2(description, agentOutput, expectWarning) {
 testStep2(
   'discarded before NO-FINDINGS — no false-positive warning (pull-149 pattern)',
   'file.ts:5 — doc change — Category 2 — pending\n' +
-  'discarded: file.ts:5 is non-behavioral.\n' +
-  'NO-FINDINGS file.ts — clean file.\n' + _json,
-  false  // no warning expected — step was correctly resolved
+    'discarded: file.ts:5 is non-behavioral.\n' +
+    'NO-FINDINGS file.ts — clean file.\n' +
+    _json,
+  false // no warning expected — step was correctly resolved
 );
 
 // Case 2 — NORMAL ORDER: resolution after NO-FINDINGS (already worked before fix).
@@ -233,9 +232,10 @@ testStep2(
 testStep2(
   'discarded after NO-FINDINGS — no warning (normal order)',
   'file.ts:5 — doc change — Category 2 — pending\n' +
-  'NO-FINDINGS file.ts — clean.\n' +
-  'discarded: file.ts:5 is non-behavioral.\n' + _json,
-  false  // no warning expected
+    'NO-FINDINGS file.ts — clean.\n' +
+    'discarded: file.ts:5 is non-behavioral.\n' +
+    _json,
+  false // no warning expected
 );
 
 // Case 3 — GENUINELY UNRESOLVED: pending with no discarded/confirmed finding.
@@ -243,7 +243,7 @@ testStep2(
 testStep2(
   'pending with no resolution — warning correctly fires',
   'file.ts:5 — doc change — Category 2 — pending\n' + _json,
-  true   // warning expected — agent skipped Step 2
+  true // warning expected — agent skipped Step 2
 );
 
 // ---------------------------------------------------------------------------
@@ -257,5 +257,3 @@ if (failed > 0) {
 } else {
   console.log('✅ All hasCatalogue tests passed!');
 }
-
-// Made with Bob

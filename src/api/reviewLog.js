@@ -64,7 +64,10 @@ function append(text, stream = 'stdout') {
     seq: nextSeq++,
     at: new Date().toISOString(),
     stream,
-    text: clean.length > MAX_LINE_CHARS ? `${clean.slice(0, MAX_LINE_CHARS)}…` : clean,
+    text:
+      clean.length > MAX_LINE_CHARS
+        ? `${clean.slice(0, MAX_LINE_CHARS)}…`
+        : clean,
   });
 
   // Trim from the front. The console reads forward by seq, so dropping the

@@ -34,18 +34,21 @@ function kReq(method, path, body) {
     const opts = {
       method,
       headers: {
-        'Authorization': AUTH,
+        Authorization: AUTH,
         'kbn-xsrf': 'true',
         'Content-Type': 'application/json',
         ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
       },
     };
-    const req = transport.request(new URL(path, KIBANA_URL), opts, res => {
+    const req = transport.request(new URL(path, KIBANA_URL), opts, (res) => {
       let d = '';
-      res.on('data', c => d += c);
+      res.on('data', (c) => (d += c));
       res.on('end', () => {
-        try { resolve({ status: res.statusCode, body: JSON.parse(d) }); }
-        catch (_) { resolve({ status: res.statusCode, body: d }); }
+        try {
+          resolve({ status: res.statusCode, body: JSON.parse(d) });
+        } catch (_) {
+          resolve({ status: res.statusCode, body: d });
+        }
       });
     });
     req.on('error', reject);
@@ -60,9 +63,16 @@ async function del(type, id) {
 }
 
 async function create(type, id, attributes, references = []) {
-  const r = await kReq('POST', `/api/saved_objects/${type}/${id}?overwrite=true`, { attributes, references });
+  const r = await kReq(
+    'POST',
+    `/api/saved_objects/${type}/${id}?overwrite=true`,
+    { attributes, references }
+  );
   if (r.status !== 200 && r.status !== 201) {
-    console.error(`  ❌ CREATE ${type}/${id} → ${r.status}`, JSON.stringify(r.body).slice(0, 300));
+    console.error(
+      `  ❌ CREATE ${type}/${id} → ${r.status}`,
+      JSON.stringify(r.body).slice(0, 300)
+    );
   } else {
     console.log(`  ✅ CREATE ${type}/${id} → ${r.status}`);
   }
@@ -75,38 +85,89 @@ async function create(type, id, attributes, references = []) {
 
 function dateCol() {
   return {
-    dataType: 'date', isBucketed: true, label: 'Date',
+    dataType: 'date',
+    isBucketed: true,
+    label: 'Date',
     operationType: 'date_histogram',
     params: { dropPartials: false, includeEmptyRows: true, interval: '1d' },
-    scale: 'interval', sourceField: 'timestamp',
+    scale: 'interval',
+    sourceField: 'timestamp',
   };
 }
 function countCol(label) {
-  return { dataType: 'number', isBucketed: false, label, operationType: 'count', scale: 'ratio', sourceField: '___records___' };
+  return {
+    dataType: 'number',
+    isBucketed: false,
+    label,
+    operationType: 'count',
+    scale: 'ratio',
+    sourceField: '___records___',
+  };
 }
 function sumCol(label, field) {
-  return { dataType: 'number', isBucketed: false, label, customLabel: true, operationType: 'sum', scale: 'ratio', sourceField: field };
+  return {
+    dataType: 'number',
+    isBucketed: false,
+    label,
+    customLabel: true,
+    operationType: 'sum',
+    scale: 'ratio',
+    sourceField: field,
+  };
 }
 function avgCol(label, field) {
-  return { dataType: 'number', isBucketed: false, label, customLabel: true, operationType: 'average', scale: 'ratio', sourceField: field };
+  return {
+    dataType: 'number',
+    isBucketed: false,
+    label,
+    customLabel: true,
+    operationType: 'average',
+    scale: 'ratio',
+    sourceField: field,
+  };
 }
 function filteredCountCol(label, query) {
-  return { dataType: 'number', isBucketed: false, label, operationType: 'count', scale: 'ratio', sourceField: '___records___', filter: { query, language: 'kuery' } };
+  return {
+    dataType: 'number',
+    isBucketed: false,
+    label,
+    operationType: 'count',
+    scale: 'ratio',
+    sourceField: '___records___',
+    filter: { query, language: 'kuery' },
+  };
 }
 
 function eventTypeFilter(et) {
-  return [{
-    $state: { store: 'appState' },
-    meta: { alias: null, disabled: false, key: 'event_type', negate: false, params: { query: et }, type: 'phrase' },
-    query: { match_phrase: { event_type: et } },
-  }];
+  return [
+    {
+      $state: { store: 'appState' },
+      meta: {
+        alias: null,
+        disabled: false,
+        key: 'event_type',
+        negate: false,
+        params: { query: et },
+        type: 'phrase',
+      },
+      query: { match_phrase: { event_type: et } },
+    },
+  ];
 }
 
 // ── Full XY state builder ─────────────────────────────────────────────────────
 // yTitle:  label shown on the left Y axis (replaces the raw field path Kibana
 //          would otherwise auto-generate from the column definition)
 // xTitle:  label shown on the X axis (default 'Date')
-function xyState({ seriesType, layers, filters = [], legend = { isVisible: true, position: 'bottom' }, yTitle = '', xTitle = 'Date', yConfig = [] }) {
+function xyState({
+  seriesType,
+  layers,
+  filters = [],
+  legend = { isVisible: true, position: 'bottom' },
+  yTitle = '',
+  xTitle = 'Date',
+  yConfig = [],
+}) {
   return {
     datasourceStates: { formBased: { layers } },
     filters,
@@ -140,225 +201,312 @@ const dvRef = (name) => [{ id: DV_ID, name, type: 'index-pattern' }];
 
 // ── Build all lens objects ────────────────────────────────────────────────────
 async function buildLensObjects() {
-
   // ── lens-001: PRs reviewed per day (bar) ─────────────────────────────────
-  await create('lens', 'lens-001', {
-    title: 'PRs AI Reviewed per Day',
-    visualizationType: 'lnsXY',
-    state: xyState({
-      seriesType: 'bar',
-      filters: eventTypeFilter('pr_review_completed'),
-      layers: {
-        layer1: {
-          columnOrder: ['col-date', 'col-count'],
-          columns: {
-            'col-date':  dateCol(),
-            'col-count': countCol('PRs Reviewed'),
+  await create(
+    'lens',
+    'lens-001',
+    {
+      title: 'PRs AI Reviewed per Day',
+      visualizationType: 'lnsXY',
+      state: xyState({
+        seriesType: 'bar',
+        filters: eventTypeFilter('pr_review_completed'),
+        layers: {
+          layer1: {
+            columnOrder: ['col-date', 'col-count'],
+            columns: {
+              'col-date': dateCol(),
+              'col-count': countCol('PRs Reviewed'),
+            },
+            incompleteColumns: {},
           },
-          incompleteColumns: {},
         },
-      },
-      legend: { isVisible: false, position: 'right' },
-      yTitle: 'PRs Reviewed',
-      xTitle: 'Date',
-    }),
-  }, dvRef('indexpattern-datasource-layer-layer1'));
+        legend: { isVisible: false, position: 'right' },
+        yTitle: 'PRs Reviewed',
+        xTitle: 'Date',
+      }),
+    },
+    dvRef('indexpattern-datasource-layer-layer1')
+  );
 
   // ── lens-004: Recommendation distribution — donut ─────────────────────────
-  await create('lens', 'lens-004', {
-    title: 'AI Recommendation Summary',
-    visualizationType: 'lnsPie',
-    state: {
-      datasourceStates: {
-        formBased: {
-          layers: {
-            layer1: {
-              columnOrder: ['col-rec', 'col-count'],
-              columns: {
-                'col-rec':   { dataType:'string', isBucketed:true, label:'Recommendation', operationType:'terms', params:{missingBucket:false,orderBy:{columnId:'col-count',type:'column'},orderDirection:'desc',otherBucket:true,size:10}, scale:'ordinal', sourceField:'payload.recommendation' },
-                'col-count': countCol('Reviews'),
+  await create(
+    'lens',
+    'lens-004',
+    {
+      title: 'AI Recommendation Summary',
+      visualizationType: 'lnsPie',
+      state: {
+        datasourceStates: {
+          formBased: {
+            layers: {
+              layer1: {
+                columnOrder: ['col-rec', 'col-count'],
+                columns: {
+                  'col-rec': {
+                    dataType: 'string',
+                    isBucketed: true,
+                    label: 'Recommendation',
+                    operationType: 'terms',
+                    params: {
+                      missingBucket: false,
+                      orderBy: { columnId: 'col-count', type: 'column' },
+                      orderDirection: 'desc',
+                      otherBucket: true,
+                      size: 10,
+                    },
+                    scale: 'ordinal',
+                    sourceField: 'payload.recommendation',
+                  },
+                  'col-count': countCol('Reviews'),
+                },
+                incompleteColumns: {},
               },
-              incompleteColumns: {},
             },
           },
         },
-      },
-      filters: eventTypeFilter('pr_review_completed'),
-      query: { language: 'kuery', query: '' },
-      visualization: {
-        shape: 'donut',
-        layers: [{
-          layerId: 'layer1',
-          layerType: 'data',
-          primaryGroups: ['col-rec'],
-          metrics: ['col-count'],
-          categoryDisplay: 'default',
-          legendDisplay: 'default',
-          nestedLegend: false,
-          numberDisplay: 'percent',
-        }],
+        filters: eventTypeFilter('pr_review_completed'),
+        query: { language: 'kuery', query: '' },
+        visualization: {
+          shape: 'donut',
+          layers: [
+            {
+              layerId: 'layer1',
+              layerType: 'data',
+              primaryGroups: ['col-rec'],
+              metrics: ['col-count'],
+              categoryDisplay: 'default',
+              legendDisplay: 'default',
+              nestedLegend: false,
+              numberDisplay: 'percent',
+            },
+          ],
+        },
       },
     },
-  }, dvRef('indexpattern-datasource-layer-layer1'));
+    dvRef('indexpattern-datasource-layer-layer1')
+  );
 
   // ── lens-005: Findings by severity — shades of blue ───────────────────────
-  await create('lens', 'lens-005', {
-    title: 'Findings per PR — Severity',
-    visualizationType: 'lnsXY',
-    state: {
-      datasourceStates: {
-        formBased: {
-          layers: {
-            layer1: {
-              columnOrder: ['col-date', 'col-blocking', 'col-major', 'col-minor', 'col-nit'],
-              columns: {
-                'col-date':     dateCol(),
-                'col-blocking': sumCol('Blocking', 'payload.findings_blocking'),
-                'col-major':    sumCol('Major',    'payload.findings_major'),
-                'col-minor':    sumCol('Minor',    'payload.findings_minor'),
-                'col-nit':      sumCol('Nit',      'payload.findings_nit'),
+  await create(
+    'lens',
+    'lens-005',
+    {
+      title: 'Findings per PR — Severity',
+      visualizationType: 'lnsXY',
+      state: {
+        datasourceStates: {
+          formBased: {
+            layers: {
+              layer1: {
+                columnOrder: [
+                  'col-date',
+                  'col-blocking',
+                  'col-major',
+                  'col-minor',
+                  'col-nit',
+                ],
+                columns: {
+                  'col-date': dateCol(),
+                  'col-blocking': sumCol(
+                    'Blocking',
+                    'payload.findings_blocking'
+                  ),
+                  'col-major': sumCol('Major', 'payload.findings_major'),
+                  'col-minor': sumCol('Minor', 'payload.findings_minor'),
+                  'col-nit': sumCol('Nit', 'payload.findings_nit'),
+                },
+                incompleteColumns: {},
               },
-              incompleteColumns: {},
             },
           },
         },
-      },
-      filters: eventTypeFilter('pr_review_completed'),
-      query: { language: 'kuery', query: '' },
-      visualization: {
-        axisTitlesVisibilitySettings: { x: true, yLeft: true, yRight: false },
-        fittingFunction: 'None',
-        gridlinesVisibilitySettings: { x: true, yLeft: true, yRight: true },
-        labelsOrientation: { x: 0, yLeft: 0, yRight: 0 },
-        layers: [{
-          accessors: ['col-blocking', 'col-major', 'col-minor', 'col-nit'],
-          layerId: 'layer1',
-          layerType: 'data',
-          seriesType: 'bar_stacked',
-          xAccessor: 'col-date',
-          yConfig: [
-            { forAccessor: 'col-blocking', color: '#002d9c' },
-            { forAccessor: 'col-major',    color: '#0f62fe' },
-            { forAccessor: 'col-minor',    color: '#78a9ff' },
-            { forAccessor: 'col-nit',      color: '#d0e2ff' },
+        filters: eventTypeFilter('pr_review_completed'),
+        query: { language: 'kuery', query: '' },
+        visualization: {
+          axisTitlesVisibilitySettings: { x: true, yLeft: true, yRight: false },
+          fittingFunction: 'None',
+          gridlinesVisibilitySettings: { x: true, yLeft: true, yRight: true },
+          labelsOrientation: { x: 0, yLeft: 0, yRight: 0 },
+          layers: [
+            {
+              accessors: ['col-blocking', 'col-major', 'col-minor', 'col-nit'],
+              layerId: 'layer1',
+              layerType: 'data',
+              seriesType: 'bar_stacked',
+              xAccessor: 'col-date',
+              yConfig: [
+                { forAccessor: 'col-blocking', color: '#002d9c' },
+                { forAccessor: 'col-major', color: '#0f62fe' },
+                { forAccessor: 'col-minor', color: '#78a9ff' },
+                { forAccessor: 'col-nit', color: '#d0e2ff' },
+              ],
+            },
           ],
-        }],
-        legend: { isVisible: true, position: 'bottom' },
-        preferredSeriesType: 'bar_stacked',
-        tickLabelsVisibilitySettings: { x: true, yLeft: true, yRight: true },
-        valueLabels: 'hide',
-        yTitle: 'Findings',
-        xTitle: 'Date',
+          legend: { isVisible: true, position: 'bottom' },
+          preferredSeriesType: 'bar_stacked',
+          tickLabelsVisibilitySettings: { x: true, yLeft: true, yRight: true },
+          valueLabels: 'hide',
+          yTitle: 'Findings',
+          xTitle: 'Date',
+        },
       },
     },
-  }, dvRef('indexpattern-datasource-layer-layer1'));
+    dvRef('indexpattern-datasource-layer-layer1')
+  );
 
   // ── lens-006: Carbon Findings vs General Findings ─────────────────────────
-  await create('lens', 'lens-006', {
-    title: 'Carbon API Verification',
-    visualizationType: 'lnsXY',
-    state: xyState({
-      seriesType: 'bar_stacked',
-      filters: eventTypeFilter('pr_review_completed'),
-      layers: {
-        layer1: {
-          columnOrder: ['col-date', 'col-cat1', 'col-cat2'],
-          columns: {
-            'col-date': dateCol(),
-            'col-cat1': sumCol('Carbon Findings', 'payload.cat1_findings'),
-            'col-cat2': sumCol('General Findings', 'payload.cat2_findings'),
+  await create(
+    'lens',
+    'lens-006',
+    {
+      title: 'Carbon API Verification',
+      visualizationType: 'lnsXY',
+      state: xyState({
+        seriesType: 'bar_stacked',
+        filters: eventTypeFilter('pr_review_completed'),
+        layers: {
+          layer1: {
+            columnOrder: ['col-date', 'col-cat1', 'col-cat2'],
+            columns: {
+              'col-date': dateCol(),
+              'col-cat1': sumCol('Carbon Findings', 'payload.cat1_findings'),
+              'col-cat2': sumCol('General Findings', 'payload.cat2_findings'),
+            },
+            incompleteColumns: {},
           },
-          incompleteColumns: {},
         },
-      },
-      yTitle: 'Findings',
-      xTitle: 'Date',
-    }),
-  }, dvRef('indexpattern-datasource-layer-layer1'));
+        yTitle: 'Findings',
+        xTitle: 'Date',
+      }),
+    },
+    dvRef('indexpattern-datasource-layer-layer1')
+  );
 
   // ── lens-008: Input & Output tokens per review (line) ─────────────────────
-  await create('lens', 'lens-008', {
-    title: 'Input & Output Tokens per Review',
-    visualizationType: 'lnsXY',
-    state: xyState({
-      seriesType: 'line',
-      filters: eventTypeFilter('pr_review_completed'),
-      layers: {
-        layer1: {
-          columnOrder: ['col-date', 'col-input', 'col-output'],
-          columns: {
-            'col-date':   dateCol(),
-            'col-input':  avgCol('Input Tokens',  'payload.token_input'),
-            'col-output': avgCol('Output Tokens', 'payload.token_output'),
+  await create(
+    'lens',
+    'lens-008',
+    {
+      title: 'Input & Output Tokens per Review',
+      visualizationType: 'lnsXY',
+      state: xyState({
+        seriesType: 'line',
+        filters: eventTypeFilter('pr_review_completed'),
+        layers: {
+          layer1: {
+            columnOrder: ['col-date', 'col-input', 'col-output'],
+            columns: {
+              'col-date': dateCol(),
+              'col-input': avgCol('Input Tokens', 'payload.token_input'),
+              'col-output': avgCol('Output Tokens', 'payload.token_output'),
+            },
+            incompleteColumns: {},
           },
-          incompleteColumns: {},
         },
-      },
-      legend: { isVisible: true, position: 'bottom' },
-      yTitle: 'Tokens',
-      xTitle: 'Date',
-    }),
-  }, dvRef('indexpattern-datasource-layer-layer1'));
+        legend: { isVisible: true, position: 'bottom' },
+        yTitle: 'Tokens',
+        xTitle: 'Date',
+      }),
+    },
+    dvRef('indexpattern-datasource-layer-layer1')
+  );
 
   // ── lens-009: Run health — event type distribution (horizontal bar) ────────
-  await create('lens', 'lens-009', {
-    title: 'Run Health — Event Breakdown',
-    visualizationType: 'lnsXY',
-    state: {
-      datasourceStates: {
-        formBased: {
-          layers: {
-            layer1: {
-              columnOrder: ['col-event', 'col-count'],
-              columns: {
-                'col-event': { dataType:'string', isBucketed:true, label:'Event', operationType:'terms', params:{missingBucket:false,orderBy:{columnId:'col-count',type:'column'},orderDirection:'desc',otherBucket:false,size:20}, scale:'ordinal', sourceField:'event_type' },
-                'col-count': countCol('Count'),
+  await create(
+    'lens',
+    'lens-009',
+    {
+      title: 'Run Health — Event Breakdown',
+      visualizationType: 'lnsXY',
+      state: {
+        datasourceStates: {
+          formBased: {
+            layers: {
+              layer1: {
+                columnOrder: ['col-event', 'col-count'],
+                columns: {
+                  'col-event': {
+                    dataType: 'string',
+                    isBucketed: true,
+                    label: 'Event',
+                    operationType: 'terms',
+                    params: {
+                      missingBucket: false,
+                      orderBy: { columnId: 'col-count', type: 'column' },
+                      orderDirection: 'desc',
+                      otherBucket: false,
+                      size: 20,
+                    },
+                    scale: 'ordinal',
+                    sourceField: 'event_type',
+                  },
+                  'col-count': countCol('Count'),
+                },
+                incompleteColumns: {},
               },
-              incompleteColumns: {},
             },
           },
         },
-      },
-      filters: [],
-      query: { language: 'kuery', query: '' },
-      visualization: {
-        axisTitlesVisibilitySettings: { x: false, yLeft: true, yRight: false },
-        fittingFunction: 'None',
-        gridlinesVisibilitySettings: { x: true, yLeft: true, yRight: false },
-        labelsOrientation: { x: 0, yLeft: 0, yRight: 0 },
-        layers: [{ accessors:['col-count'], layerId:'layer1', layerType:'data', seriesType:'bar_horizontal', xAccessor:'col-event', yConfig:[] }],
-        legend: { isVisible: false, position: 'right' },
-        preferredSeriesType: 'bar_horizontal',
-        tickLabelsVisibilitySettings: { x: true, yLeft: true, yRight: true },
-        valueLabels: 'show',
-        yTitle: 'Count',
-      },
-    },
-  }, dvRef('indexpattern-datasource-layer-layer1'));
-
-  // ── lens-010: Total tokens per review (single line) ───────────────────────
-  await create('lens', 'lens-010', {
-    title: 'Total Token Usage per Review',
-    visualizationType: 'lnsXY',
-    state: xyState({
-      seriesType: 'line',
-      filters: eventTypeFilter('pr_review_completed'),
-      layers: {
-        layer1: {
-          columnOrder: ['col-date', 'col-total'],
-          columns: {
-            'col-date':  dateCol(),
-            'col-total': avgCol('Total Tokens', 'payload.token_total'),
+        filters: [],
+        query: { language: 'kuery', query: '' },
+        visualization: {
+          axisTitlesVisibilitySettings: {
+            x: false,
+            yLeft: true,
+            yRight: false,
           },
-          incompleteColumns: {},
+          fittingFunction: 'None',
+          gridlinesVisibilitySettings: { x: true, yLeft: true, yRight: false },
+          labelsOrientation: { x: 0, yLeft: 0, yRight: 0 },
+          layers: [
+            {
+              accessors: ['col-count'],
+              layerId: 'layer1',
+              layerType: 'data',
+              seriesType: 'bar_horizontal',
+              xAccessor: 'col-event',
+              yConfig: [],
+            },
+          ],
+          legend: { isVisible: false, position: 'right' },
+          preferredSeriesType: 'bar_horizontal',
+          tickLabelsVisibilitySettings: { x: true, yLeft: true, yRight: true },
+          valueLabels: 'show',
+          yTitle: 'Count',
         },
       },
-      legend: { isVisible: false, position: 'right' },
-      yTitle: 'Tokens',
-      xTitle: 'Date',
-    }),
-  }, dvRef('indexpattern-datasource-layer-layer1'));
+    },
+    dvRef('indexpattern-datasource-layer-layer1')
+  );
 
+  // ── lens-010: Total tokens per review (single line) ───────────────────────
+  await create(
+    'lens',
+    'lens-010',
+    {
+      title: 'Total Token Usage per Review',
+      visualizationType: 'lnsXY',
+      state: xyState({
+        seriesType: 'line',
+        filters: eventTypeFilter('pr_review_completed'),
+        layers: {
+          layer1: {
+            columnOrder: ['col-date', 'col-total'],
+            columns: {
+              'col-date': dateCol(),
+              'col-total': avgCol('Total Tokens', 'payload.token_total'),
+            },
+            incompleteColumns: {},
+          },
+        },
+        legend: { isVisible: false, position: 'right' },
+        yTitle: 'Tokens',
+        xTitle: 'Date',
+      }),
+    },
+    dvRef('indexpattern-datasource-layer-layer1')
+  );
 }
 
 // ── Register ALL runtime fields in a single POST ──────────────────────────────
@@ -386,15 +534,24 @@ async function registerRuntimeFields() {
   const r = await kReq('POST', `/api/data_views/data_view/${DV_ID}`, {
     data_view: {
       runtimeFieldMap: {
-        'pr_label':                     { type: 'keyword', script: { source: prLabelScript  } },
-        'payload.recommendation_label': { type: 'keyword', script: { source: recLabelScript } },
+        pr_label: { type: 'keyword', script: { source: prLabelScript } },
+        'payload.recommendation_label': {
+          type: 'keyword',
+          script: { source: recLabelScript },
+        },
       },
     },
   });
   if (r.status === 200) {
-    console.log('  ✅ Runtime fields registered (pr_label + payload.recommendation_label)');
+    console.log(
+      '  ✅ Runtime fields registered (pr_label + payload.recommendation_label)'
+    );
   } else {
-    console.warn('  ⚠️  Runtime field registration returned', r.status, JSON.stringify(r.body).slice(0, 200));
+    console.warn(
+      '  ⚠️  Runtime field registration returned',
+      r.status,
+      JSON.stringify(r.body).slice(0, 200)
+    );
   }
 }
 
@@ -403,61 +560,144 @@ async function buildDashboard() {
   // 7 panels
   const panels = [
     // Row 1 — throughput (full width)
-    { i:'p1', x:0,  y:0,  w:48, h:10, id:'lens-001', title:'PRs Reviewed per Day' },
+    {
+      i: 'p1',
+      x: 0,
+      y: 0,
+      w: 48,
+      h: 10,
+      id: 'lens-001',
+      title: 'PRs Reviewed per Day',
+    },
     // Row 2 — recommendation (full width)
-    { i:'p4', x:0,  y:10, w:48, h:10, id:'lens-004', title:'Recommendation Distribution' },
+    {
+      i: 'p4',
+      x: 0,
+      y: 10,
+      w: 48,
+      h: 10,
+      id: 'lens-004',
+      title: 'Recommendation Distribution',
+    },
     // Row 3 — finding quality, side by side
-    { i:'p5', x:0,  y:20, w:24, h:12, id:'lens-005', title:'Findings per PR — Severity' },
-    { i:'p6', x:24, y:20, w:24, h:12, id:'lens-006', title:'Carbon API Verification' },
+    {
+      i: 'p5',
+      x: 0,
+      y: 20,
+      w: 24,
+      h: 12,
+      id: 'lens-005',
+      title: 'Findings per PR — Severity',
+    },
+    {
+      i: 'p6',
+      x: 24,
+      y: 20,
+      w: 24,
+      h: 12,
+      id: 'lens-006',
+      title: 'Carbon API Verification',
+    },
     // Row 4 — token usage, side by side
-    { i:'p8', x:0,  y:32, w:24, h:12, id:'lens-008', title:'Input & Output Tokens per Review' },
-    { i:'p10',x:24, y:32, w:24, h:12, id:'lens-010', title:'Total Token Usage per Review' },
+    {
+      i: 'p8',
+      x: 0,
+      y: 32,
+      w: 24,
+      h: 12,
+      id: 'lens-008',
+      title: 'Input & Output Tokens per Review',
+    },
+    {
+      i: 'p10',
+      x: 24,
+      y: 32,
+      w: 24,
+      h: 12,
+      id: 'lens-010',
+      title: 'Total Token Usage per Review',
+    },
     // Row 5 — run health (full width)
-    { i:'p9', x:0,  y:44, w:48, h:12, id:'lens-009', title:'Run Health — Event Breakdown' },
+    {
+      i: 'p9',
+      x: 0,
+      y: 44,
+      w: 48,
+      h: 12,
+      id: 'lens-009',
+      title: 'Run Health — Event Breakdown',
+    },
   ];
 
-  const panelsJSON = JSON.stringify(panels.map(p => ({
-    version: '8.15.0',
-    type: 'lens',
-    gridData: { x: p.x, y: p.y, w: p.w, h: p.h, i: p.i },
-    panelIndex: p.i,
-    embeddableConfig: { enhancements: {} },
-    panelRefName: p.i,
-    title: p.title,
-  })));
+  const panelsJSON = JSON.stringify(
+    panels.map((p) => ({
+      version: '8.15.0',
+      type: 'lens',
+      gridData: { x: p.x, y: p.y, w: p.w, h: p.h, i: p.i },
+      panelIndex: p.i,
+      embeddableConfig: { enhancements: {} },
+      panelRefName: p.i,
+      title: p.title,
+    }))
+  );
 
   const references = [
-    { id: DV_ID, name: 'indexpattern-datasource-layer-throughput', type: 'index-pattern' },
-    ...panels.map(p => ({ id: p.id, name: p.i, type: 'lens' })),
+    {
+      id: DV_ID,
+      name: 'indexpattern-datasource-layer-throughput',
+      type: 'index-pattern',
+    },
+    ...panels.map((p) => ({ id: p.id, name: p.i, type: 'lens' })),
   ];
 
-  await create('dashboard', 'carbon-monitor-dashboard', {
-    title: 'Carbon Monitor — PR Review Metrics',
-    description: 'Review throughput, recommendation distribution, finding quality, Carbon API verification, token usage, run health.',
-    panelsJSON,
-    optionsJSON: JSON.stringify({ useMargins: true, syncColors: false, syncCursor: true, syncTooltips: false, hidePanelTitles: false }),
-    kibanaSavedObjectMeta: { searchSourceJSON: JSON.stringify({ query: { query: '', language: 'kuery' }, filter: [] }) },
-    refreshInterval: { pause: true, value: 0 },
-    timeFrom: 'now-30d',
-    timeTo: 'now',
-    timeRestore: true,
-    version: 1,
-  }, references);
+  await create(
+    'dashboard',
+    'carbon-monitor-dashboard',
+    {
+      title: 'Carbon Monitor — PR Review Metrics',
+      description:
+        'Review throughput, recommendation distribution, finding quality, Carbon API verification, token usage, run health.',
+      panelsJSON,
+      optionsJSON: JSON.stringify({
+        useMargins: true,
+        syncColors: false,
+        syncCursor: true,
+        syncTooltips: false,
+        hidePanelTitles: false,
+      }),
+      kibanaSavedObjectMeta: {
+        searchSourceJSON: JSON.stringify({
+          query: { query: '', language: 'kuery' },
+          filter: [],
+        }),
+      },
+      refreshInterval: { pause: true, value: 0 },
+      timeFrom: 'now-30d',
+      timeTo: 'now',
+      timeRestore: true,
+      version: 1,
+    },
+    references
+  );
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log('\n── Carbon Monitor — Rebuild Kibana Dashboard ────────────────\n');
+  console.log(
+    '\n── Carbon Monitor — Rebuild Kibana Dashboard ────────────────\n'
+  );
 
   const status = await kReq('GET', '/api/status', null);
   if (status.status !== 200) {
-    console.error(`❌ Cannot reach Kibana at ${KIBANA_URL.origin}. Is it running?`);
+    console.error(
+      `❌ Cannot reach Kibana at ${KIBANA_URL.origin}. Is it running?`
+    );
     process.exit(1);
   }
   console.log(`✅ Kibana ${status.body?.version?.number} reachable\n`);
 
   console.log('Deleting stale Lens objects...');
-  for (let i = 1; i <= 9; i++)   await del('lens', `lens-00${i}`);
+  for (let i = 1; i <= 9; i++) await del('lens', `lens-00${i}`);
   for (let i = 10; i <= 13; i++) await del('lens', `lens-0${i}`);
   await del('dashboard', 'carbon-monitor-dashboard');
   console.log();
@@ -481,4 +721,7 @@ async function main() {
 `);
 }
 
-main().catch(e => { console.error('Fatal:', e.message); process.exit(1); });
+main().catch((e) => {
+  console.error('Fatal:', e.message);
+  process.exit(1);
+});

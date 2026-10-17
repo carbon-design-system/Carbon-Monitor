@@ -42,7 +42,9 @@ function assert(condition, message) {
 
 function assertEqual(actual, expected, label) {
   if (actual !== expected) {
-    throw new Error(`${label || 'assertEqual'}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    throw new Error(
+      `${label || 'assertEqual'}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`
+    );
   }
 }
 
@@ -99,7 +101,13 @@ function makeFakeOctokit(prs, capture = {}) {
 
 function fetchWith(prs, { maxPRs, capture } = {}) {
   const client = createGitHubClient(makeFakeOctokit(prs, capture));
-  return client.fetchReviewablePRs({ owner: 'o', repo: 'r', daysBack: DAYS_BACK, label: LABEL, maxPRs });
+  return client.fetchReviewablePRs({
+    owner: 'o',
+    repo: 'r',
+    daysBack: DAYS_BACK,
+    label: LABEL,
+    maxPRs,
+  });
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -111,7 +119,11 @@ async function runTests() {
 
   await test('keeps a plain open human PR within the window', async () => {
     const result = await fetchWith([makePR({ number: 5 })]);
-    assertDeepEqual(result.map(p => p.number), [5], 'kept numbers');
+    assertDeepEqual(
+      result.map((p) => p.number),
+      [5],
+      'kept numbers'
+    );
   });
 
   await test('skips draft PRs', async () => {
@@ -122,25 +134,35 @@ async function runTests() {
   await test('skips PRs older than daysBack, keeps ones inside the window', async () => {
     const result = await fetchWith([
       makePR({ number: 1, created_at: daysAgo(30) }), // stale — excluded
-      makePR({ number: 2, created_at: daysAgo(5) }),  // recent — kept
+      makePR({ number: 2, created_at: daysAgo(5) }), // recent — kept
     ]);
-    assertDeepEqual(result.map(p => p.number), [2], 'only the in-window PR survives');
+    assertDeepEqual(
+      result.map((p) => p.number),
+      [2],
+      'only the in-window PR survives'
+    );
   });
 
   await test('skips PRs already carrying the review label', async () => {
-    const result = await fetchWith([makePR({ number: 5, labels: [{ name: LABEL }] })]);
+    const result = await fetchWith([
+      makePR({ number: 5, labels: [{ name: LABEL }] }),
+    ]);
     assertEqual(result.length, 0, 'already-reviewed excluded');
   });
 
   await test('skips PRs carrying a SKIP_LABEL (DO NOT MERGE / WIP)', async () => {
     for (const skip of SKIP_LABELS) {
-      const result = await fetchWith([makePR({ number: 5, labels: [{ name: skip }] })]);
+      const result = await fetchWith([
+        makePR({ number: 5, labels: [{ name: skip }] }),
+      ]);
       assertEqual(result.length, 0, `"${skip}" excluded`);
     }
   });
 
   await test('skips bot-authored PRs', async () => {
-    const result = await fetchWith([makePR({ number: 5, user: { login: 'dependabot', type: 'Bot' } })]);
+    const result = await fetchWith([
+      makePR({ number: 5, user: { login: 'dependabot', type: 'Bot' } }),
+    ]);
     assertEqual(result.length, 0, 'bot excluded');
   });
 
@@ -154,7 +176,11 @@ async function runTests() {
       makePR({ number: 12, created_at: daysAgo(15) }),
       makePR({ number: 13, created_at: daysAgo(2) }),
     ]);
-    assertDeepEqual(result.map(p => p.number), [11, 13, 10, 12], 'newest-first ordering');
+    assertDeepEqual(
+      result.map((p) => p.number),
+      [11, 13, 10, 12],
+      'newest-first ordering'
+    );
   });
 
   await test('breaks exact created_at ties by PR number (higher = newer)', async () => {
@@ -164,7 +190,11 @@ async function runTests() {
       makePR({ number: 9, created_at: t }),
       makePR({ number: 8, created_at: t }),
     ]);
-    assertDeepEqual(result.map(p => p.number), [9, 8, 7], 'tie-break by number desc');
+    assertDeepEqual(
+      result.map((p) => p.number),
+      [9, 8, 7],
+      'tie-break by number desc'
+    );
   });
 
   await test('maxPRs returns the N MOST RECENT, not the first N the API sent', async () => {
@@ -180,7 +210,11 @@ async function runTests() {
       ],
       { maxPRs: 3 }
     );
-    assertDeepEqual(result.map(p => p.number), [11, 13, 10], 'top-3 by recency');
+    assertDeepEqual(
+      result.map((p) => p.number),
+      [11, 13, 10],
+      'top-3 by recency'
+    );
   });
 
   await test('omitting maxPRs returns every eligible PR, still newest-first', async () => {
@@ -188,7 +222,11 @@ async function runTests() {
       makePR({ number: 1, created_at: daysAgo(9) }),
       makePR({ number: 2, created_at: daysAgo(3) }),
     ]);
-    assertDeepEqual(result.map(p => p.number), [2, 1], 'all kept, sorted');
+    assertDeepEqual(
+      result.map((p) => p.number),
+      [2, 1],
+      'all kept, sorted'
+    );
   });
 
   await test('requests only open PRs', async () => {
@@ -207,7 +245,7 @@ async function runTests() {
   }
 }
 
-runTests().catch(err => {
+runTests().catch((err) => {
   console.error('Fatal error in test runner:', err);
   process.exit(1);
 });

@@ -102,9 +102,13 @@ async function main() {
     // ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH — from outside any try/catch on the
     // original code, so Node killed the instance.
     const token = 'éééééééééé' + 'I';
-    assert(token.length === process.env.API_SECRET.length, 'test token must match in code units');
     assert(
-      Buffer.byteLength(token, 'utf8') !== Buffer.byteLength(process.env.API_SECRET, 'utf8'),
+      token.length === process.env.API_SECRET.length,
+      'test token must match in code units'
+    );
+    assert(
+      Buffer.byteLength(token, 'utf8') !==
+        Buffer.byteLength(process.env.API_SECRET, 'utf8'),
       'test token must differ in bytes, or it proves nothing'
     );
 
@@ -117,7 +121,10 @@ async function main() {
     // sweeping 1..64 guarantees one that matches.
     for (let n = 1; n <= 64; n++) {
       const res = await request(`Bearer ${'é'.repeat(n)}`, '/api/config');
-      assert(res.statusCode === 401, `length ${n} returned ${res.statusCode}, expected 401`);
+      assert(
+        res.statusCode === 401,
+        `length ${n} returned ${res.statusCode}, expected 401`
+      );
     }
   });
 
@@ -125,7 +132,11 @@ async function main() {
     // node:http hands over an array when a header is repeated.
     const res = fakeRes();
     await handleRequest(
-      { method: 'GET', url: '/api/config', headers: { host: 'localhost', authorization: ['a', 'b'] } },
+      {
+        method: 'GET',
+        url: '/api/config',
+        headers: { host: 'localhost', authorization: ['a', 'b'] },
+      },
       res
     );
     assert(res.statusCode === 401, `expected 401, got ${res.statusCode}`);
@@ -146,5 +157,3 @@ async function main() {
 }
 
 main();
-
-// Made with Bob

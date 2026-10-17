@@ -32,29 +32,34 @@ function describeCredential(label, value) {
     label,
     length: raw.length,
     trimmedLength: trimmed.length,
-    hasLeadingWhitespace:  raw.length > 0 && raw[0] !== trimmed[0],
-    hasTrailingWhitespace: raw.length > 0 && raw[raw.length - 1] !== trimmed[trimmed.length - 1],
-    hasInnerControlChars:  /[\x00-\x1f\x7f]/.test(trimmed),
+    hasLeadingWhitespace: raw.length > 0 && raw[0] !== trimmed[0],
+    hasTrailingWhitespace:
+      raw.length > 0 && raw[raw.length - 1] !== trimmed[trimmed.length - 1],
+    hasInnerControlChars: /[\x00-\x1f\x7f]/.test(trimmed),
     firstChars: trimmed.length >= 2 ? trimmed.slice(0, 2) : trimmed,
-    lastChars:  trimmed.length >= 2 ? trimmed.slice(-2)   : trimmed,
-    sha256Prefix: trimmed.length > 0
-      ? createHash('sha256').update(trimmed).digest('hex').slice(0, 12)
-      : '(empty)',
+    lastChars: trimmed.length >= 2 ? trimmed.slice(-2) : trimmed,
+    sha256Prefix:
+      trimmed.length > 0
+        ? createHash('sha256').update(trimmed).digest('hex').slice(0, 12)
+        : '(empty)',
   };
 }
 
 const env = {
   es: {
-    url:        readTrimmedString('ES_URL'),
-    username:   readTrimmedString('ES_USERNAME') || 'elastic',
-    password:   readTrimmedString('ES_PASSWORD'),
+    url: readTrimmedString('ES_URL'),
+    username: readTrimmedString('ES_USERNAME') || 'elastic',
+    password: readTrimmedString('ES_PASSWORD'),
     caCertPath: readTrimmedString('ES_CA_CERT_PATH'),
-    index:      readTrimmedString('ES_INDEX') || 'carbon-monitor-events',
+    index: readTrimmedString('ES_INDEX') || 'carbon-monitor-events',
   },
   observability: {
-    otlpEndpoint:    readTrimmedString('OTEL_EXPORTER_OTLP_ENDPOINT'),
-    retentionDays:   Math.max(90, parseInt(readTrimmedString('EVENTS_RETENTION_DAYS') || '180', 10)),
-    logLevel:        readTrimmedString('LOG_LEVEL') || 'info',
+    otlpEndpoint: readTrimmedString('OTEL_EXPORTER_OTLP_ENDPOINT'),
+    retentionDays: Math.max(
+      90,
+      parseInt(readTrimmedString('EVENTS_RETENTION_DAYS') || '180', 10)
+    ),
+    logLevel: readTrimmedString('LOG_LEVEL') || 'info',
   },
 };
 

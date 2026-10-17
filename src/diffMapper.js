@@ -18,13 +18,13 @@
  */
 function parseDiffLinePositions(diff) {
   const fileMap = new Map();
-  
+
   const lines = diff.split('\n');
   let currentFile = null;
   let position = 0;
   let oldLine = 0;
   let newLine = 0;
-  
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const diffLine = i + 1; // 1-based line number within the diff string
@@ -42,12 +42,16 @@ function parseDiffLinePositions(diff) {
       }
       continue;
     }
-    
+
     // Skip file metadata lines — do NOT count these in position.
     // GitHub position counting begins at the @@ hunk header, not before it.
-    if (line.startsWith('---') || line.startsWith('+++') ||
-        line.startsWith('index ') || line.startsWith('new file') ||
-        line.startsWith('deleted file')) {
+    if (
+      line.startsWith('---') ||
+      line.startsWith('+++') ||
+      line.startsWith('index ') ||
+      line.startsWith('new file') ||
+      line.startsWith('deleted file')
+    ) {
       continue;
     }
 
@@ -62,16 +66,18 @@ function parseDiffLinePositions(diff) {
       position++;
       // Record this hunk's position within the diff string for secondary lookup.
       if (currentFile) {
-        fileMap.get(currentFile).hunkLines.push({ diffLine, newFileStart: newLine });
+        fileMap
+          .get(currentFile)
+          .hunkLines.push({ diffLine, newFileStart: newLine });
       }
       continue;
     }
-    
+
     if (!currentFile) continue;
-    
+
     // Increment position for this line (GitHub uses 1-based positions)
     position++;
-    
+
     // Context line (unchanged)
     if (line.startsWith(' ')) {
       fileMap.get(currentFile).lineMap.set(newLine, position);
@@ -88,7 +94,7 @@ function parseDiffLinePositions(diff) {
       oldLine++;
     }
   }
-  
+
   return fileMap;
 }
 
@@ -118,46 +124,54 @@ function mapFindingToDiffPosition(finding, diff, files, mdDiffStartLine = 0) {
   if (!finding.file || !finding.line) {
     return null;
   }
-  
+
   // Filter out bundle files that shouldn't have inline comments
   // Only exclude specific bundle files, not all files with these extensions
   const excludedFilenames = [
     'diff.patch',
     'pr.json',
     'files.json',
-    'PR_REVIEW_REQUEST.md'
+    'PR_REVIEW_REQUEST.md',
   ];
-  
+
   const fileName = finding.file.split('/').pop();
-  const fileExt = finding.file.substring(finding.file.lastIndexOf('.')).toLowerCase();
-  
+  const fileExt = finding.file
+    .substring(finding.file.lastIndexOf('.'))
+    .toLowerCase();
+
   // Check if it's a bundle file or has a patch/diff extension
-  if (excludedFilenames.includes(fileName) ||
-      fileExt === '.patch' ||
-      fileExt === '.diff') {
+  if (
+    excludedFilenames.includes(fileName) ||
+    fileExt === '.patch' ||
+    fileExt === '.diff'
+  ) {
     return null;
   }
-  
+
   // Check if file is in the changed files list
   // Handle both full paths and relative paths
-  let changedFile = files.find(f => f.filename === finding.file);
+  let changedFile = files.find((f) => f.filename === finding.file);
   let matchedFilename = finding.file;
-  
+
   if (!changedFile) {
     // Try matching by basename if full path doesn't match
     const findingBasename = finding.file.split('/').pop();
-    changedFile = files.find(f => f.filename.endsWith(finding.file) || f.filename.split('/').pop() === findingBasename);
+    changedFile = files.find(
+      (f) =>
+        f.filename.endsWith(finding.file) ||
+        f.filename.split('/').pop() === findingBasename
+    );
     if (changedFile) {
       matchedFilename = changedFile.filename;
     } else {
       return null;
     }
   }
-  
+
   // Parse diff to get line-to-position mappings
   const fileMap = parseDiffLinePositions(diff);
   const entry = fileMap.get(matchedFilename);
-  
+
   if (!entry) {
     return null;
   }
@@ -199,27 +213,30 @@ function mapFindingToDiffPosition(finding, diff, files, mdDiffStartLine = 0) {
 function splitFindings(findings, diff, files, mdDiffStartLine = 0) {
   const inlineFindings = [];
   const summaryFindings = [];
-  
+
   for (const finding of findings) {
-    const position = mapFindingToDiffPosition(finding, diff, files, mdDiffStartLine);
-    
+    const position = mapFindingToDiffPosition(
+      finding,
+      diff,
+      files,
+      mdDiffStartLine
+    );
+
     if (position) {
       inlineFindings.push({
         ...finding,
-        diffPosition: position
+        diffPosition: position,
       });
     } else {
       summaryFindings.push(finding);
     }
   }
-  
+
   return { inlineFindings, summaryFindings };
 }
 
 module.exports = {
   parseDiffLinePositions,
   mapFindingToDiffPosition,
-  splitFindings
+  splitFindings,
 };
-
-// Made with Bob

@@ -87,7 +87,10 @@ const result1 = parseReviewOutput(truncatedMidString);
 if (result1 && result1.findings.length === 1) {
   console.log('✅ PASS: Recovered 1 complete finding from truncated JSON');
 } else {
-  console.log('❌ FAIL: Expected 1 finding, got:', result1?.findings?.length || 'null');
+  console.log(
+    '❌ FAIL: Expected 1 finding, got:',
+    result1?.findings?.length || 'null'
+  );
 }
 console.log();
 
@@ -97,7 +100,10 @@ const result2 = parseReviewOutput(truncatedWithCompleteFindings);
 if (result2 && result2.findings.length === 2) {
   console.log('✅ PASS: Recovered 2 complete findings from truncated JSON');
 } else {
-  console.log('❌ FAIL: Expected 2 findings, got:', result2?.findings?.length || 'null');
+  console.log(
+    '❌ FAIL: Expected 2 findings, got:',
+    result2?.findings?.length || 'null'
+  );
 }
 console.log();
 
@@ -107,10 +113,11 @@ const result3 = parseReviewOutput(validJSON);
 if (result3 && result3.findings.length === 1) {
   console.log('✅ PASS: Parsed complete JSON correctly');
 } else {
-  console.log('❌ FAIL: Expected 1 finding, got:', result3?.findings?.length || 'null');
+  console.log(
+    '❌ FAIL: Expected 1 finding, got:',
+    result3?.findings?.length || 'null'
+  );
 }
 console.log();
 
 console.log('🏁 Tests complete');
-
-// Made with Bob

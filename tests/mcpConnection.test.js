@@ -71,22 +71,33 @@ async function main() {
   console.log('\n🔗 Carbon MCP connection tests\n');
 
   await test('decodeJwt reads the payload of a well-formed token', () => {
-    const claims = mcp.decodeJwt(makeJwt({ email: 'a@ibm.com', exp: 1234567890 }));
+    const claims = mcp.decodeJwt(
+      makeJwt({ email: 'a@example.com', exp: 1234567890 })
+    );
     assert(claims !== null, 'claims should decode');
-    assert(claims.email === 'a@ibm.com', `unexpected email: ${claims.email}`);
+    assert(
+      claims.email === 'a@example.com',
+      `unexpected email: ${claims.email}`
+    );
     assert(claims.exp === 1234567890, `unexpected exp: ${claims.exp}`);
   });
 
   await test('decodeJwt returns null for non-JWT input', () => {
     for (const bad of ['', 'opaque-token', 'a.b', 'a.b.c.d', null]) {
-      assert(mcp.decodeJwt(bad) === null, `expected null for ${JSON.stringify(bad)}`);
+      assert(
+        mcp.decodeJwt(bad) === null,
+        `expected null for ${JSON.stringify(bad)}`
+      );
     }
   });
 
   await test('secondsUntilExpiry is positive for a future token', () => {
     const future = Math.floor(Date.now() / 1000) + 3600;
     const remaining = mcp.secondsUntilExpiry(makeJwt({ exp: future }));
-    assert(remaining > 3500 && remaining <= 3600, `unexpected remaining: ${remaining}`);
+    assert(
+      remaining > 3500 && remaining <= 3600,
+      `unexpected remaining: ${remaining}`
+    );
   });
 
   await test('secondsUntilExpiry is negative for a lapsed token', () => {
@@ -96,21 +107,41 @@ async function main() {
   });
 
   await test('secondsUntilExpiry is null without an exp claim', () => {
-    assert(mcp.secondsUntilExpiry(makeJwt({ email: 'a@ibm.com' })) === null, 'expected null');
-    assert(mcp.secondsUntilExpiry('opaque-token') === null, 'expected null for a non-JWT');
+    assert(
+      mcp.secondsUntilExpiry(makeJwt({ email: 'a@example.com' })) === null,
+      'expected null'
+    );
+    assert(
+      mcp.secondsUntilExpiry('opaque-token') === null,
+      'expected null for a non-JWT'
+    );
   });
 
   await test('writeBobMcpHeaders creates the config when none exists', async () => {
     fs.rmSync(configPath, { force: true });
-    await mcp.writeBobMcpHeaders({ token: 'token-one', sessionId: 'session-one' });
+    await mcp.writeBobMcpHeaders({
+      token: 'token-one',
+      sessionId: 'session-one',
+    });
 
     const entry = readConfig().mcpServers['carbon-mcp'];
     assert(entry, 'the carbon-mcp entry should exist');
-    assert(entry.headers.Authorization === 'Bearer token-one', 'Authorization should be set');
-    assert(entry.headers['X-MCP-Session'] === 'session-one', 'session header should be set');
-    assert(entry.type === 'streamable-http', 'transport type should default correctly');
-    assert(Array.isArray(entry.alwaysAllow) && entry.alwaysAllow.length > 0,
-      'the agent must be able to call tools without an interactive prompt');
+    assert(
+      entry.headers.Authorization === 'Bearer token-one',
+      'Authorization should be set'
+    );
+    assert(
+      entry.headers['X-MCP-Session'] === 'session-one',
+      'session header should be set'
+    );
+    assert(
+      entry.type === 'streamable-http',
+      'transport type should default correctly'
+    );
+    assert(
+      Array.isArray(entry.alwaysAllow) && entry.alwaysAllow.length > 0,
+      'the agent must be able to call tools without an interactive prompt'
+    );
   });
 
   await test('preserves operator-tuned fields across a token write', async () => {
@@ -123,19 +154,28 @@ async function main() {
     await mcp.writeBobMcpHeaders({ token: 'token-two' });
 
     const after = readConfig();
-    assert(after.mcpServers['carbon-mcp'].timeout === 999000, 'a custom timeout must survive');
+    assert(
+      after.mcpServers['carbon-mcp'].timeout === 999000,
+      'a custom timeout must survive'
+    );
     assert(
       after.mcpServers['carbon-mcp'].alwaysAllow.length === 1,
       'a customised allow-list must survive'
     );
-    assert(after.mcpServers['other-server'], 'unrelated servers must be left alone');
+    assert(
+      after.mcpServers['other-server'],
+      'unrelated servers must be left alone'
+    );
   });
 
   await test('a token-only write does not erase an existing session id', async () => {
     await mcp.writeBobMcpHeaders({ token: 'token-three' });
 
     const entry = readConfig().mcpServers['carbon-mcp'];
-    assert(entry.headers.Authorization === 'Bearer token-three', 'token should update');
+    assert(
+      entry.headers.Authorization === 'Bearer token-three',
+      'token should update'
+    );
     assert(
       entry.headers['X-MCP-Session'] === 'session-one',
       'the session id is the durable credential and must not be dropped'
@@ -154,28 +194,45 @@ async function main() {
 
   await test('writes the config file 0600', () => {
     const mode = fs.statSync(configPath).mode & 0o777;
-    assert(mode === 0o600, `expected 0600, got ${mode.toString(8)} — it holds a bearer token`);
+    assert(
+      mode === 0o600,
+      `expected 0600, got ${mode.toString(8)} — it holds a bearer token`
+    );
   });
 
   await test('getStatus reports expiry and never leaks the token or the operator email', async () => {
     const future = Math.floor(Date.now() / 1000) + 1800;
-    await mcp.writeBobMcpHeaders({ token: makeJwt({ exp: future, email: 'op@ibm.com' }) });
+    await mcp.writeBobMcpHeaders({
+      token: makeJwt({ exp: future, email: 'op@example.com' }),
+    });
 
     const status = await mcp.getStatus();
     assert(status.configured === true, 'should report configured');
     assert(status.hasToken === true, 'should report a token is present');
     // Reports THAT an identity is present, never WHO — the email must not leave
     // the server (asserted against the serialized payload below).
-    assert(status.authenticated === true, 'should report an authenticated identity');
+    assert(
+      status.authenticated === true,
+      'should report an authenticated identity'
+    );
     assert(
       status.expiresInSeconds > 1700 && status.expiresInSeconds <= 1800,
       `unexpected expiry: ${status.expiresInSeconds}`
     );
 
     const serialized = JSON.stringify(status);
-    assert(!serialized.includes('Bearer '), 'status must not include the Authorization header');
-    assert(!serialized.includes('session-one'), 'status must not include the session id');
-    assert(!serialized.includes('op@ibm.com'), 'status must not expose the operator email address');
+    assert(
+      !serialized.includes('Bearer '),
+      'status must not include the Authorization header'
+    );
+    assert(
+      !serialized.includes('session-one'),
+      'status must not include the session id'
+    );
+    assert(
+      !serialized.includes('op@example.com'),
+      'status must not expose the operator email address'
+    );
   });
 
   // Restore the environment and remove the scratch directory.

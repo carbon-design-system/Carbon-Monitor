@@ -111,7 +111,9 @@ export const api = {
   triggerReview: (prNumbers) =>
     request('/api/review/trigger', {
       method: 'POST',
-      ...(prNumbers && prNumbers.length ? { body: JSON.stringify({ prNumbers }) } : {}),
+      ...(prNumbers && prNumbers.length
+        ? { body: JSON.stringify({ prNumbers }) }
+        : {}),
     }),
 
   reviewStatus: () => request('/api/review/status'),
@@ -147,7 +149,7 @@ export const api = {
   /**
    * Save a partial schedule update.
    *
-   * Body: { enabled?: boolean, timeEST?: string }
+   * Body: { enabled?: boolean, timeLocal?: string }
    * The server validates all fields and returns 400 with a descriptive message
    * on invalid input.
    */

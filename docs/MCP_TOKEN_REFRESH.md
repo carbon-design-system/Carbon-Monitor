@@ -96,6 +96,7 @@ Then inside Bob:
 ```
 
 Expected output:
+
 ```
 carbon-mcp - Ready
 ```

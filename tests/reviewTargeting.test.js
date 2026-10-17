@@ -97,7 +97,9 @@ function assertList(actual, expected, label) {
  * make TARGET_PR non-null and quietly invert the precedence tests — dotenv never
  * overrides a key that is already present, even when its value is blank.
  */
-const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'carbon-monitor-targeting-'));
+const sandbox = fs.mkdtempSync(
+  path.join(os.tmpdir(), 'carbon-monitor-targeting-')
+);
 const originalHome = process.env.HOME;
 process.env.HOME = sandbox;
 process.env.MCP_STATE_PATH = path.join(sandbox, 'state.json');
@@ -166,7 +168,10 @@ function makeRes() {
 async function callApi(options) {
   const res = makeRes();
   await handleRequest(makeReq(options), res);
-  return { status: res.statusCode, json: res.body ? JSON.parse(res.body) : null };
+  return {
+    status: res.statusCode,
+    json: res.body ? JSON.parse(res.body) : null,
+  };
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -180,7 +185,11 @@ async function main() {
     for (const input of [undefined, null, '', '   ', []]) {
       const result = parsePrNumbers(input);
       assert(result.ok, `${JSON.stringify(input)} should be accepted`);
-      assertEqual(result.prNumbers, null, `${JSON.stringify(input)} should select auto mode`);
+      assertEqual(
+        result.prNumbers,
+        null,
+        `${JSON.stringify(input)} should select auto mode`
+      );
     }
   });
 
@@ -201,7 +210,11 @@ async function main() {
   await test('a single PR, as a string or a one-element array', () => {
     assertList(parsePrNumbers('22971').prNumbers, [22971], 'string form');
     assertList(parsePrNumbers([22971]).prNumbers, [22971], 'array form');
-    assertList(parsePrNumbers(['22971']).prNumbers, [22971], 'array of strings');
+    assertList(
+      parsePrNumbers(['22971']).prNumbers,
+      [22971],
+      'array of strings'
+    );
   });
 
   // ── parsePrNumbers: rejected entries ─────────────────────────────────────
@@ -210,13 +223,19 @@ async function main() {
     for (const input of [[0], '0', '22971,0']) {
       const result = parsePrNumbers(input);
       assert(!result.ok, `${JSON.stringify(input)} should be rejected`);
-      assert(result.error.includes('0'), `message should name the value: ${result.error}`);
+      assert(
+        result.error.includes('0'),
+        `message should name the value: ${result.error}`
+      );
     }
   });
 
   await test('negative numbers are rejected', () => {
     for (const input of [[-5], '-5', [22971, -1]]) {
-      assert(!parsePrNumbers(input).ok, `${JSON.stringify(input)} should be rejected`);
+      assert(
+        !parsePrNumbers(input).ok,
+        `${JSON.stringify(input)} should be rejected`
+      );
     }
   });
 
@@ -230,8 +249,14 @@ async function main() {
   await test('non-numeric text is rejected and the message names it', () => {
     const result = parsePrNumbers('abc');
     assert(!result.ok, '"abc" should be rejected');
-    assert(result.error.includes('abc'), `message should name the value: ${result.error}`);
-    assert(!parsePrNumbers(['22971', 'abc']).ok, 'one bad entry rejects the list');
+    assert(
+      result.error.includes('abc'),
+      `message should name the value: ${result.error}`
+    );
+    assert(
+      !parsePrNumbers(['22971', 'abc']).ok,
+      'one bad entry rejects the list'
+    );
     // Number() would read these as 16, 1000 and 5 — a typo must never resolve to
     // some other repository's PR.
     for (const sneaky of ['0x10', '1e3', '+5', 'NaN', 'Infinity']) {
@@ -240,7 +265,15 @@ async function main() {
   });
 
   await test('null, booleans and objects inside the list are rejected', () => {
-    for (const entry of [null, undefined, true, false, {}, [], { number: 22971 }]) {
+    for (const entry of [
+      null,
+      undefined,
+      true,
+      false,
+      {},
+      [],
+      { number: 22971 },
+    ]) {
       const result = parsePrNumbers([entry]);
       assert(!result.ok, `${JSON.stringify(entry)} should be rejected`);
       assert(
@@ -265,7 +298,10 @@ async function main() {
     for (const input of ['22971,', ',22971', '22971,,22972', ['']]) {
       const result = parsePrNumbers(input);
       assert(!result.ok, `${JSON.stringify(input)} should be rejected`);
-      assert(result.error.includes('empty'), `message should say so: ${result.error}`);
+      assert(
+        result.error.includes('empty'),
+        `message should say so: ${result.error}`
+      );
     }
   });
 
@@ -285,7 +321,10 @@ async function main() {
   });
 
   await test('maxPRs + 1 is rejected, naming both the limit and the count', () => {
-    const list = Array.from({ length: MAX_PRS_PER_RUN + 1 }, (_, i) => 22971 + i);
+    const list = Array.from(
+      { length: MAX_PRS_PER_RUN + 1 },
+      (_, i) => 22971 + i
+    );
     const result = parsePrNumbers(list);
     assert(!result.ok, 'over the limit should be rejected');
     assert(
@@ -302,13 +341,22 @@ async function main() {
     assert(parsePrNumbers([1, 2, 3], 3).ok, 'three under a limit of three');
     assert(!parsePrNumbers([1, 2, 3, 4], 3).ok, 'four over a limit of three');
     // Deduplication happens first, so a repeated PR does not consume budget.
-    assert(parsePrNumbers([1, 1, 2, 2, 3], 3).ok, 'duplicates must not count toward the limit');
+    assert(
+      parsePrNumbers([1, 1, 2, 2, 3], 3).ok,
+      'duplicates must not count toward the limit'
+    );
   });
 
   await test('the default limit is MAX_PRS_PER_RUN', () => {
     const overBy = Array.from({ length: MAX_PRS_PER_RUN + 1 }, (_, i) => i + 1);
-    assert(!parsePrNumbers(overBy).ok, 'the default must be the configured maximum');
-    assert(parsePrNumbers(overBy, MAX_PRS_PER_RUN + 1).ok, 'raising the limit admits it');
+    assert(
+      !parsePrNumbers(overBy).ok,
+      'the default must be the configured maximum'
+    );
+    assert(
+      parsePrNumbers(overBy, MAX_PRS_PER_RUN + 1).ok,
+      'raising the limit admits it'
+    );
   });
 
   // ── resolveReviewTargets: precedence ─────────────────────────────────────
@@ -319,7 +367,10 @@ async function main() {
     assertEqual(target.mode, 'explicit', 'mode');
     assertEqual(target.source, 'argument', 'source');
     assertList(target.prNumbers, [22971, 22972], 'prNumbers');
-    assert(!target.prNumbers.includes(4242), 'the pinned env target must not leak in');
+    assert(
+      !target.prNumbers.includes(4242),
+      'the pinned env target must not leak in'
+    );
   });
 
   await test('TARGET_PR is used when the caller names nothing', () => {
@@ -348,7 +399,10 @@ async function main() {
   await test('resolveReviewTargets reports an invalid list instead of throwing', () => {
     const target = resolveReviewTargets({ prNumbers: 'abc' }, 4242);
     assert(target.ok === false, 'should not be ok');
-    assert(target.error.includes('abc'), `message should name the value: ${target.error}`);
+    assert(
+      target.error.includes('abc'),
+      `message should name the value: ${target.error}`
+    );
     assertEqual(target.prNumbers, null, 'no numbers on a rejection');
   });
 
@@ -371,9 +425,17 @@ async function main() {
 
     const result = JSON.parse(out.trim());
     assertList(result.noArgument.prNumbers, [4242], 'env var target');
-    assertEqual(result.noArgument.source, 'cli-env', 'source without an argument');
+    assertEqual(
+      result.noArgument.source,
+      'cli-env',
+      'source without an argument'
+    );
     assertList(result.withArgument.prNumbers, [22971], 'argument wins');
-    assertEqual(result.withArgument.source, 'argument', 'source with an argument');
+    assertEqual(
+      result.withArgument.source,
+      'argument',
+      'source with an argument'
+    );
   });
 
   // ── The route enforces the same rules, and survives them ─────────────────
@@ -388,8 +450,14 @@ async function main() {
       body: { prNumbers: 'abc' },
     }).then(({ status, json }) => {
       assertEqual(status, 400, 'status');
-      assert(json.error.includes('abc'), `message should name the value: ${json.error}`);
-      assert(process.exitCode === undefined || process.exitCode === 0, 'process must be unharmed');
+      assert(
+        json.error.includes('abc'),
+        `message should name the value: ${json.error}`
+      );
+      assert(
+        process.exitCode === undefined || process.exitCode === 0,
+        'process must be unharmed'
+      );
     });
   });
 
@@ -400,11 +468,17 @@ async function main() {
       body: { prNumbers: { first: 22971 } },
     });
     assertEqual(status, 400, 'status');
-    assert(json.error.includes('array'), `message should say what is accepted: ${json.error}`);
+    assert(
+      json.error.includes('array'),
+      `message should say what is accepted: ${json.error}`
+    );
   });
 
   await test('POST /api/review/trigger enforces the same limit as parsePrNumbers', async () => {
-    const list = Array.from({ length: MAX_PRS_PER_RUN + 1 }, (_, i) => 22971 + i);
+    const list = Array.from(
+      { length: MAX_PRS_PER_RUN + 1 },
+      (_, i) => 22971 + i
+    );
     const { status, json } = await callApi({
       method: 'POST',
       url: '/api/review/trigger',
@@ -426,14 +500,20 @@ async function main() {
         body: raw,
       });
       assertEqual(status, 400, `status for body ${raw}`);
-      assert(json.error.includes('JSON object'), `message should say so: ${json.error}`);
+      assert(
+        json.error.includes('JSON object'),
+        `message should say so: ${json.error}`
+      );
     }
   });
 
   // ── Disconnect ───────────────────────────────────────────────────────────
 
   await test('disconnect strips both credential headers from mcp.json', async () => {
-    await mcp.writeBobMcpHeaders({ token: 'token-one', sessionId: 'session-one' });
+    await mcp.writeBobMcpHeaders({
+      token: 'token-one',
+      sessionId: 'session-one',
+    });
 
     const result = await mcp.disconnect();
     assertEqual(result.disconnected, true, 'disconnected');
@@ -442,7 +522,10 @@ async function main() {
 
     const headers = readConfig().mcpServers['carbon-mcp'].headers;
     assert(!headers.Authorization, 'the bearer must be gone');
-    assert(!headers['X-MCP-Session'], 'the session id must be gone — it mints new bearers');
+    assert(
+      !headers['X-MCP-Session'],
+      'the session id must be gone — it mints new bearers'
+    );
   });
 
   await test('disconnect preserves operator-tuned fields and unrelated headers', async () => {
@@ -461,11 +544,26 @@ async function main() {
 
     const after = readConfig();
     const entry = after.mcpServers['carbon-mcp'];
-    assertEqual(entry.timeout, 999000, 'a custom timeout must survive a disconnect');
-    assertEqual(entry.alwaysAllow.length, 1, 'a customised allow-list must survive');
-    assertEqual(entry.headers['X-Operator-Note'], 'keep me', 'unrelated headers must survive');
+    assertEqual(
+      entry.timeout,
+      999000,
+      'a custom timeout must survive a disconnect'
+    );
+    assertEqual(
+      entry.alwaysAllow.length,
+      1,
+      'a customised allow-list must survive'
+    );
+    assertEqual(
+      entry.headers['X-Operator-Note'],
+      'keep me',
+      'unrelated headers must survive'
+    );
     assert(!entry.headers.Authorization, 'the bearer must be gone');
-    assert(after.mcpServers['other-server'], 'unrelated servers must be left alone');
+    assert(
+      after.mcpServers['other-server'],
+      'unrelated servers must be left alone'
+    );
   });
 
   await test('disconnect clears the stored refresh token', async () => {
@@ -486,7 +584,10 @@ async function main() {
     assertEqual(result.hadRefreshToken, true, 'hadRefreshToken');
 
     const state = readStateFile();
-    assert(!state.refreshToken, 'the refresh token must not survive a disconnect');
+    assert(
+      !state.refreshToken,
+      'the refresh token must not survive a disconnect'
+    );
     assert(!state.sessionId, 'the session id must not survive either');
     assertEqual(state.mode, 'none', 'mode');
     assert(
@@ -500,7 +601,11 @@ async function main() {
     assertEqual(status.hasToken, false, 'hasToken');
     assertEqual(status.hasSession, false, 'hasSession');
     assertEqual(status.canAutoRefresh, false, 'canAutoRefresh');
-    assertEqual(status.needsReauth, false, 'a deliberate sign-out is not a failure');
+    assertEqual(
+      status.needsReauth,
+      false,
+      'a deliberate sign-out is not a failure'
+    );
     assertEqual(status.mode, 'none', 'mode');
     assertEqual(status.expiresInSeconds, null, 'nothing left to expire');
   });
@@ -514,7 +619,11 @@ async function main() {
     assertEqual(second.hadRefreshToken, false, 'nothing was left to remove');
 
     const probe = await mcp.probe();
-    assertEqual(probe.reason, 'not-configured', 'no credentials means nothing to probe');
+    assertEqual(
+      probe.reason,
+      'not-configured',
+      'no credentials means nothing to probe'
+    );
   });
 
   await test('disconnect removes a hand-edited lowercase authorization header', async () => {
@@ -536,7 +645,9 @@ async function main() {
   });
 
   await test('disconnect on a never-connected install is not an error', async () => {
-    const fresh = fs.mkdtempSync(path.join(os.tmpdir(), 'carbon-monitor-fresh-'));
+    const fresh = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'carbon-monitor-fresh-')
+    );
     const previousHome = process.env.HOME;
     const previousState = process.env.MCP_STATE_PATH;
     process.env.HOME = fresh;
@@ -546,8 +657,10 @@ async function main() {
       const result = await mcp.disconnect();
       assertEqual(result.disconnected, true, 'disconnected');
       assertEqual(result.hadToken, false, 'nothing was configured');
-      assert(!fs.existsSync(path.join(fresh, '.bob', 'settings', 'mcp.json')),
-        'a disconnect must not conjure a config file that never existed');
+      assert(
+        !fs.existsSync(path.join(fresh, '.bob', 'settings', 'mcp.json')),
+        'a disconnect must not conjure a config file that never existed'
+      );
     } finally {
       process.env.HOME = previousHome;
       process.env.MCP_STATE_PATH = previousState;
@@ -556,19 +669,28 @@ async function main() {
   });
 
   await test('POST /api/mcp/disconnect is routed and reports success', async () => {
-    await mcp.writeBobMcpHeaders({ token: 'token-four', sessionId: 'session-four' });
+    await mcp.writeBobMcpHeaders({
+      token: 'token-four',
+      sessionId: 'session-four',
+    });
 
     const first = await callApi({ method: 'POST', url: '/api/mcp/disconnect' });
     assertEqual(first.status, 200, 'status');
     assertEqual(first.json.success, true, 'success');
     assertEqual(first.json.disconnected, true, 'disconnected');
 
-    const second = await callApi({ method: 'POST', url: '/api/mcp/disconnect' });
+    const second = await callApi({
+      method: 'POST',
+      url: '/api/mcp/disconnect',
+    });
     assertEqual(second.status, 200, 'a second call is not an error');
     assertEqual(second.json.disconnected, true, 'disconnected');
 
     const headers = readConfig().mcpServers['carbon-mcp'].headers;
-    assert(!headers.Authorization && !headers['X-MCP-Session'], 'credentials must be gone');
+    assert(
+      !headers.Authorization && !headers['X-MCP-Session'],
+      'credentials must be gone'
+    );
   });
 
   // ── Clearing the review log ──────────────────────────────────────────────
@@ -579,17 +701,26 @@ async function main() {
     reviewLog.append('bundle built');
     reviewLog.append('agent thinking');
 
-    const { status, json } = await callApi({ method: 'POST', url: '/api/review/logs/clear' });
+    const { status, json } = await callApi({
+      method: 'POST',
+      url: '/api/review/logs/clear',
+    });
     assertEqual(status, 200, 'status');
     assertEqual(json.success, true, 'success');
     assertEqual(json.cleared, 3, 'cleared must name how many lines went away');
 
-    const after = await callApi({ method: 'GET', url: '/api/review/logs?since=0' });
+    const after = await callApi({
+      method: 'GET',
+      url: '/api/review/logs?since=0',
+    });
     assertEqual(after.json.lines.length, 0, 'nothing may survive the clear');
   });
 
   await test('clearing an already-empty buffer reports zero rather than failing', async () => {
-    const { status, json } = await callApi({ method: 'POST', url: '/api/review/logs/clear' });
+    const { status, json } = await callApi({
+      method: 'POST',
+      url: '/api/review/logs/clear',
+    });
     assertEqual(status, 200, 'a second clear is not an error');
     assertEqual(json.cleared, 0, 'cleared');
   });
@@ -601,14 +732,20 @@ async function main() {
     reviewLog.clear();
     reviewLog.append('before the clear');
 
-    const first = await callApi({ method: 'GET', url: '/api/review/logs?since=0' });
+    const first = await callApi({
+      method: 'GET',
+      url: '/api/review/logs?since=0',
+    });
     const cursor = first.json.nextSince;
     assert(cursor > 0, 'the client should hold a cursor');
 
     await callApi({ method: 'POST', url: '/api/review/logs/clear' });
     reviewLog.append('after the clear');
 
-    const second = await callApi({ method: 'GET', url: `/api/review/logs?since=${cursor}` });
+    const second = await callApi({
+      method: 'GET',
+      url: `/api/review/logs?since=${cursor}`,
+    });
     assertEqual(second.json.lines.length, 1, 'exactly the one new line');
     assertEqual(second.json.lines[0].text, 'after the clear', 'text');
     assert(
@@ -622,15 +759,29 @@ async function main() {
     reviewLog.append('line one');
     reviewLog.append('line two');
 
-    const caughtUp = await callApi({ method: 'GET', url: '/api/review/logs?since=0' });
+    const caughtUp = await callApi({
+      method: 'GET',
+      url: '/api/review/logs?since=0',
+    });
     const cursor = caughtUp.json.nextSince;
 
     await callApi({ method: 'POST', url: '/api/review/logs/clear' });
 
-    const after = await callApi({ method: 'GET', url: `/api/review/logs?since=${cursor}` });
+    const after = await callApi({
+      method: 'GET',
+      url: `/api/review/logs?since=${cursor}`,
+    });
     assertEqual(after.json.lines.length, 0, 'nothing new to send');
-    assertEqual(after.json.dropped, false, 'the client had already seen everything discarded');
-    assertEqual(after.json.nextSince, cursor, 'an empty read must not move the cursor');
+    assertEqual(
+      after.json.dropped,
+      false,
+      'the client had already seen everything discarded'
+    );
+    assertEqual(
+      after.json.nextSince,
+      cursor,
+      'an empty read must not move the cursor'
+    );
   });
 
   await test('a client that was behind IS told output was dropped', async () => {
@@ -638,16 +789,30 @@ async function main() {
     for (const text of ['one', 'two', 'three', 'four']) reviewLog.append(text);
 
     // Reads a single line, leaving this client three behind the buffer.
-    const behind = await callApi({ method: 'GET', url: '/api/review/logs?since=0&limit=1' });
+    const behind = await callApi({
+      method: 'GET',
+      url: '/api/review/logs?since=0&limit=1',
+    });
     assertEqual(behind.json.lines.length, 1, 'one line at a time');
     const cursor = behind.json.nextSince;
 
     await callApi({ method: 'POST', url: '/api/review/logs/clear' });
     reviewLog.append('five');
 
-    const after = await callApi({ method: 'GET', url: `/api/review/logs?since=${cursor}` });
-    assertEqual(after.json.dropped, true, 'lines it never saw were discarded — say so');
-    assertList(after.json.lines.map((l) => l.text), ['five'], 'only post-clear output remains');
+    const after = await callApi({
+      method: 'GET',
+      url: `/api/review/logs?since=${cursor}`,
+    });
+    assertEqual(
+      after.json.dropped,
+      true,
+      'lines it never saw were discarded — say so'
+    );
+    assertList(
+      after.json.lines.map((l) => l.text),
+      ['five'],
+      'only post-clear output remains'
+    );
   });
 
   await test('clearing mid-run keeps capture active and new output arriving', async () => {
@@ -661,16 +826,29 @@ async function main() {
     try {
       process.stdout.write('output from before the clear\n');
 
-      const { status, json } = await callApi({ method: 'POST', url: '/api/review/logs/clear' });
+      const { status, json } = await callApi({
+        method: 'POST',
+        url: '/api/review/logs/clear',
+      });
       assertEqual(status, 200, 'clearing during a run is allowed');
-      assert(json.cleared >= 1, `something should have been discarded: ${json.cleared}`);
+      assert(
+        json.cleared >= 1,
+        `something should have been discarded: ${json.cleared}`
+      );
 
       process.stdout.write('output from after the clear\n');
 
       const state = reviewLog.read(0);
-      assertEqual(state.capturing, true, 'a clear must not unhook the stream capture');
+      assertEqual(
+        state.capturing,
+        true,
+        'a clear must not unhook the stream capture'
+      );
       const texts = state.lines.map((l) => l.text);
-      assert(texts.includes('output from after the clear'), 'new output must keep arriving');
+      assert(
+        texts.includes('output from after the clear'),
+        'new output must keep arriving'
+      );
       assert(
         !texts.some((t) => t.includes('output from before the clear')),
         'pre-clear output must be gone'
@@ -681,12 +859,19 @@ async function main() {
       reviewLog.stop();
     }
 
-    assertEqual(reviewLog.read(0).capturing, false, 'capture must stop cleanly afterwards');
+    assertEqual(
+      reviewLog.read(0).capturing,
+      false,
+      'capture must stop cleanly afterwards'
+    );
     reviewLog.clear();
   });
 
   await test('the clear endpoint is POST-only — GET is not routed', async () => {
-    const { status } = await callApi({ method: 'GET', url: '/api/review/logs/clear' });
+    const { status } = await callApi({
+      method: 'GET',
+      url: '/api/review/logs/clear',
+    });
     assertEqual(status, 404, 'a GET must not empty the log');
   });
 

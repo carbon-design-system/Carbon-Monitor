@@ -87,7 +87,11 @@ function McpConnectionPanel({ status, onChanged, inPanel = false, resetKey }) {
     withBusy('test', async () => {
       const result = await api.mcpTest();
       if (result.authorized) {
-        report('success', 'Connection healthy', 'Carbon MCP accepted the credentials.');
+        report(
+          'success',
+          'Connection healthy',
+          'Carbon MCP accepted the credentials.'
+        );
       } else if (result.reachable) {
         report(
           'error',
@@ -136,7 +140,11 @@ function McpConnectionPanel({ status, onChanged, inPanel = false, resetKey }) {
       });
       setToken('');
       setSessionId('');
-      report('success', 'Credentials saved', 'Bob’s MCP configuration was updated.');
+      report(
+        'success',
+        'Credentials saved',
+        'Bob’s MCP configuration was updated.'
+      );
     });
   }
 
@@ -148,7 +156,9 @@ function McpConnectionPanel({ status, onChanged, inPanel = false, resetKey }) {
 
   return (
     <Shell className={inPanel ? 'cm-settings-panel-body' : undefined}>
-      {!inPanel && <h2 className="cm-section-heading">Carbon MCP connection</h2>}
+      {!inPanel && (
+        <h2 className="cm-section-heading">Carbon MCP connection</h2>
+      )}
 
       {message && (
         <InlineNotification
@@ -211,10 +221,18 @@ function McpConnectionPanel({ status, onChanged, inPanel = false, resetKey }) {
       </dl>
 
       <div className="cm-button-row">
-        <Button onClick={connect} disabled={busy !== null} className="cm-mcp-primary-action">
+        <Button
+          onClick={connect}
+          disabled={busy !== null}
+          className="cm-mcp-primary-action"
+        >
           {busy === 'connect' ? 'Opening…' : 'Sign in with IBMid'}
         </Button>
-        <Button kind="secondary" onClick={testConnection} disabled={busy !== null}>
+        <Button
+          kind="secondary"
+          onClick={testConnection}
+          disabled={busy !== null}
+        >
           {busy === 'test' ? 'Testing…' : 'Test connection'}
         </Button>
         <Button
@@ -238,7 +256,11 @@ function McpConnectionPanel({ status, onChanged, inPanel = false, resetKey }) {
 
         {connected && confirmingSignOut && (
           <>
-            <Button kind="danger--ghost" onClick={signOutOfMcp} disabled={busy !== null}>
+            <Button
+              kind="danger--ghost"
+              onClick={signOutOfMcp}
+              disabled={busy !== null}
+            >
               {busy === 'disconnect' ? 'Signing out…' : 'Confirm sign out'}
             </Button>
             <Button
@@ -276,10 +298,13 @@ function McpConnectionPanel({ status, onChanged, inPanel = false, resetKey }) {
       <div style={{ marginTop: '1.5rem' }}>
         <Accordion>
           <AccordionItem title="Enter credentials manually">
-            <p className="cm-status-tile__hint" style={{ marginBottom: '1rem' }}>
-              Use this only when IBMid sign-in is unavailable. The session id is the
-              durable value — Carbon MCP can mint a fresh token from it even after the
-              bearer token has expired.
+            <p
+              className="cm-status-tile__hint"
+              style={{ marginBottom: '1rem' }}
+            >
+              Use this only when IBMid sign-in is unavailable. The session id is
+              the durable value — Carbon MCP can mint a fresh token from it even
+              after the bearer token has expired.
             </p>
             <Form onSubmit={submitManual}>
               <div className="cm-field-stack">

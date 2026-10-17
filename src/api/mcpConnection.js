@@ -49,7 +49,12 @@ const SERVER_NAME = 'carbon-mcp';
 // Tools the agent is permitted to call without an interactive prompt. A headless
 // `bob run` has no way to answer a permission prompt, so anything omitted here
 // would hang the review until the 10-minute timeout fires.
-const ALWAYS_ALLOW = ['labs_search', 'get_charts', 'code_search', 'docs_search'];
+const ALWAYS_ALLOW = [
+  'labs_search',
+  'get_charts',
+  'code_search',
+  'docs_search',
+];
 
 // Renew this far ahead of expiry. Carbon MCP's own REFRESH_MARGIN_SEC default is
 // 300s; going wider means a single failed attempt still leaves room to retry
@@ -87,17 +92,30 @@ function getBobMcpConfigPath() {
 function getStatePath() {
   if (process.env.MCP_STATE_PATH) return process.env.MCP_STATE_PATH;
 
-  const newPath = path.join(os.homedir(), '.config', 'carbon-monitor', 'mcp-state.json');
-  const oldPath = path.join(os.homedir(), '.bob', 'carbon-monitor-mcp-state.json');
+  const newPath = path.join(
+    os.homedir(),
+    '.config',
+    'carbon-monitor',
+    'mcp-state.json'
+  );
+  const oldPath = path.join(
+    os.homedir(),
+    '.bob',
+    'carbon-monitor-mcp-state.json'
+  );
 
   const fssync = require('fs');
   if (fssync.existsSync(oldPath) && !fssync.existsSync(newPath)) {
     try {
       fssync.mkdirSync(path.dirname(newPath), { recursive: true });
       fssync.renameSync(oldPath, newPath);
-      console.warn('[mcpConnection] migrated state file to ~/.config/carbon-monitor/mcp-state.json');
+      console.warn(
+        '[mcpConnection] migrated state file to ~/.config/carbon-monitor/mcp-state.json'
+      );
     } catch (e) {
-      console.warn(`[mcpConnection] migration skipped, using legacy path: ${e.message}`);
+      console.warn(
+        `[mcpConnection] migration skipped, using legacy path: ${e.message}`
+      );
       return oldPath;
     }
   }
@@ -193,7 +211,8 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15_000) {
 // never the broadly-readable telemetry index.
 
 /** Dedicated index holding the single connection-state document. */
-const MCP_STATE_INDEX = process.env.MCP_STATE_INDEX || 'carbon-monitor-mcp-state';
+const MCP_STATE_INDEX =
+  process.env.MCP_STATE_INDEX || 'carbon-monitor-mcp-state';
 
 /** Fixed id of that one document — one Carbon MCP connection per deployment. */
 const MCP_STATE_DOC_ID = process.env.MCP_STATE_DOC_ID || 'connection';
@@ -235,7 +254,9 @@ async function readState() {
  * @param {Object} state
  */
 async function writeState(state) {
-  return usingEsStateBackend() ? writeStateToEs(state) : writeStateToFile(state);
+  return usingEsStateBackend()
+    ? writeStateToEs(state)
+    : writeStateToFile(state);
 }
 
 // ── File backend ─────────────────────────────────────────────────────────────
@@ -372,11 +393,10 @@ async function writeBobMcpHeaders({ token, sessionId }) {
   config.mcpServers[SERVER_NAME] = { ...existing, headers, disabled: false };
 
   await fs.mkdir(getBobConfigDir(), { recursive: true });
-  await fs.writeFile(
-    getBobMcpConfigPath(),
-    JSON.stringify(config, null, 2),
-    { encoding: 'utf8', mode: 0o600 }
-  );
+  await fs.writeFile(getBobMcpConfigPath(), JSON.stringify(config, null, 2), {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
 
   return {
     configPath: getBobMcpConfigPath(),
@@ -410,7 +430,10 @@ async function discover() {
     );
     if (res.ok) {
       const prm = await res.json();
-      if (Array.isArray(prm.authorization_servers) && prm.authorization_servers[0]) {
+      if (
+        Array.isArray(prm.authorization_servers) &&
+        prm.authorization_servers[0]
+      ) {
         authServer = prm.authorization_servers[0];
       }
     }
@@ -683,7 +706,11 @@ async function refreshIfNeeded(force = false) {
   // refreshes that one server-side from the session id, so there is nothing to do.
   const state = await readState();
   if (!state.refreshToken) {
-    return { skipped: true, reason: 'no-refresh-token', expiresInSeconds: remaining };
+    return {
+      skipped: true,
+      reason: 'no-refresh-token',
+      expiresInSeconds: remaining,
+    };
   }
 
   if (!force && remaining !== null && remaining > REFRESH_MARGIN_SEC) {
@@ -811,11 +838,10 @@ async function disconnect() {
     config.mcpServers[SERVER_NAME] = { ...entry, headers };
 
     await fs.mkdir(getBobConfigDir(), { recursive: true });
-    await fs.writeFile(
-      getBobMcpConfigPath(),
-      JSON.stringify(config, null, 2),
-      { encoding: 'utf8', mode: 0o600 }
-    );
+    await fs.writeFile(getBobMcpConfigPath(), JSON.stringify(config, null, 2), {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
   }
 
   const previous = await readState();
@@ -888,7 +914,7 @@ async function probe() {
         params: {
           protocolVersion: '2025-03-26',
           capabilities: {},
-          clientInfo: { name: 'carbon-monitor-probe', version: '1.2.1' },
+          clientInfo: { name: 'carbon-monitor-probe', version: '1.3.0' },
         },
       }),
     });

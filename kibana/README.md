@@ -6,11 +6,11 @@ This directory contains the tooling to set up the **Carbon Monitor — PR Review
 
 ## Architecture
 
-| Component | Location | Notes |
-|---|---|---|
-| Elasticsearch | IBM Cloud (remote) | Credentials in `.env` — `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`, `ES_CA_CERT_PATH` |
-| Kibana | Local Docker container | Must be pointed at the IBM Cloud ES cluster (see setup below) |
-| Carbon Monitor app | Local / Code Engine | Writes events to IBM Cloud ES via `esClient.js` |
+| Component          | Location               | Notes                                                                             |
+| ------------------ | ---------------------- | --------------------------------------------------------------------------------- |
+| Elasticsearch      | IBM Cloud (remote)     | Credentials in `.env` — `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`, `ES_CA_CERT_PATH` |
+| Kibana             | Local Docker container | Must be pointed at the IBM Cloud ES cluster (see setup below)                     |
+| Carbon Monitor app | Local / Code Engine    | Writes events to IBM Cloud ES via `esClient.js`                                   |
 
 **Important:** Kibana and Elasticsearch are on _different hosts_. Kibana runs locally in Docker but queries the IBM Cloud ES cluster. Both must be configured to talk to the same cluster, or the dashboard will show "No results" even when data exists in ES.
 
@@ -18,12 +18,12 @@ This directory contains the tooling to set up the **Carbon Monitor — PR Review
 
 ## Prerequisites
 
-| Requirement | Notes |
-|---|---|
-| Docker | Kibana runs as a local Docker container |
-| Node.js 18+ | For running the setup scripts |
-| IBM Cloud ES credentials | `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`, `ES_CA_CERT_PATH` in `.env` |
-| At least one successful review run | So `carbon-monitor-events-*` indices exist in ES |
+| Requirement                        | Notes                                                               |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| Docker                             | Kibana runs as a local Docker container                             |
+| Node.js 18+                        | For running the setup scripts                                       |
+| IBM Cloud ES credentials           | `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`, `ES_CA_CERT_PATH` in `.env` |
+| At least one successful review run | So `carbon-monitor-events-*` indices exist in ES                    |
 
 All four ES environment variables must be set in `.env` before running anything:
 
@@ -120,6 +120,7 @@ Run this first whenever the dashboard stops updating — it tells you exactly wh
 Forces Kibana to re-scan ES mappings for the `carbon-monitor-index-pattern` data view that the 7 Lens panels reference.
 
 You need this after:
+
 - First-ever run (fields aren't known until documents exist)
 - Adding new fields to the `payload.*` object in `eventService.js`
 - After any index mapping change
@@ -127,6 +128,7 @@ You need this after:
 ### `scripts/rebuild-dashboard.js`
 
 Deletes and recreates all 7 Lens visualisations, registers runtime fields, and recreates the dashboard object via the Kibana Saved Objects API. Use this to:
+
 - Set up the dashboard for the first time (after data view exists)
 - Reset the dashboard after accidental edits in the Kibana UI
 - Apply changes made to the panel definitions in the script
@@ -137,15 +139,15 @@ Deletes and recreates all 7 Lens visualisations, registers runtime fields, and r
 
 ## Dashboard panels
 
-| Panel | Metric category | ES fields used |
-|---|---|---|
-| PRs Reviewed per Day | Review throughput | `event_type=pr_review_completed` count, 1d bucket |
-| AI Recommendation Summary | Recommendation distribution | `payload.recommendation` terms (pure keyword — no `.keyword` suffix) |
-| Findings per PR — Severity | Finding quality | `payload.findings_blocking/major/minor/nit` sum |
-| Carbon API Verification | Carbon API verification | `payload.cat1_findings` vs `payload.cat2_findings` sum |
-| Input & Output Tokens per Review | Token cost | `payload.token_input` / `payload.token_output` avg |
-| Total Token Usage per Review | Token cost | `payload.token_total` avg |
-| Run Health — Event Breakdown | Run health | `event_type` terms across all events (pure keyword — no `.keyword` suffix) |
+| Panel                            | Metric category             | ES fields used                                                             |
+| -------------------------------- | --------------------------- | -------------------------------------------------------------------------- |
+| PRs Reviewed per Day             | Review throughput           | `event_type=pr_review_completed` count, 1d bucket                          |
+| AI Recommendation Summary        | Recommendation distribution | `payload.recommendation` terms (pure keyword — no `.keyword` suffix)       |
+| Findings per PR — Severity       | Finding quality             | `payload.findings_blocking/major/minor/nit` sum                            |
+| Carbon API Verification          | Carbon API verification     | `payload.cat1_findings` vs `payload.cat2_findings` sum                     |
+| Input & Output Tokens per Review | Token cost                  | `payload.token_input` / `payload.token_output` avg                         |
+| Total Token Usage per Review     | Token cost                  | `payload.token_total` avg                                                  |
+| Run Health — Event Breakdown     | Run health                  | `event_type` terms across all events (pure keyword — no `.keyword` suffix) |
 
 ---
 
@@ -160,6 +162,7 @@ carbon-monitor-events-YYYY.MM
 The Kibana data view `carbon-monitor-events-*` covers all months.
 
 **Field types in the August 2026+ indices:**
+
 - `event_type` — `keyword` (no `.keyword` sub-field)
 - `payload.recommendation` — `keyword` (no `.keyword` sub-field)
 - All `payload.*` numeric fields — `long` or `float`
@@ -195,6 +198,7 @@ Same cause — `event_type` is a pure `keyword` field in the current indices. If
 **401 Unauthorized when running Kibana scripts**
 
 The scripts authenticate with `ES_USERNAME` and `ES_PASSWORD` from `.env`. They do **not** use `ES_API_KEY` — that variable is for direct ES access only, and Kibana will reject it. If you see 401:
+
 - Confirm `ES_USERNAME` and `ES_PASSWORD` are set correctly in `.env`
 - Confirm Kibana is connected to the same ES cluster those credentials belong to
 

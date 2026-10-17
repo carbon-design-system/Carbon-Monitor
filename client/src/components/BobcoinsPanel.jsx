@@ -79,7 +79,8 @@ function unavailableCopy(reason) {
   if (httpStatus) {
     return {
       title: `Bob returned HTTP ${httpStatus[1]}`,
-      subtitle: 'The balance request was rejected. The gateway may be degraded.',
+      subtitle:
+        'The balance request was rejected. The gateway may be degraded.',
     };
   }
 
@@ -91,7 +92,9 @@ function unavailableCopy(reason) {
   };
 }
 
-const COIN_FORMAT = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+const COIN_FORMAT = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 2,
+});
 
 /**
  * A Bobcoin amount as plain text, or an em dash when the server sent null.
@@ -248,30 +251,36 @@ function BalanceTile({ balance, summary, check }) {
 
   // A budget of zero would divide by zero below, and an absent one (an
   // uncapped plan) has no proportion to show, so both suppress the bar.
-  const budget = Number.isFinite(balance?.budgetLimit) && balance.budgetLimit > 0
-    ? balance.budgetLimit
-    : null;
+  const budget =
+    Number.isFinite(balance?.budgetLimit) && balance.budgetLimit > 0
+      ? balance.budgetLimit
+      : null;
   const used = Number.isFinite(balance?.usage) ? balance.usage : null;
   const exhausted = budget !== null && used !== null && used >= budget;
   const percentRemaining = Number.isFinite(balance?.percentRemaining)
     ? Math.round(balance.percentRemaining)
     : null;
 
-  // Budget gauge: a semicircular arc filled to the percentage of budget 
-  const remaining = Number.isFinite(balance?.remaining) ? balance.remaining : null;
+  // Budget gauge: a semicircular arc filled to the percentage of budget
+  const remaining = Number.isFinite(balance?.remaining)
+    ? balance.remaining
+    : null;
   const gaugeValue =
     percentRemaining !== null
       ? percentRemaining
       : budget
         ? Math.round(((remaining ?? 0) / budget) * 100)
         : 0;
-  const gaugeStatus = gaugeValue < 10 ? 'danger' : gaugeValue < 25 ? 'warning' : 'success';
+  const gaugeStatus =
+    gaugeValue < 10 ? 'danger' : gaugeValue < 25 ? 'warning' : 'success';
   // Plain-English urgency label — appended to the prose sub-line only when the
   // budget is not healthy, so colour is not the sole signal (WCAG 1.4.1) but
   // normal state isn't cluttered with a redundant confirmation word.
   // null = healthy (>= 25%): the number speaks for itself.
-  const gaugeUrgency = gaugeValue < 10 ? 'critical' : gaugeValue < 25 ? 'low' : null;
-  const gaugeColor = gaugeValue < 10 ? '#da1e28' : gaugeValue < 25 ? '#ff832b' : '#0f62fe';
+  const gaugeUrgency =
+    gaugeValue < 10 ? 'critical' : gaugeValue < 25 ? 'low' : null;
+  const gaugeColor =
+    gaugeValue < 10 ? '#da1e28' : gaugeValue < 25 ? '#ff832b' : '#0f62fe';
   const gaugeData = [{ group: 'value', value: gaugeValue }];
   const gaugeOptions = {
     resizable: true,
@@ -343,7 +352,9 @@ function BalanceTile({ balance, summary, check }) {
                 </div>
               </div>
               <div className="cm-coins__figures">
-                <p className="cm-coins__value"><CoinValue value={animatedRemaining} /></p>
+                <p className="cm-coins__value">
+                  <CoinValue value={animatedRemaining} />
+                </p>
                 <p className="cm-coins__label">Bobcoins remaining</p>
                 {/*
                   gaugeUrgency appended only when non-null (budget is low or
@@ -383,7 +394,6 @@ function BalanceTile({ balance, summary, check }) {
           className="cm-coins__notification"
         />
       )}
-
     </Tile>
   );
 }
@@ -408,14 +418,26 @@ function LedgerTile({ entries, hasCredits, summary, balance }) {
   // and the Reviews card sit at a matched height without a well of dead space
   // beneath either — and a wide KPI row reads better than a stacked list anyway.
   const stats = [
-    { label: 'Total recorded here', value: <CoinValue value={summary?.totalSpent} /> },
-    { label: 'Average per review', value: <CoinValue value={summary?.averagePerReview} /> },
-    { label: 'Last 24 hours', value: <CoinValue value={summary?.last24hSpent} /> },
+    {
+      label: 'Total recorded here',
+      value: <CoinValue value={summary?.totalSpent} />,
+    },
+    {
+      label: 'Average per review',
+      value: <CoinValue value={summary?.averagePerReview} />,
+    },
+    {
+      label: 'Last 24 hours',
+      value: <CoinValue value={summary?.last24hSpent} />,
+    },
     { label: 'Last 7 days', value: <CoinValue value={summary?.last7dSpent} /> },
     ...(available
       ? [
           { label: 'Plan', value: planLabel(balance) },
-          { label: 'Budget resets', value: <TimeValue value={balance.refreshAt} /> },
+          {
+            label: 'Budget resets',
+            value: <TimeValue value={balance.refreshAt} />,
+          },
         ]
       : []),
   ];
@@ -440,13 +462,18 @@ function LedgerTile({ entries, hasCredits, summary, balance }) {
             : 'Spend history is not available from this server.'}
         </p>
       ) : (
-        <StructuredListWrapper isCondensed aria-label="Bobcoins spent per review">
+        <StructuredListWrapper
+          isCondensed
+          aria-label="Bobcoins spent per review"
+        >
           <StructuredListHead>
             <StructuredListRow head>
               <StructuredListCell head>Pull request</StructuredListCell>
               <StructuredListCell head>Finished</StructuredListCell>
               <StructuredListCell head>Spent</StructuredListCell>
-              <StructuredListCell head>Account balance after</StructuredListCell>
+              <StructuredListCell head>
+                Account balance after
+              </StructuredListCell>
             </StructuredListRow>
           </StructuredListHead>
           <StructuredListBody>
@@ -473,8 +500,9 @@ function LedgerTile({ entries, hasCredits, summary, balance }) {
       {rows.length > 0 && (
         <p className="cm-coins__caption">
           “Account balance after” is the account balance snapshotted right after
-          each review, and it is unlikely to match the live “Remaining this month” balance,
-          which also reflects Bobcoins spent elsewhere on the account.
+          each review, and it is unlikely to match the live “Remaining this
+          month” balance, which also reflects Bobcoins spent elsewhere on the
+          account.
         </p>
       )}
     </Tile>
@@ -508,7 +536,11 @@ function BobcoinsPanel({ credits, check }) {
   }
 
   return (
-    <BalanceTile balance={credits.balance} summary={credits.summary} check={check} />
+    <BalanceTile
+      balance={credits.balance}
+      summary={credits.summary}
+      check={check}
+    />
   );
 }
 

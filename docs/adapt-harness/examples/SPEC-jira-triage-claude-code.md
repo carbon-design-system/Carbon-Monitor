@@ -1,0 +1,328 @@
+# SPEC: cds-triage
+
+_Example SPEC produced by the adapt-harness skill from an interview; the answers are illustrative._
+
+|              |                                    |
+| ------------ | ---------------------------------- |
+| Status       | example                            |
+| Source       | Carbon-Monitor at commit `48e0a3f` |
+| Branch       | New job on the harness             |
+| Worker agent | claude-code                        |
+| Written      | 2026-10-16                         |
+
+## 1. Intent
+
+Every night at 02:00 America/Chicago, cds-triage takes up to 10 issues from Jira Cloud project `CDS` that were created in the last 30 days and do not yet have the `ai-triaged` label. Claude Code reads each issue and its comments, classifies it as bug, feature, question or duplicate, proposes a component and a severity, and drafts a first response. The harness writes the draft as a Jira comment starting "AI triage (draft):", adds the classification as labels, and then adds `ai-triaged`. The product team finds the draft and labels on each issue in the morning, plus a Slack digest with one line per issue. Kibana shows volume, category mix, confidence and cost. The run stops on its own when less than 10 percent of a 150 USD monthly budget remains.
+
+## 2. Interview record
+
+| #   | Question                     | Answer                                                                                                                                                                                                                             | Default used                          |
+| --- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| 1   | The job                      | Nightly triage of new `CDS` issues: classify, propose component and severity, draft a first response; the team sees a draft comment and labels on each issue                                                                       | no                                    |
+| 2   | External system              | Jira Cloud REST API v3, basic auth with `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`; rate limit not known (section 13)                                                                                                         | no                                    |
+| 3   | Unit of work and done marker | One Jira issue; done marker is the label `ai-triaged`                                                                                                                                                                              | yes (a marker in the external system) |
+| 4   | Workspace                    | `TRIAGE_REQUEST.md` (issue fields, description, comments) plus `issue.json`                                                                                                                                                        | yes (shape of the default)            |
+| 5   | Output                       | JSON between `BEGIN_TRIAGE_JSON` and `END_TRIAGE_JSON` with `category`, `component`, `severity`, `confidence`, `response_draft`, `duplicate_of`; reject unknown categories and confidence outside 0..1; one retry on parse failure | yes (shape of the default)            |
+| 6   | Write-back                   | Comment, then classification labels, then the done marker                                                                                                                                                                          | yes                                   |
+| 7   | Ground truth                 | none                                                                                                                                                                                                                               | yes                                   |
+| 8   | Worker agent                 | Claude Code                                                                                                                                                                                                                        | no                                    |
+| 9   | Schedule, volume, cost       | Nightly 02:00 America/Chicago, 10 items, `AGENT_MONTHLY_BUDGET_USD=150`, auto-pause below 10 percent                                                                                                                               | no (pause rule is default)            |
+| 10  | Reporting                    | Slack line per issue (key, category, severity, confidence) plus footer counts; Kibana: issues per day, category distribution, confidence histogram, cost per run; sign-in on                                                       | no                                    |
+
+The JQL given in question 3 was `project = CDS AND created >= -30d AND labels != ai-triaged ORDER BY created DESC`. In JQL, `!=` does not match an empty field, so that query skips issues with no labels at all, which is most new issues. This SPEC uses `(labels IS EMPTY OR labels != ai-triaged)`. AC-2 tests it and section 13 asks for confirmation on the live site.
+
+## 3. Keep / change map
+
+| Area                              | File / function                                                                                                                                                                                                                                                                                                                               | Decision         | What changes                                                                                                                                                                                                                |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Harness · image                   | `Dockerfile`                                                                                                                                                                                                                                                                                                                                  | modify           | Bob removed, Claude Code installed, `carbon-builder` blocks removed (section 9)                                                                                                                                             |
+| Harness · deployment              | `deploy_ce.sh`, `docker-compose.yml`                                                                                                                                                                                                                                                                                                          | modify           | Secret keys, `--env` lines, defaults for `APP`/`IMAGE_NAME`/`SECRET_NAME`, `verify_bob_source` and the two credential `die` lines removed (section 7)                                                                       |
+| Harness · server                  | `src/api/server.js`                                                                                                                                                                                                                                                                                                                           | modify           | Routes renamed; `handleConfig` returns project, JQL and agent; `CREDIT_EVENTS_INDEX`, `CREDIT_EVENT_FILTER` and `mapCreditEvent` read the new index and cost field. `reviewState` keeps its name and its single-flight rule |
+| Harness · sign-in                 | `src/api/sessionAuth.js`                                                                                                                                                                                                                                                                                                                      | configure        | `AUTH_REQUIRED=true` with new console credentials                                                                                                                                                                           |
+| Harness · scheduler               | `src/api/scheduleManager.js`                                                                                                                                                                                                                                                                                                                  | modify           | `getBalance` imported from the new budget module; threshold from `AGENT_BUDGET_LOW_PCT`; `ES_INDEX` becomes `cds-triage-schedule`; alert names the project. Console time set to 03:00 (section 9)                           |
+| Harness · cost                    | `src/api/bobCredits.js`, `src/api/creditLedger.js`                                                                                                                                                                                                                                                                                            | replace / modify | `bobCredits.js` replaced by `src/api/agentBudget.js`; `creditLedger.normalize` gains `itemKey` (string) and `costUsd` (number)                                                                                              |
+| Harness · run log                 | `src/api/reviewLog.js`                                                                                                                                                                                                                                                                                                                        | keep             |                                                                                                                                                                                                                             |
+| Harness · MCP connection          | `src/api/mcpConnection.js`, `src/api/tokenManager.js`                                                                                                                                                                                                                                                                                         | keep             | Left in place and idle: nothing bootstraps a session, so it writes nothing                                                                                                                                                  |
+| Harness · agent runner            | `src/agentRunner.js`                                                                                                                                                                                                                                                                                                                          | modify           | `case 'claude'` per `docs/adapt-harness/agents/claude-code.md`, without `--mcp-config`, plus `--allowedTools Read`; resolves `{ text, costUsd, usage }`                                                                     |
+| Harness · telemetry               | `src/observability/eventService.js`                                                                                                                                                                                                                                                                                                           | modify           | Index `cds-triage-events-YYYY.MM`, `doc_type: 'cds_triage_event'`, `project` and `item_key` replace `repo`, `pr_number`, `commit_sha`; level sets renamed                                                                   |
+| Harness · dashboard               | `scripts/init-index.js`, `scripts/init-kibana.js`, `scripts/rebuild-dashboard.js`, `scripts/refresh-kibana-dataview.js`                                                                                                                                                                                                                       | modify           | New names and mapping (section 8), four panels                                                                                                                                                                              |
+| Harness · Slack transport         | `src/slackNotifier.js` `postLowTokenAlert`                                                                                                                                                                                                                                                                                                    | modify           | "Bobcoins remaining" becomes "Budget remaining"                                                                                                                                                                             |
+| Harness · console shell           | `client/src/App.jsx`, `client/src/components/BobcoinsPanel.jsx`, `client/src/components/ReviewLog.jsx`, `client/src/api.js`                                                                                                                                                                                                                   | modify           | Header text, budget panel, log heading, route paths                                                                                                                                                                         |
+| Task · orchestrator               | `src/index.js` `reviewPRs`, `resolveReviewTargets`, `parsePrNumbers`, `recordReviewCost`, `cleanupBundle`                                                                                                                                                                                                                                     | modify           | Becomes `triageIssues`, `resolveTriageTargets`, `parseIssueKeys`, `recordTriageCost`, `cleanupBundle`; same loop, emits, retry, cost record and cleanup; size gate, diff and inline paths removed                           |
+| Task · work-item source           | `src/githubClient.js` `createGitHubClient`, `fetchReviewablePRs`, `fetchSinglePR`, `fetchPRFiles`, `fetchPRDiff`                                                                                                                                                                                                                              | replace          | `src/jiraClient.js` `createJiraClient`: `searchIssues`, `fetchIssue`, `fetchComments`, `fetchProjectComponents`, `getMyself`; `src/githubClient.js` removed                                                                 |
+| Task · done marker                | `addReviewedLabel`; `REVIEW_LABEL`, `SKIP_LABELS` in `src/constants.js`; the exclusion in `fetchReviewablePRs`                                                                                                                                                                                                                                | replace          | `jiraClient.addLabels` with `JIRA_TRIAGE_DONE_LABEL` (`ai-triaged`); the exclusion lives in the JQL; no skip labels                                                                                                         |
+| Task · selection limits           | `src/constants.js` `MAX_PRS_PER_RUN`, `N_DAYS_SINCE_PR_CREATED`, `MAX_FILES_PER_PR`, `MAX_INPUT_TOKENS`                                                                                                                                                                                                                                       | replace          | `MAX_ITEMS_PER_RUN`, `TRIAGE_JQL`, `MAX_INPUT_TOKENS` under `JIRA_TRIAGE_*`; the age window is in the JQL; no size gate                                                                                                     |
+| Task · workspace                  | `src/reviewBundle.js` `buildReviewBundle`, `getWorkspaceRoot`                                                                                                                                                                                                                                                                                 | replace          | `src/triageBundle.js` `buildTriageBundle`, `getWorkspaceRoot` (reads `JIRA_TRIAGE_WORKSPACE_ROOT`); no `.env` with a key is written                                                                                         |
+| Task · prompt                     | `src/reviewPrompt.js` `buildReviewPrompt`, `estimateTokenUsage`                                                                                                                                                                                                                                                                               | replace          | `src/triagePrompt.js` `buildTriagePrompt`; `estimateTokenUsage` moved there unchanged                                                                                                                                       |
+| Task · output contract and parser | `src/reviewParser.js` `parseReviewOutput`, `computeRecommendation`, `filterUnverifiedCarbonFindings`, `extractCarbonBuilderSkillReads`                                                                                                                                                                                                        | replace          | `src/triageParser.js` `parseTriageOutput`; the other three have no counterpart                                                                                                                                              |
+| Task · write-back                 | `src/githubClient.js` `postReviewComments`, `postSummaryComment`; `src/reviewPrompt.js` `formatInlineComment`, `formatSummaryComment`; `src/diffMapper.js`                                                                                                                                                                                    | replace          | `jiraClient.addComment`, `jiraClient.updateLabels`; `triagePrompt.formatTriageComment`; `src/diffMapper.js` removed                                                                                                         |
+| Task · ground truth               | `src/api/mcpConnection.js` (`CARBON_MCP_URL`, `ALWAYS_ALLOW`), the `carbon-builder` skill, `healthChecks.checkCarbonMcp`                                                                                                                                                                                                                      | remove           | No MCP server and no skill; `checkCarbonMcp` dropped from `runAll`; the module itself stays (row above)                                                                                                                     |
+| Task · telemetry vocabulary       | event types in `src/index.js`, `src/slackNotifier.js`; `INDEX_MAPPING` in `scripts/init-index.js`; panels in `scripts/rebuild-dashboard.js`                                                                                                                                                                                                   | modify           | Section 8                                                                                                                                                                                                                   |
+| Task · digest content             | `src/slackNotifier.js` `buildPayload` (`_buildPayload`), `flagFor` (`_flagFor`)                                                                                                                                                                                                                                                               | modify           | One line per issue; `flagFor` replaced by a category label                                                                                                                                                                  |
+| Task · console task surface       | `client/src/pages/Console.jsx`, `client/src/pages/HelpGuide.jsx`, `client/src/utils/prPhrasing.js`                                                                                                                                                                                                                                            | modify           | Issue nouns, an "Issue keys" field; `prPhrasing.js` renamed `issuePhrasing.js`                                                                                                                                              |
+| Task · task API routes            | `src/api/server.js` `POST /api/review/trigger`, `GET /api/review/status`, `GET /api/review/logs`, `POST /api/review/logs/clear`                                                                                                                                                                                                               | modify           | `/api/triage/*`; body `{ "issueKeys": ["CDS-123"] }` validated by `parseIssueKeys`                                                                                                                                          |
+| Task · health tiles               | `src/api/healthChecks.js` `checkGitHub`, `checkCarbonMcp` (and `checkBob`, `checkBobCredits` for the agent)                                                                                                                                                                                                                                   | replace          | `checkJira`, `checkClaude` (from `docs/adapt-harness/agents/claude-code.md`), `checkBudget`; `checkElasticsearch` kept                                                                                                      |
+| Task · env prefix                 | `GITHUB_AI_AGENT_*` in `src/constants.js`, `.env.example`, `deploy_ce.sh`                                                                                                                                                                                                                                                                     | replace          | `JIRA_TRIAGE_*` (section 7)                                                                                                                                                                                                 |
+| Task · test fixtures              | `tests/reviewTargeting.test.js`, `tests/reviewablePrs.test.js`, `tests/prTargeting.test.js`, `tests/oversizedPr.test.js`, `tests/linkedIssue.test.js`, `tests/hasCatalogue.test.js`, `tests/carbonBuilderAuthority.test.js`, `tests/reviewPrompt.test.js`, `tests/slackNotifier.test.js`, `tests/test-parser.js`, `tests/test-diff-mapper.js` | replace          | Section 11; `package.json` `test:all` updated                                                                                                                                                                               |
+| Task · scratch-target helpers     | `scripts/create-test-pr.js`, `scripts/create-oversized-test-pr.js`                                                                                                                                                                                                                                                                            | replace          | `scripts/create-test-issue.js` makes one issue in `JIRA_TRIAGE_TEST_PROJECT`, never `CDS`                                                                                                                                   |
+
+## 4. External system contract
+
+**Read side.** One work item is one Jira issue. Selection runs `POST /rest/api/3/search/jql` with `JIRA_TRIAGE_JQL`, `maxResults: 10`, and these fields: `summary`, `description`, `issuetype`, `status`, `priority`, `components`, `labels`, `reporter`, `created`. The default JQL is:
+
+```
+project = CDS AND created >= -30d AND (labels IS EMPTY OR labels != ai-triaged) ORDER BY created DESC
+```
+
+For each issue, `GET /rest/api/3/issue/{key}/comment?orderBy=created&maxResults=100` fetches the comments. The project's components are fetched once per run with `GET /rest/api/3/project/CDS/components`. Issues named explicitly (console or `--issue CDS-123`) are fetched with `GET /rest/api/3/issue/{key}` and bypass the JQL, the same rule `fetchSinglePR` follows. Descriptions and comment bodies arrive as Atlassian Document Format (ADF) and are converted to plain text in `buildTriageBundle`. The done marker is the label `ai-triaged`, and the JQL exclusion is what de-duplicates.
+
+**Write side.** The writes happen in order, and each is safe to repeat:
+
+1. Comment: `POST /rest/api/3/issue/{key}/comment` with an ADF body whose first paragraph is `AI triage (draft):`, followed by `response_draft` and a final line naming category, component, severity and confidence. Before posting, the run looks for an existing comment by the triage account (`accountId` from `GET /rest/api/3/myself`, cached per run) whose text starts with `AI triage (draft):`. If one exists, the post is skipped and `comment_reused: true` is recorded. Earlier AI comments are also left out of the workspace.
+2. Classification labels: one `PUT /rest/api/3/issue/{key}` with `update.labels` that adds `ai-category-<category>`, `ai-severity-<severity>` and `ai-component-<slug>`. The same call removes any existing label with those prefixes and a different value. A slug is lowercase, with spaces replaced by `-` and characters outside `[a-z0-9-]` dropped. A null component or severity writes no label for that slot.
+3. Done marker: a second `PUT` adding `ai-triaged`, sent only after steps 1 and 2 succeed.
+
+If an item half-succeeds (the comment posts but labels fail), it carries no marker, so the next run picks it up again. Step 1 then reuses the comment, and step 2 replaces any stale classification. `JIRA_TRIAGE_POST_COMMENT=false` and `JIRA_TRIAGE_WRITE_LABELS=false` skip steps 1 and 2 for testing. The done marker is always written, matching the GitHub label today. There is no read-only mode.
+
+**Authentication.** Basic auth with `JIRA_EMAIL:JIRA_API_TOKEN` against `JIRA_BASE_URL` (for example `https://<site>.atlassian.net`). The account is a dedicated Atlassian account with Jira product access on the site. It needs a project role on `CDS` that grants **Browse Projects**, **Add Comments** and **Edit Issues**. Edit Issues is the binding requirement: labels are an issue edit, and the done marker is a label. An account that can comment but not edit fails every item after commenting and re-selects it every night; the comment check in step 1 prevents duplicate comments but not the failed runs. To obtain the token, sign in as that account at `id.atlassian.com`, open Security, then API tokens, create a token, and copy it into `.env`. Two things will bite you. Atlassian API tokens expire, so record the expiry date (section 13). An expired or revoked token returns 401, which `checkJira` reports as "Token rejected". `checkJira` calls `GET /rest/api/3/mypermissions?projectKey=CDS&permissions=BROWSE_PROJECTS,ADD_COMMENTS,EDIT_ISSUES`, so a missing Edit Issues permission shows on the tile before a run fails.
+
+**Limits.** Each run makes about 45 calls: one search, one components call, one `myself` call, then four per issue. On HTTP 429 the client waits for `Retry-After` (capped at 60 seconds) and retries the call once. A second 429 fails that item with `stage: "fetch"` or the write stage, and the run moves on. A comment body is capped by the 4,000-character limit on `response_draft` (section 5), well under Jira's comment size limit. The published rate-limit numbers are not settled (section 13).
+
+## 5. Agent run contract
+
+- Workspace: `<JIRA_TRIAGE_WORKSPACE_ROOT>/CDS-<n>-XXXX/` (via `mkdtemp`), containing:
+  - `TRIAGE_REQUEST.md`: key, summary, type, status, priority, reporter display name, created date, current components and labels, the description as text, comments oldest to newest (author display name, date, text) with earlier AI triage comments excluded, the allowed component names from the project, and the category and severity vocabularies.
+  - `issue.json`: the raw search result for the issue plus the raw comments array.
+  - `CLAUDE.md`: rules. Read only the two files above, use no other tools, and end with the triage block.
+- Input cap: `JIRA_TRIAGE_MAX_INPUT_TOKENS` (default 50,000) at 4 characters per token. Over the cap, the oldest comments are dropped first, then the description is cut at a line boundary with a `[... truncated ...]` marker. `input_truncated` is recorded. No item is skipped for size.
+- Prompt: `buildTriagePrompt` tells the agent to read `TRIAGE_REQUEST.md`, decide the category (with a one-line definition of each of the four), pick a component only from the allowed list or null, pick a severity from the vocabulary, give a confidence, write a courteous first response of at most 4,000 characters that does not promise a fix or a date, set `duplicate_of` only when the issue text names the original, and emit only the block below.
+- Output:
+
+  ```
+  BEGIN_TRIAGE_JSON
+  {"category":"bug","component":"DataTable","severity":"major","confidence":0.82,
+   "response_draft":"Thanks for the report ...","duplicate_of":null}
+  END_TRIAGE_JSON
+  ```
+
+  `parseTriageOutput(text)` takes the last `BEGIN_TRIAGE_JSON` marker followed by `{`, then the next `END_TRIAGE_JSON`, parses the JSON (with `jsonrepair` as the last resort, as `reviewParser.js` does), and returns null (a parse failure) when: `category` is not one of `bug`, `feature`, `question`, `duplicate`; `confidence` is not a number in 0..1; `response_draft` is empty or over 4,000 characters; `category` is `duplicate` and `duplicate_of` does not match `^[A-Z][A-Z0-9_]+-\d+$`; or `category` is not `duplicate` and `duplicate_of` is not null. A `component` outside the allowed list, or a `severity` outside `JIRA_TRIAGE_SEVERITIES`, becomes null with `component_dropped` / `severity_dropped` set, and the item is not rejected.
+
+- Parse failure: the agent is rerun once in the same workspace, as `reviewPRs` does today. If the second attempt also fails, `parse_failed` is emitted and the item gets no writes and no marker, so it stays eligible.
+- Agent: `claude -p "<prompt>" --output-format json --permission-mode acceptEdits --allowedTools Read --max-turns ${CLAUDE_MAX_TURNS}` with cwd set to the workspace. `runAgent` parses stdout as JSON and returns `result` as the text, `total_cost_usd` as the cost, and `usage` for the token fields. Timeout 10 minutes per attempt; `CLAUDE_MAX_TURNS=10`.
+- Ground truth: none. No MCP configuration is written and `--mcp-config` is not passed.
+- Success and failure: an item succeeds when all three writes are done (`triage_item_completed`). Any thrown error emits `triage_item_failed` with its `stage`, appears in the digest, and leaves the item eligible. The run fails (`run_failed`) only when the search or the components call throws.
+
+## 6. Generalisation
+
+| Kind                         | Today                                                                                   | New                                                                          |
+| ---------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| API route                    | `/api/review/trigger`                                                                   | `/api/triage/trigger`                                                        |
+| API route                    | `/api/review/status`                                                                    | `/api/triage/status`                                                         |
+| API route                    | `/api/review/logs`                                                                      | `/api/triage/logs`                                                           |
+| API route                    | `/api/review/logs/clear`                                                                | `/api/triage/logs/clear`                                                     |
+| Console string               | "Reviews — Automated"                                                                   | "Triage — Automated"                                                         |
+| Console string               | "Review output"                                                                         | "Triage output"                                                              |
+| Console string               | "Spend & recent reviews"                                                                | "Spend & recent triage"                                                      |
+| Console string               | "Pull request numbers"                                                                  | "Issue keys"                                                                 |
+| Console string               | "Review latest N PRs"                                                                   | "Triage latest N issues"                                                     |
+| Console string               | "Reviewing pull requests in … with the bob agent"                                       | "Triaging issues in CDS with the claude agent"                               |
+| Env prefix                   | `GITHUB_AI_AGENT_*`                                                                     | `JIRA_TRIAGE_*`                                                              |
+| Event type                   | `pr_review_started`                                                                     | `triage_item_started`                                                        |
+| Event type                   | `pr_review_completed`                                                                   | `triage_item_completed`                                                      |
+| Event type                   | `pr_review_failed`                                                                      | `triage_item_failed`                                                         |
+| Event type                   | `pr_skipped_too_large`                                                                  | removed; `payload.input_truncated` instead                                   |
+| Event type                   | `skill_unavailable`                                                                     | removed (no skill)                                                           |
+| Elasticsearch alias          | `carbon-monitor-events`                                                                 | `cds-triage-events`                                                          |
+| Elasticsearch template       | `carbon-monitor-events-template`                                                        | `cds-triage-events-template`                                                 |
+| Elasticsearch ILM policy     | `carbon-monitor-events-ilm`                                                             | `cds-triage-events-ilm`                                                      |
+| Elasticsearch payload fields | `findings_*`, `recommendation`, `cat1_findings`, `cat2_findings`, `bobcoins_*`, `prs_*` | section 8                                                                    |
+| Elasticsearch state index    | `carbon-monitor-mcp-state`                                                              | `cds-triage-mcp-state` (via `MCP_STATE_INDEX`; unused while there is no MCP) |
+| Elasticsearch schedule index | `carbon-monitor-schedule` (`scheduleManager.js` `ES_INDEX`)                             | `cds-triage-schedule`                                                        |
+| Kibana data view             | `carbon-monitor-index-pattern`                                                          | `cds-triage-index-pattern`                                                   |
+| Kibana dashboard             | `carbon-monitor-dashboard`, "Carbon Monitor — PR Review Metrics"                        | `cds-triage-dashboard`, "CDS Triage — Issue Triage Metrics"                  |
+| Kibana panels                | the seven `lens-0xx` panels                                                             | four panels `lens-101` to `lens-104` (section 8)                             |
+| Slack                        | "Carbon Monitor — Review Digest"                                                        | "CDS Triage — Triage Digest"                                                 |
+| Slack                        | verdict wording from `flagFor`                                                          | category, severity, confidence                                               |
+| Slack                        | "PRs reviewed"                                                                          | "issues triaged"                                                             |
+| Slack                        | "Bobcoins remaining" in the low-balance alert                                           | "Budget remaining"                                                           |
+| External-system marker       | `AIReviewed` label                                                                      | `ai-triaged` label, plus `ai-category-*`, `ai-severity-*`, `ai-component-*`  |
+| Product identity             | `carbon-monitor` in `package.json`, `APP`, `IMAGE_NAME`                                 | `cds-triage`                                                                 |
+| Product identity             | `SECRET_NAME` `carbon-monitor-secrets`                                                  | `cds-triage-secrets`                                                         |
+| Product identity             | console header "Carbon Monitor", log prefix `[Carbon-Monitor]`                          | "CDS Triage", `[cds-triage]`                                                 |
+
+## 7. Configuration
+
+New variables and their `.env.example` entries:
+
+```
+# Jira Cloud. Basic auth: the account's email and an API token.
+JIRA_BASE_URL=https://your-site.atlassian.net
+JIRA_EMAIL=
+JIRA_API_TOKEN=
+JIRA_TRIAGE_PROJECT=CDS
+# JIRA_TRIAGE_JQL=project = CDS AND created >= -30d AND (labels IS EMPTY OR labels != ai-triaged) ORDER BY created DESC
+JIRA_TRIAGE_MAX_ITEMS=10
+JIRA_TRIAGE_DONE_LABEL=ai-triaged
+# JIRA_TRIAGE_SEVERITIES=critical,major,minor,trivial
+# JIRA_TRIAGE_MAX_INPUT_TOKENS=50000
+JIRA_TRIAGE_POST_COMMENT=true
+JIRA_TRIAGE_WRITE_LABELS=true
+JIRA_TRIAGE_KEEP_ARTIFACTS=false
+# Explicit issue keys instead of the JQL (blank for auto).
+# JIRA_TRIAGE_ISSUE_KEYS=
+# Scratch project for scripts/create-test-issue.js. Never CDS.
+# JIRA_TRIAGE_TEST_PROJECT=
+JIRA_TRIAGE_CLI=claude
+# Claude Code authenticates with an Anthropic API key.
+ANTHROPIC_API_KEY=
+# Turn cap per run; the run fails rather than loops when it is hit.
+CLAUDE_MAX_TURNS=10
+# AGENT_CHECK_TIMEOUT_MS=20000
+# Monthly spend ceiling in USD and the percentage below which the schedule pauses.
+AGENT_MONTHLY_BUDGET_USD=150
+# AGENT_BUDGET_LOW_PCT=10
+```
+
+Renamed: `GITHUB_AI_AGENT_CLI` to `JIRA_TRIAGE_CLI`, `GITHUB_AI_AGENT_MAX_PRS` to `JIRA_TRIAGE_MAX_ITEMS`, `GITHUB_AI_AGENT_MAX_INPUT_TOKENS` to `JIRA_TRIAGE_MAX_INPUT_TOKENS`, `GITHUB_AI_AGENT_REVIEW_LABEL` to `JIRA_TRIAGE_DONE_LABEL`, `GITHUB_AI_AGENT_PR_NUMBER` to `JIRA_TRIAGE_ISSUE_KEYS`, `GITHUB_AI_AGENT_KEEP_ARTIFACTS` to `JIRA_TRIAGE_KEEP_ARTIFACTS`, `BOB_WORKSPACE_ROOT` to `JIRA_TRIAGE_WORKSPACE_ROOT`, `BOB_CHECK_TIMEOUT_MS` to `AGENT_CHECK_TIMEOUT_MS`, `BOB_CREDITS_LOW_PCT` to `AGENT_BUDGET_LOW_PCT`.
+
+Removed: `GITHUB_AI_AGENT_TOKEN`, `GITHUB_AI_AGENT_OWNER`, `GITHUB_AI_AGENT_REPO`, `GITHUB_AI_AGENT_DAYS_BACK`, `GITHUB_AI_AGENT_MAX_FILES`, `GITHUB_AI_AGENT_POST_INLINE_COMMENTS`, `GITHUB_AI_AGENT_POST_SUMMARY_COMMENT`, `GITHUB_API_BASE_URL`, `TEST_PR_OWNER`, `TEST_PR_REPO`, `BOB_API_KEY`, `BOB_TEAM_ID`, `BOB_INSTANCE_ID`, `BOB_GATEWAY_BASE_URL`, `BOB_CREDITS_TTL_MS`, `BOB_CREDITS_TIMEOUT_MS`. The `CARBON_MCP_URL` and `MCP_REFRESH_*` entries are removed from `.env.example`. `MCP_STATE_PATH` stays because `creditLedger` and `scheduleManager` place their files beside it.
+
+`SECRET_KEYS` in `.env` drops `GITHUB_AI_AGENT_TOKEN`, `BOB_API_KEY`, `BOB_TEAM_ID`, `BOB_INSTANCE_ID` and adds `JIRA_EMAIL`, `JIRA_API_TOKEN`, `ANTHROPIC_API_KEY`. In `deploy_ce.sh`, `verify_bob_source` and its call go. The two `die` lines for `GITHUB_AI_AGENT_TOKEN` and `BOB_API_KEY` go, and none replace them; the Jira and Claude tiles report missing credentials. In `COMMON_FLAGS`, `--env GITHUB_AI_AGENT_CLI=bob` and the four `GITHUB_AI_AGENT_*` lines become `JIRA_TRIAGE_CLI=claude`, `JIRA_BASE_URL`, `JIRA_TRIAGE_PROJECT`, `JIRA_TRIAGE_MAX_ITEMS`, `JIRA_TRIAGE_DONE_LABEL`, `AGENT_MONTHLY_BUDGET_USD` and `CLAUDE_MAX_TURNS`, each in the existing `"${VAR:-default}"` form. `BOB_WORKSPACE_ROOT=/workspace` becomes `JIRA_TRIAGE_WORKSPACE_ROOT=/workspace`, and `MCP_STATE_INDEX=cds-triage-mcp-state` is added. Defaults for `APP`, `IMAGE_NAME` and `SECRET_NAME` become `cds-triage` and `cds-triage-secrets`. `docker-compose.yml` follows the same renames.
+
+## 8. Telemetry and reporting
+
+**Events.** Each document carries `doc_type` keyword, `event_id` keyword, `event_type` keyword, `level` keyword, `timestamp` date, `correlation_id` keyword, `project` keyword, `item_key` keyword, `agent` keyword and `payload` object. These replace `repo`, `pr_number`, `pr_author`, `pr_title` and `commit_sha` in `INDEX_MAPPING`. `emitEvent` takes `project` and `item_key` in place of `repo`, `pr_number` and `commit_sha`. `ERROR_EVENTS` becomes `run_failed`, `triage_item_failed`, `agent_timeout`, `parse_failed`. `WARN_EVENTS` becomes empty, since both `skill_unavailable` and `inline_post_failed` go.
+
+| Event                                      | Payload fields (type)                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `run_started`                              | `triggered_by` keyword, `target_mode` keyword                                                                                                                                                                                                                                                                                                                                                          |
+| `triage_item_started`                      | `issue_type` keyword, `comments_count` integer                                                                                                                                                                                                                                                                                                                                                         |
+| `triage_item_completed`                    | `category` keyword, `component` keyword, `severity` keyword, `confidence` float, `duplicate_of` keyword, `component_dropped` boolean, `severity_dropped` boolean, `comment_posted` boolean, `comment_reused` boolean, `labels_added` integer, `input_truncated` boolean, `retried` boolean, `token_input` integer, `token_output` integer, `token_total` integer, `cost_usd` float, `duration_ms` long |
+| `triage_item_failed`                       | `stage` keyword (`fetch`, `agent`, `comment`, `labels`, `marker`), `error` text, `cost_usd` float, `duration_ms` long                                                                                                                                                                                                                                                                                  |
+| `parse_failed`                             | `attempts` integer, `cost_usd` float                                                                                                                                                                                                                                                                                                                                                                   |
+| `agent_timeout`                            | `error` text                                                                                                                                                                                                                                                                                                                                                                                           |
+| `run_completed`                            | `items_triaged` integer, `items_failed` integer, `items_parse_failed` integer, `items_requested` integer, `items_fetch_failed` integer, `cost_usd_total` float, `duration_ms` long, `target_mode` keyword                                                                                                                                                                                              |
+| `run_failed`                               | `error` text                                                                                                                                                                                                                                                                                                                                                                                           |
+| `slack_digest_sent`, `slack_digest_failed` | unchanged                                                                                                                                                                                                                                                                                                                                                                                              |
+
+Token fields come from Claude Code's `usage` when present, and from `estimateTokenUsage` otherwise. `cost_usd` is that attempt's `total_cost_usd` plus the retry's, when there was one.
+
+**Dashboard.** `scripts/rebuild-dashboard.js` builds four Lens panels on `cds-triage-index-pattern`:
+
+| Id         | Title                  | Data                                                                            |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------- |
+| `lens-101` | Issues Triaged per Day | count of `triage_item_completed`, date histogram on `timestamp`                 |
+| `lens-102` | Category Distribution  | `triage_item_completed`, terms on `payload.category`                            |
+| `lens-103` | Confidence Histogram   | `triage_item_completed`, histogram on `payload.confidence`, interval 0.1        |
+| `lens-104` | Cost per Run           | `run_completed`, `payload.cost_usd_total` per `correlation_id` over `timestamp` |
+
+**Slack.** The header reads "CDS Triage — Triage Digest". The intro gives Project `CDS`, the run start time (Eastern, as `formatEasternTime` prints today), and Criteria "up to 10 issues matching the triage JQL". There is one section per issue: `<JIRA_BASE_URL/browse/CDS-123|CDS-123> — bug · severity major · confidence 0.82`. A failed issue reads `CDS-123 — triage failed`, followed by the scrubbed error. The footer reads `7 issues triaged · 1 failed · 2 parse failures · Configure schedule`, and only non-zero counts are shown. A run with no eligible issues posts "No untriaged issues found for this run."
+
+**Console.** The tiles are Claude Code (`checkClaude`: `claude --version` and `ANTHROPIC_API_KEY` set), Budget (`checkBudget`: month-to-date spend against `AGENT_MONTHLY_BUDGET_USD`, warning below `AGENT_BUDGET_LOW_PCT`), Jira (`checkJira`: `GET /rest/api/3/myself`, then `mypermissions` for `CDS`), and Elasticsearch (unchanged). The run panel shows "Triage — Automated" when scheduled, an "Issue keys" field, "Triage latest 10 issues", and the log under "Triage output". `Console.jsx` filters the budget tile by `id === 'budget'` where it filters `'bobcoins'` today.
+
+**Budget source.** `agentBudget.getBalance()` returns the same shape as `bobCredits.getBalance()` (`available`, `remaining`, `percentRemaining`, `budgetLimit`, `usage`). Month-to-date spend is the sum of `payload.cost_usd` over `triage_item_completed`, `triage_item_failed` and `parse_failed` since the first of the month (UTC), queried from Elasticsearch. If Elasticsearch is not reachable, it falls back to the `creditLedger` entries. The ledger file sits on the container's ephemeral `/workspace`, so the Elasticsearch figure is the one that survives a restart.
+
+## 9. Deployment
+
+**Dockerfile.** Delete the three `ARG BOB_*` lines and the `---- Bob Shell ----` `RUN` block. Delete the `carbon-builder` fetch block and the `test -f /app/.bob/skills/carbon-builder/SKILL.md` check, because triage uses no skill. In the `mkdir -p /home/app/.bob ...` block, delete the three `printf` lines and the `cp -R ... carbon-builder` line, keeping `/workspace` and the `chown`. Insert in place of the Bob block:
+
+```dockerfile
+# Claude Code, pinned. Move the pin deliberately.
+ARG CLAUDE_CODE_VERSION=x.y.z
+RUN npm install -g --registry=https://registry.npmjs.org/ --no-audit --no-fund \
+      @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
+  && claude --version
+```
+
+The version is set in task 1 after the "verify first" checks (section 13). The Debian base, Node 22, non-root `app` user, `/workspace` and `HEALTHCHECK` stay.
+
+**Scale.** Keep min 1 and max 1. The rotating MCP refresh token, one reason for max 1, no longer applies because there is no MCP. The other reasons remain: the single-flight guard `reviewState` lives in one process's memory, and the schedule's idempotency token is per-instance. A second instance could triage the same issue twice and post two draft comments. Min 1 keeps the scheduler tick alive.
+
+**Schedule.** `scheduleManager.js` runs on `SCHEDULE_TIMEZONE`, which defaults to `America/Chicago`, so the operator enters 02:00 directly in the console. No code change.
+
+**Elasticsearch and Kibana.** Run `node scripts/init-index.js`, `node scripts/init-kibana.js` and `node scripts/rebuild-dashboard.js` once against the cluster after the renames.
+
+**First run, once, by a human.** Create the Atlassian account and its API token, and get the role on `CDS` granted. Create the Anthropic API key. Fill `.env`. Run `./deploy_ce.sh`. Bootstrap Elasticsearch and Kibana. Sign in to the console and confirm all four tiles are green. Create an issue in the scratch project, and triage it by key from the console. Enable the schedule at 03:00.
+
+## 10. Acceptance criteria
+
+- **AC-1** Given a mock Jira holding 14 issues that match the JQL, when `triageIssues` runs in auto mode, then the search request carries the default JQL and `maxResults: 10`, and exactly 10 items are processed in the order returned.
+- **AC-2** Given a scratch project with one unlabelled issue, one labelled `other` and one labelled `ai-triaged`, when the default JQL runs on the live site, then the first two are returned and the third is not.
+- **AC-3** Given agent output containing a valid `BEGIN_TRIAGE_JSON` block, when `parseTriageOutput` runs, then it returns all six fields with their types.
+- **AC-4** Given `category: "incident"`, or `confidence: 1.3`, or `confidence: "high"`, when `parseTriageOutput` runs, then it returns null.
+- **AC-5** Given `category: "duplicate"` with `duplicate_of: null`, when `parseTriageOutput` runs, then it returns null; given `category: "bug"` with `duplicate_of: "CDS-1"`, then it also returns null.
+- **AC-6** Given a component not in the allowed list, when `parseTriageOutput` runs, then `component` is null, `component_dropped` is true, and the result is not null.
+- **AC-7** Given the first agent output fails to parse and the second parses, when an item is processed, then the agent ran twice, `retried` is true, and `cost_usd` is the sum of both attempts.
+- **AC-8** Given both attempts fail to parse, when an item is processed, then `parse_failed` is emitted and no comment, label or marker call is made.
+- **AC-9** Given a successful parse, when write-back runs, then the calls are made in the order comment, classification-label `PUT`, `ai-triaged` `PUT`, and the comment's ADF text starts with `AI triage (draft):`.
+- **AC-10** Given the classification-label `PUT` returns 403, when an item is processed, then `triage_item_failed` has `stage: "labels"` and the `ai-triaged` `PUT` is never sent.
+- **AC-11** Given an issue that already has an `AI triage (draft):` comment by the triage account and labels `ai-category-question`, when it is triaged again as a bug, then no second comment is posted, `ai-category-question` is removed, `ai-category-bug` is added, and `comment_reused` is true.
+- **AC-12** Given a triage already running, when `POST /api/triage/trigger` arrives, then the response is 409; given `{"issueKeys": ["cds-1"]}` or `{"issueKeys": [12]}`, then the response is 400.
+- **AC-13** Given month-to-date spend of 136 USD against `AGENT_MONTHLY_BUDGET_USD=150`, when the scheduled minute arrives, then the schedule auto-pauses, no run starts, and Slack receives the low-budget alert reading "Budget remaining: 9.33%".
+- **AC-14** Given a scheduled run that triages two issues and fails one, when the digest is built, then it has three issue lines and the footer `2 issues triaged · 1 failed`.
+- **AC-15** Given the built image, when `podman run --rm -e ANTHROPIC_API_KEY --entrypoint claude harness-test -p "Reply with the single word OK" --output-format json` runs, then it prints JSON whose `result` is `OK` and which carries `total_cost_usd`.
+- **AC-16** Given the Jira account lacks Edit Issues on `CDS`, when the Jira tile is checked, then it reports FAILED with a hint naming Edit Issues.
+- **AC-17** Given an event emitted after `init-index.js` ran, when it is searched in `cds-triage-events`, then `payload.confidence` is mapped as float and `item_key` as keyword.
+
+## 11. Verification plan
+
+New tests, each runnable with no `.env` and added to `test:all` in `package.json`, which `.github/workflows/test.yml` runs:
+
+- `tests/jiraSelection.test.js`: mock `fetch`; JQL body, `maxResults`, explicit keys bypass the JQL, 429 handling (AC-1).
+- `tests/triageParser.test.js`: valid block, every rejection rule, dropped component and severity, last-marker selection (AC-3 to AC-6).
+- `tests/triageWriteBack.test.js`: call order, failure at each stage, comment reuse, label replacement (AC-9 to AC-11).
+- `tests/triageOrchestrator.test.js`: retry and cost summing, parse-failed path (AC-7, AC-8).
+- `tests/triageBundle.test.js`: ADF to text, AI comments excluded, truncation order.
+- `tests/agentBudget.test.js` replaces `tests/bobCredits.test.js`; `tests/scheduleManager.test.js` and `tests/creditsEs.test.js` are updated for the budget and the new index (AC-13).
+- `tests/slackNotifier.test.js` is rewritten for the triage digest (AC-14).
+- `tests/apiAuth.test.js` and `scripts/smoke-remote.sh` use the `/api/triage/*` routes (AC-12).
+- Removed: `reviewTargeting`, `reviewablePrs`, `prTargeting`, `oversizedPr`, `linkedIssue`, `hasCatalogue`, `carbonBuilderAuthority`, `reviewPrompt`, `test-parser`, `test-diff-mapper`, `test-bad-escape`, `test-truncation-edge-cases` and `test-agent.js`. `tokenUsage.test.js` changes its require to `src/triagePrompt.js`. `sessionAuth` and `mcpConnection` are kept as they are.
+
+Dry run: in a scratch Jira project, create three issues with `scripts/create-test-issue.js`, then run `node src/index.js --issue <KEY>` locally with `JIRA_TRIAGE_PROJECT` set to the scratch project. Check AC-2 and the comment rendering in Jira. Image check: AC-15. After the first scheduled run, check Slack (AC-14), the four Kibana panels, and the Budget tile against Anthropic's usage console. Verifiable only in the cloud: the 03:00 ET firing, and Budget surviving a container restart.
+
+## 12. Tasks
+
+1. Settle the "verify first" items in section 13 and pin `CLAUDE_CODE_VERSION`. Files: `Dockerfile`. AC-15.
+2. Swap the agent: Dockerfile block, `case 'claude'` returning `{ text, costUsd, usage }`, `checkClaude`, secret keys. Files: `Dockerfile`, `src/agentRunner.js`, `src/api/healthChecks.js`, `deploy_ce.sh`, `.env.example`. AC-15.
+3. Rename the env prefix and constants. Files: `src/constants.js`, `.env.example`, `deploy_ce.sh`, `docker-compose.yml`. AC-1.
+4. Write the Jira client with 429 handling, plus selection tests. Files: `src/jiraClient.js`, `tests/jiraSelection.test.js`. AC-1, AC-2.
+5. Write the workspace builder with ADF conversion and truncation. Files: `src/triageBundle.js`, `tests/triageBundle.test.js`. AC-6.
+6. Write the prompt and parser. Files: `src/triagePrompt.js`, `src/triageParser.js`, `tests/triageParser.test.js`. AC-3, AC-4, AC-5, AC-6.
+7. Write the write-back sequence and comment formatter. Files: `src/jiraClient.js`, `src/triagePrompt.js`, `tests/triageWriteBack.test.js`. AC-9, AC-10, AC-11.
+8. Rework the orchestrator, removing the GitHub, diff and skill paths. Files: `src/index.js`, `tests/triageOrchestrator.test.js`; delete `src/githubClient.js`, `src/reviewBundle.js`, `src/reviewPrompt.js`, `src/reviewParser.js`, `src/diffMapper.js`. AC-7, AC-8.
+9. Add the budget module, the ledger fields and the scheduler hook. Files: `src/api/agentBudget.js`, `src/api/creditLedger.js`, `src/api/scheduleManager.js`, `src/api/server.js`, `src/slackNotifier.js`, `tests/agentBudget.test.js`, `tests/scheduleManager.test.js`, `tests/creditsEs.test.js`; delete `src/api/bobCredits.js`. AC-13.
+10. Rename the routes and change the body validation. Files: `src/api/server.js`, `client/src/api.js`, `tests/apiAuth.test.js`, `scripts/smoke-remote.sh`. AC-12.
+11. Add the Jira and Budget health tiles, and drop `checkCarbonMcp`, `checkBob` and `checkBobCredits`. Files: `src/api/healthChecks.js`, `client/src/pages/Console.jsx`. AC-16.
+12. Change the telemetry vocabulary and Kibana assets. Files: `src/observability/eventService.js`, `scripts/init-index.js`, `scripts/init-kibana.js`, `scripts/rebuild-dashboard.js`, `scripts/refresh-kibana-dataview.js`. AC-17.
+13. Rewrite the digest and its tests. Files: `src/slackNotifier.js`, `tests/slackNotifier.test.js`. AC-14.
+14. Change console nouns and product identity. Files: `client/src/pages/Console.jsx`, `client/src/pages/HelpGuide.jsx`, `client/src/utils/prPhrasing.js` (to `issuePhrasing.js`), `client/src/components/BobcoinsPanel.jsx`, `client/src/components/ReviewLog.jsx`, `client/src/App.jsx`, `package.json`. AC-12.
+15. Add the scratch helper and remove the PR helpers and the obsolete tests. Files: `scripts/create-test-issue.js`, `scripts/create-test-pr.js`, `scripts/create-oversized-test-pr.js`, `tests/*`, `package.json`. AC-2.
+16. Deploy, bootstrap, dry-run on the scratch project, enable the schedule. Files: `.env` (local only). AC-2, AC-14, AC-15.
+
+## 13. Open questions
+
+**Verify first (from `docs/adapt-harness/agents/claude-code.md`)**, owner: the implementer, in task 1, against current Claude Code documentation.
+
+- [ ] Package name and a version to pin: `@anthropic-ai/claude-code`
+- [ ] Headless flags: `-p`, `--output-format json`, `--permission-mode`, `--allowedTools`, `--max-turns`, `--mcp-config` (here: that `--allowedTools Read` with `acceptEdits` denies every other tool without prompting)
+- [ ] The JSON result's fields, especially `result` and `total_cost_usd` (here: also `usage`)
+- [ ] MCP server shape for a streamable-HTTP server with headers (not needed while ground truth is none; record the answer for later)
+- [ ] Where project skills load from (`.claude/skills/`) and the instruction file name (`CLAUDE.md`)
+
+**Jira and product questions**
+
+| Question                                                                                                                                                          | Who decides                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Does the `CDS` permission scheme give the triage account's role Edit Issues? Labels need it, and so does the done marker.                                         | Jira administrator for `CDS`                   |
+| What are the site's REST rate limits for this account, and is 45 calls a night with a single 60-second `Retry-After` wait enough?                                 | Atlassian site administrator                   |
+| Does `(labels IS EMPTY OR labels != ai-triaged)` behave as AC-2 expects on this site?                                                                             | Implementer, on the scratch project            |
+| Is `POST /rest/api/3/search/jql` the current search endpoint for this site, given the older `/rest/api/3/search` is being retired?                                | Implementer, against Atlassian's API changelog |
+| How long do this org's Atlassian API tokens last, and does an SSO or Atlassian Guard policy block API tokens for managed accounts?                                | Atlassian organisation administrator           |
+| Should the draft comment be visible to everyone with browse access, or restricted to a project role (comment `visibility`)?                                       | CDS product lead                               |
+| Each issue gets three edits, and each may email watchers. Suppressing that with `notifyUsers=false` needs admin rights. Is the noise acceptable?                  | CDS product lead with the Jira administrator   |
+| Is `critical, major, minor, trivial` the right severity vocabulary, or should it mirror the CDS priority scheme?                                                  | CDS product lead                               |
+| The workspace holds only the one issue, so `duplicate` is proposed only when the issue text names the original. Should a list of recent issue summaries be added? | CDS product lead                               |
+| Which Claude model does Claude Code use here, and what does a typical item cost? A 150 USD month allows about 0.48 USD per item at 10 issues a night.             | Budget owner                                   |
+| Is sending CDS issue text, including reporter names, to the Anthropic API approved for this project?                                                              | Security and data-handling owner               |
+| Should the idle MCP panel (`McpConnectionPanel.jsx`) be hidden from the settings dialog?                                                                          | Console owner                                  |
+| Will `cds-triage` use its own Elasticsearch cluster or share one? With the renames in section 6 nothing collides, but the cluster owner should know.              | Platform owner for the cluster                 |

@@ -51,7 +51,8 @@ function parsePrProgress(lines, prNumbers, running) {
     const start = PR_START_RE.exec(text);
     if (start) {
       const n = Number(start[1]);
-      if (!started.has(n)) started.set(n, { title: (start[2] || '').trim(), order: order++ });
+      if (!started.has(n))
+        started.set(n, { title: (start[2] || '').trim(), order: order++ });
       continue;
     }
     const fin = PR_DONE_RE.exec(text);
@@ -76,7 +77,11 @@ function parsePrProgress(lines, prNumbers, running) {
   }
   return [...started.entries()]
     .sort((a, b) => a[1].order - b[1].order)
-    .map(([n, meta]) => ({ number: n, title: meta.title, status: statusFor(n) }));
+    .map(([n, meta]) => ({
+      number: n,
+      title: meta.title,
+      status: statusFor(n),
+    }));
 }
 
 /**
@@ -97,7 +102,14 @@ function parsePrProgress(lines, prNumbers, running) {
  * it is occupied, and without being told it would reserve a row's worth of
  * margin for a panel that is not there.
  */
-function ReviewLog({ running, startedAt, onVisibilityChange, prNumbers, owner, repo }) {
+function ReviewLog({
+  running,
+  startedAt,
+  onVisibilityChange,
+  prNumbers,
+  owner,
+  repo,
+}) {
   const [lines, setLines] = useState([]);
   const [dropped, setDropped] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -155,7 +167,10 @@ function ReviewLog({ running, startedAt, onVisibilityChange, prNumbers, owner, r
 
     // Polled only while running. One trailing fetch after it stops catches the
     // final lines, which otherwise land between the last poll and the stop.
-    if (!running) return () => { cancelled = true; };
+    if (!running)
+      return () => {
+        cancelled = true;
+      };
 
     const timer = setInterval(tail, TAIL_INTERVAL_MS);
     return () => {
@@ -227,7 +242,9 @@ function ReviewLog({ running, startedAt, onVisibilityChange, prNumbers, owner, r
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    const stamp = startedAt ? new Date(startedAt).toISOString().replace(/[:.]/g, '-') : 'log';
+    const stamp = startedAt
+      ? new Date(startedAt).toISOString().replace(/[:.]/g, '-')
+      : 'log';
     anchor.download = `carbon-monitor-review-${stamp}.txt`;
     document.body.appendChild(anchor);
     anchor.click();
@@ -359,7 +376,10 @@ function ReviewLog({ running, startedAt, onVisibilityChange, prNumbers, owner, r
         "Running…". The active PR gets a spinner; the rest a status indicator.
       */}
       {prProgress.length > 0 && (
-        <ol className="cm-pr-progress" aria-label="Per-pull-request review progress">
+        <ol
+          className="cm-pr-progress"
+          aria-label="Per-pull-request review progress"
+        >
           {prProgress.map((pr) => {
             const meta = PR_STATUS[pr.status] || PR_STATUS['not-started'];
             return (
@@ -371,7 +391,11 @@ function ReviewLog({ running, startedAt, onVisibilityChange, prNumbers, owner, r
                     description={meta.label}
                   />
                 ) : (
-                  <IconIndicator kind={meta.kind} label={meta.label} size={16} />
+                  <IconIndicator
+                    kind={meta.kind}
+                    label={meta.label}
+                    size={16}
+                  />
                 )}
                 {owner && repo ? (
                   <Link
@@ -385,7 +409,9 @@ function ReviewLog({ running, startedAt, onVisibilityChange, prNumbers, owner, r
                 ) : (
                   <span className="cm-pr-progress__num">#{pr.number}</span>
                 )}
-                {pr.title && <span className="cm-pr-progress__title">{pr.title}</span>}
+                {pr.title && (
+                  <span className="cm-pr-progress__title">{pr.title}</span>
+                )}
               </li>
             );
           })}
@@ -400,7 +426,8 @@ function ReviewLog({ running, startedAt, onVisibilityChange, prNumbers, owner, r
 
       {dropped && (
         <p className="cm-log__notice">
-          Earlier output was discarded — this run produced more than the buffer holds.
+          Earlier output was discarded — this run produced more than the buffer
+          holds.
         </p>
       )}
 
@@ -428,7 +455,9 @@ function ReviewLog({ running, startedAt, onVisibilityChange, prNumbers, owner, r
         tabIndex={0}
       >
         {lines.length === 0 ? (
-          <div className="cm-log__line cm-log__line--muted">Waiting for output…</div>
+          <div className="cm-log__line cm-log__line--muted">
+            Waiting for output…
+          </div>
         ) : (
           lines.map((line) => (
             <div

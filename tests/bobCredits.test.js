@@ -64,7 +64,9 @@ function assert(condition, message) {
  * creditLedger falls back to ~/.config/carbon-monitor/ when MCP_STATE_PATH is
  * unset, so without this the tests would append to the developer's real ledger.
  */
-const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'carbon-monitor-credits-'));
+const sandbox = fs.mkdtempSync(
+  path.join(os.tmpdir(), 'carbon-monitor-credits-')
+);
 const originalHome = process.env.HOME;
 process.env.HOME = sandbox;
 process.env.CREDIT_LEDGER_PATH = path.join(sandbox, 'ledger.jsonl');
@@ -127,8 +129,14 @@ async function main() {
 
     const balance = await bobCredits.getBalance();
     assert(balance.available === false, 'should not be available');
-    assert(balance.reason === 'no-api-key', `unexpected reason: ${balance.reason}`);
-    assert(calls.length === 0, 'must not call a billing endpoint with no credential');
+    assert(
+      balance.reason === 'no-api-key',
+      `unexpected reason: ${balance.reason}`
+    );
+    assert(
+      calls.length === 0,
+      'must not call a billing endpoint with no credential'
+    );
 
     process.env.BOB_API_KEY = 'test-api-key-do-not-log';
   });
@@ -144,10 +152,22 @@ async function main() {
 
     assert(balance.available === true, `expected available: ${balance.reason}`);
     assert(balance.usage === 250, `unexpected usage: ${balance.usage}`);
-    assert(balance.budgetLimit === 1000, `unexpected limit: ${balance.budgetLimit}`);
-    assert(balance.remaining === 750, `remaining must be limit − usage, got ${balance.remaining}`);
-    assert(balance.percentRemaining === 75, `unexpected percent: ${balance.percentRemaining}`);
-    assert(balance.planName === 'Enterprise', `unexpected plan name: ${balance.planName}`);
+    assert(
+      balance.budgetLimit === 1000,
+      `unexpected limit: ${balance.budgetLimit}`
+    );
+    assert(
+      balance.remaining === 750,
+      `remaining must be limit − usage, got ${balance.remaining}`
+    );
+    assert(
+      balance.percentRemaining === 75,
+      `unexpected percent: ${balance.percentRemaining}`
+    );
+    assert(
+      balance.planName === 'Enterprise',
+      `unexpected plan name: ${balance.planName}`
+    );
     assert(balance.isTrial === false, 'enterprise is not a trial');
     assert(
       balance.refreshAt === new Date(1767225600 * 1000).toISOString(),
@@ -158,7 +178,12 @@ async function main() {
   await test('an array profile picks the active entry, not the first', async () => {
     const { balance } = await balanceFor(200, [
       { usage: 10, budget_limit: 100, plan: 'ibm_bob_trial', is_active: false },
-      { usage: 40, budget_limit: 500, plan: 'ibm_bob_enterprise', is_active: true },
+      {
+        usage: 40,
+        budget_limit: 500,
+        plan: 'ibm_bob_enterprise',
+        is_active: true,
+      },
     ]);
 
     assert(balance.available === true, `expected available: ${balance.reason}`);
@@ -166,18 +191,21 @@ async function main() {
       balance.budgetLimit === 500,
       `must report the active profile's budget, got ${balance.budgetLimit}`
     );
-    assert(balance.remaining === 460, `unexpected remaining: ${balance.remaining}`);
+    assert(
+      balance.remaining === 460,
+      `unexpected remaining: ${balance.remaining}`
+    );
   });
 
   // ── The shape the live gateway actually returns ──────────────────────────
-  // Captured verbatim from api.us-east.bob.ibm.com/admin/v1/profile. The billing
+  // Captured from api.us-east.bob.ibm.com/admin/v1/profile, identifiers replaced. The billing
   // figures live on a TEAM nested inside an INSTANCE, not on the profile root —
   // parsing only the root reported `available` with a null budget, which is what
   // left the console showing no balance against a perfectly valid API key.
 
   /** A response in the real gateway shape. */
   const liveShape = (teams, instanceOverrides = {}) => ({
-    user_id: 'Carbon.MCP@ibm.com',
+    user_id: 'monitor@example.com',
     instances: [
       {
         subscription_id: 'sub-1',
@@ -200,15 +228,29 @@ async function main() {
   await test('reads usage and budget from instances[].teams[] (live shape)', async () => {
     const { balance } = await balanceFor(
       200,
-      liveShape([{ id: 'team-1', name: 'default', usage: 1.480782, budget_limit: 100 }])
+      liveShape([
+        { id: 'team-1', name: 'default', usage: 1.480782, budget_limit: 100 },
+      ])
     );
 
     assert(balance.available === true, `expected available: ${balance.reason}`);
     assert(balance.usage === 1.480782, `unexpected usage: ${balance.usage}`);
-    assert(balance.budgetLimit === 100, `unexpected budget: ${balance.budgetLimit}`);
-    assert(balance.remaining === 98.519218, `unexpected remaining: ${balance.remaining}`);
-    assert(balance.percentRemaining === 98.52, `unexpected pct: ${balance.percentRemaining}`);
-    assert(balance.planName === 'IBM internal version', `unexpected plan: ${balance.planName}`);
+    assert(
+      balance.budgetLimit === 100,
+      `unexpected budget: ${balance.budgetLimit}`
+    );
+    assert(
+      balance.remaining === 98.519218,
+      `unexpected remaining: ${balance.remaining}`
+    );
+    assert(
+      balance.percentRemaining === 98.52,
+      `unexpected pct: ${balance.percentRemaining}`
+    );
+    assert(
+      balance.planName === 'IBM internal version',
+      `unexpected plan: ${balance.planName}`
+    );
     assert(
       balance.refreshAt === new Date(1788220800 * 1000).toISOString(),
       `refresh_at should normalise from unix seconds, got ${balance.refreshAt}`
@@ -226,8 +268,14 @@ async function main() {
           { id: 'team-b', name: 'other', usage: 10, budget_limit: 200 },
         ])
       );
-      assert(balance.budgetLimit === 200, `must honour BOB_TEAM_ID, got ${balance.budgetLimit}`);
-      assert(balance.remaining === 190, `unexpected remaining: ${balance.remaining}`);
+      assert(
+        balance.budgetLimit === 200,
+        `must honour BOB_TEAM_ID, got ${balance.budgetLimit}`
+      );
+      assert(
+        balance.remaining === 190,
+        `unexpected remaining: ${balance.remaining}`
+      );
     } finally {
       if (saved === undefined) delete process.env.BOB_TEAM_ID;
       else process.env.BOB_TEAM_ID = saved;
@@ -237,9 +285,18 @@ async function main() {
   await test('an instance whose teams carry no billing is bad-response', async () => {
     // Not `available` with nulls: a green tile over an unread balance is worse
     // than an honest failure, because nothing downstream can tell the difference.
-    const { balance } = await balanceFor(200, liveShape([{ id: 't', name: 'default' }]));
-    assert(balance.available === false, 'must not report a balance it never read');
-    assert(balance.reason === 'bad-response', `unexpected reason: ${balance.reason}`);
+    const { balance } = await balanceFor(
+      200,
+      liveShape([{ id: 't', name: 'default' }])
+    );
+    assert(
+      balance.available === false,
+      'must not report a balance it never read'
+    );
+    assert(
+      balance.reason === 'bad-response',
+      `unexpected reason: ${balance.reason}`
+    );
   });
 
   await test('a profiles wrapper is resolved via activeProfileId', async () => {
@@ -251,15 +308,27 @@ async function main() {
       ],
     });
 
-    assert(balance.budgetLimit === 20, `wrong profile selected: ${balance.budgetLimit}`);
-    assert(balance.isTrial === true, 'ibm_bob_trial should be flagged as a trial');
-    assert(balance.planName === 'trial', `plan name should drop the prefix: ${balance.planName}`);
+    assert(
+      balance.budgetLimit === 20,
+      `wrong profile selected: ${balance.budgetLimit}`
+    );
+    assert(
+      balance.isTrial === true,
+      'ibm_bob_trial should be flagged as a trial'
+    );
+    assert(
+      balance.planName === 'trial',
+      `plan name should drop the prefix: ${balance.planName}`
+    );
   });
 
   await test('401 reports unauthorized', async () => {
     const { balance } = await balanceFor(401, { error: 'unauthorized' });
     assert(balance.available === false, 'should not be available');
-    assert(balance.reason === 'unauthorized', `unexpected reason: ${balance.reason}`);
+    assert(
+      balance.reason === 'unauthorized',
+      `unexpected reason: ${balance.reason}`
+    );
   });
 
   await test('402 reports budget-exceeded', async () => {
@@ -276,7 +345,10 @@ async function main() {
 
     const balance = await bobCredits.getBalance();
     assert(balance.available === false, 'should not be available');
-    assert(balance.reason === 'unreachable', `unexpected reason: ${balance.reason}`);
+    assert(
+      balance.reason === 'unreachable',
+      `unexpected reason: ${balance.reason}`
+    );
   });
 
   await test('an aborted request reports unreachable rather than throwing', async () => {
@@ -288,21 +360,34 @@ async function main() {
     });
 
     const balance = await bobCredits.getBalance();
-    assert(balance.reason === 'unreachable', `unexpected reason: ${balance.reason}`);
+    assert(
+      balance.reason === 'unreachable',
+      `unexpected reason: ${balance.reason}`
+    );
   });
 
   await test('malformed JSON reports bad-response', async () => {
     const { balance } = await balanceFor(200, '__invalid__');
-    assert(balance.reason === 'bad-response', `unexpected reason: ${balance.reason}`);
+    assert(
+      balance.reason === 'bad-response',
+      `unexpected reason: ${balance.reason}`
+    );
   });
 
   await test('an unexpected status is labelled with its code', async () => {
     const { balance } = await balanceFor(503, {});
-    assert(balance.reason === 'http-503', `unexpected reason: ${balance.reason}`);
+    assert(
+      balance.reason === 'http-503',
+      `unexpected reason: ${balance.reason}`
+    );
   });
 
   await test('the API key never appears in the returned balance', async () => {
-    const { balance } = await balanceFor(200, { usage: 1, budget_limit: 2, plan: 'ibm_bob_trial' });
+    const { balance } = await balanceFor(200, {
+      usage: 1,
+      budget_limit: 2,
+      plan: 'ibm_bob_trial',
+    });
     assert(
       !JSON.stringify(balance).includes('test-api-key-do-not-log'),
       'the balance is served straight to HTTP clients and must carry no credential'
@@ -324,7 +409,10 @@ async function main() {
       options.headers.Authorization === 'apikey test-api-key-do-not-log',
       `Bob expects the apikey scheme, got: ${options.headers.Authorization}`
     );
-    assert(options.headers['x-instance-id'] === 'instance-9', 'instance header missing');
+    assert(
+      options.headers['x-instance-id'] === 'instance-9',
+      'instance header missing'
+    );
     assert(options.headers['x-team-id'] === 'team-9', 'team header missing');
 
     delete process.env.BOB_INSTANCE_ID;
@@ -340,8 +428,14 @@ async function main() {
       profiles: [{ id: 'p1', name: 'default', region: 'us-east' }],
     });
 
-    assert(balance.available === false, 'a profile with no billing fields is not a balance');
-    assert(balance.reason === 'bad-response', `unexpected reason: ${balance.reason}`);
+    assert(
+      balance.available === false,
+      'a profile with no billing fields is not a balance'
+    );
+    assert(
+      balance.reason === 'bad-response',
+      `unexpected reason: ${balance.reason}`
+    );
   });
 
   await test('an unparseable timeout falls back instead of aborting every call', async () => {
@@ -350,7 +444,10 @@ async function main() {
     process.env.BOB_CREDITS_TIMEOUT_MS = '10s';
     const { balance } = await balanceFor(200, { usage: 5, budget_limit: 50 });
 
-    assert(balance.available === true, `a typo must not disable the gateway: ${balance.reason}`);
+    assert(
+      balance.available === true,
+      `a typo must not disable the gateway: ${balance.reason}`
+    );
     assert(balance.usage === 5, `unexpected usage: ${balance.usage}`);
 
     delete process.env.BOB_CREDITS_TIMEOUT_MS;
@@ -367,7 +464,10 @@ async function main() {
 
     await bobCredits.getBalance();
     await bobCredits.getBalance();
-    assert(served === 1, `NaN would make every poll refetch; gateway saw ${served} calls`);
+    assert(
+      served === 1,
+      `NaN would make every poll refetch; gateway saw ${served} calls`
+    );
 
     delete process.env.BOB_CREDITS_TTL_MS;
   });
@@ -382,8 +482,14 @@ async function main() {
       return jsonResponse(200, { usage: served, budget_limit: 100 });
     });
 
-    const [a, b] = await Promise.all([bobCredits.getBalance(), bobCredits.getBalance()]);
-    assert(served === 1, `N open tabs must not drive N gateway calls, got ${served}`);
+    const [a, b] = await Promise.all([
+      bobCredits.getBalance(),
+      bobCredits.getBalance(),
+    ]);
+    assert(
+      served === 1,
+      `N open tabs must not drive N gateway calls, got ${served}`
+    );
     assert(a.usage === b.usage, 'both callers should receive the same balance');
 
     // The review loop's "after" snapshot must observe spend that landed during
@@ -395,7 +501,10 @@ async function main() {
       bobCredits.getBalance({ force: true }),
     ]);
     await forced;
-    assert(served === 2, `forced snapshots must each reach the gateway, got ${served}`);
+    assert(
+      served === 2,
+      `forced snapshots must each reach the gateway, got ${served}`
+    );
   });
 
   await test('the abort timer still covers the body read, not just the headers', async () => {
@@ -422,7 +531,10 @@ async function main() {
     const balance = await bobCredits.getBalance();
     const elapsed = Date.now() - startedAt;
 
-    assert(elapsed < 5000, `a stalled body must be cut off, waited ${elapsed}ms`);
+    assert(
+      elapsed < 5000,
+      `a stalled body must be cut off, waited ${elapsed}ms`
+    );
     assert(
       balance.reason === 'unreachable',
       `a stalled body should read as unreachable, got ${balance.reason}`
@@ -441,12 +553,21 @@ async function main() {
 
     const first = await bobCredits.getBalance();
     const second = await bobCredits.getBalance();
-    assert(served === 1, `the UI polls every 30s; a second read must not refetch (${served})`);
-    assert(second.usage === first.usage, 'the cached value should be returned unchanged');
+    assert(
+      served === 1,
+      `the UI polls every 30s; a second read must not refetch (${served})`
+    );
+    assert(
+      second.usage === first.usage,
+      'the cached value should be returned unchanged'
+    );
 
     const forced = await bobCredits.getBalance({ force: true });
     assert(served === 2, 'force must reach the gateway');
-    assert(forced.usage === 2, `force should return the fresh value, got ${forced.usage}`);
+    assert(
+      forced.usage === 2,
+      `force should return the fresh value, got ${forced.usage}`
+    );
   });
 
   // ── Spend attribution ─────────────────────────────────────────────────────
@@ -454,7 +575,10 @@ async function main() {
   await test('computeSpend returns the usage delta', () => {
     const before = { available: true, usage: 100 };
     const after = { available: true, usage: 103.5 };
-    assert(bobCredits.computeSpend(before, after) === 3.5, 'spend is usage_after − usage_before');
+    assert(
+      bobCredits.computeSpend(before, after) === 3.5,
+      'spend is usage_after − usage_before'
+    );
   });
 
   await test('computeSpend returns null when the delta cannot be trusted', () => {
@@ -462,12 +586,21 @@ async function main() {
 
     // refresh_at passed mid-review, so usage reset — the difference is nonsense.
     assert(
-      bobCredits.computeSpend({ available: true, usage: 900 }, { available: true, usage: 4 }) === null,
+      bobCredits.computeSpend(
+        { available: true, usage: 900 },
+        { available: true, usage: 4 }
+      ) === null,
       'a negative delta must be reported as unknown, not as negative spend'
     );
-    assert(bobCredits.computeSpend(null, ok) === null, 'a missing snapshot yields null');
     assert(
-      bobCredits.computeSpend({ available: false, reason: 'unreachable', usage: null }, ok) === null,
+      bobCredits.computeSpend(null, ok) === null,
+      'a missing snapshot yields null'
+    );
+    assert(
+      bobCredits.computeSpend(
+        { available: false, reason: 'unreachable', usage: null },
+        ok
+      ) === null,
       'an unavailable snapshot yields null'
     );
     assert(
@@ -502,7 +635,10 @@ async function main() {
     // A gateway that has not yet advanced refresh_at is caught by the reset
     // instant having passed between the two reads.
     assert(
-      bobCredits.computeSpend(before, { ...after, refreshAt: before.refreshAt }) === null,
+      bobCredits.computeSpend(before, {
+        ...after,
+        refreshAt: before.refreshAt,
+      }) === null,
       'a reset instant that has already passed must also null the delta'
     );
 
@@ -511,7 +647,10 @@ async function main() {
       { ...before, refreshAt: '2026-09-01T00:00:00.000Z' },
       { ...after, fetchedAt: '2026-08-01T00:03:00.000Z' }
     );
-    assert(spend === 2.6, `a within-period delta must still be reported, got ${spend}`);
+    assert(
+      spend === 2.6,
+      `a within-period delta must still be reported, got ${spend}`
+    );
   });
 
   // ── Ledger ────────────────────────────────────────────────────────────────
@@ -543,7 +682,10 @@ async function main() {
     const entries = await creditLedger.readRecent(10);
     assert(entries.length === 2, `expected 2 entries, got ${entries.length}`);
     assert(entries[0].prNumber === 2, 'the newest entry should come first');
-    assert(entries[0].coinsSpent === 3, `unexpected spend: ${entries[0].coinsSpent}`);
+    assert(
+      entries[0].coinsSpent === 3,
+      `unexpected spend: ${entries[0].coinsSpent}`
+    );
     assert(entries[1].prNumber === 1, 'the older entry should come second');
   });
 
@@ -560,9 +702,18 @@ async function main() {
     }
 
     const all = await creditLedger.readAll();
-    assert(all.length === 5, `an unbounded ledger fills the disk; got ${all.length} lines`);
-    assert(all[0].prNumber === 4, `oldest retained should be #4, got #${all[0].prNumber}`);
-    assert(all[4].prNumber === 8, `newest retained should be #8, got #${all[4].prNumber}`);
+    assert(
+      all.length === 5,
+      `an unbounded ledger fills the disk; got ${all.length} lines`
+    );
+    assert(
+      all[0].prNumber === 4,
+      `oldest retained should be #4, got #${all[0].prNumber}`
+    );
+    assert(
+      all[4].prNumber === 8,
+      `newest retained should be #8, got #${all[4].prNumber}`
+    );
     assert(
       !fs.existsSync(`${ledgerPath}.tmp`),
       'the pruning temp file must be renamed away, not left behind'
@@ -576,17 +727,31 @@ async function main() {
     fs.writeFileSync(
       ledgerPath,
       [
-        JSON.stringify({ at: '2026-08-01T00:00:00.000Z', prNumber: 1, coinsSpent: 1 }),
-        '{"at":"2026-08-02T00:00:00.000Z","prNum',  // killed mid-append
+        JSON.stringify({
+          at: '2026-08-01T00:00:00.000Z',
+          prNumber: 1,
+          coinsSpent: 1,
+        }),
+        '{"at":"2026-08-02T00:00:00.000Z","prNum', // killed mid-append
         'not json at all',
-        JSON.stringify({ at: '2026-08-03T00:00:00.000Z', prNumber: 3, coinsSpent: 2 }),
+        JSON.stringify({
+          at: '2026-08-03T00:00:00.000Z',
+          prNumber: 3,
+          coinsSpent: 2,
+        }),
         '',
       ].join('\n')
     );
 
     const entries = await creditLedger.readAll();
-    assert(entries.length === 2, `expected the 2 intact lines, got ${entries.length}`);
-    assert(entries[0].prNumber === 1 && entries[1].prNumber === 3, 'wrong entries survived');
+    assert(
+      entries.length === 2,
+      `expected the 2 intact lines, got ${entries.length}`
+    );
+    assert(
+      entries[0].prNumber === 1 && entries[1].prNumber === 3,
+      'wrong entries survived'
+    );
   });
 
   await test('appending after a truncated line does not destroy the new record', async () => {
@@ -607,10 +772,19 @@ async function main() {
     });
 
     const entries = await creditLedger.readAll();
-    assert(entries.length === 2, `the crash must cost one record, not two; got ${entries.length}`);
+    assert(
+      entries.length === 2,
+      `the crash must cost one record, not two; got ${entries.length}`
+    );
     assert(entries[0].prNumber === 1, 'the intact history should survive');
-    assert(entries[1].prNumber === 3, 'the entry written after the crash must be readable');
-    assert(entries[1].coinsSpent === 2, `unexpected spend: ${entries[1].coinsSpent}`);
+    assert(
+      entries[1].prNumber === 3,
+      'the entry written after the crash must be readable'
+    );
+    assert(
+      entries[1].coinsSpent === 2,
+      `unexpected spend: ${entries[1].coinsSpent}`
+    );
   });
 
   await test('record does not throw when the ledger cannot be written', async () => {
@@ -634,7 +808,11 @@ async function main() {
 
     await creditLedger.record({ at: hoursAgo(1), prNumber: 1, coinsSpent: 2 });
     await creditLedger.record({ at: hoursAgo(48), prNumber: 2, coinsSpent: 3 });
-    await creditLedger.record({ at: hoursAgo(24 * 30), prNumber: 3, coinsSpent: 5 });
+    await creditLedger.record({
+      at: hoursAgo(24 * 30),
+      prNumber: 3,
+      coinsSpent: 5,
+    });
 
     const s = await creditLedger.summary();
     assert(s.totalSpent === 10, `unexpected total: ${s.totalSpent}`);
@@ -644,20 +822,40 @@ async function main() {
       Math.abs(s.averagePerReview - 10 / 3) < 1e-6,
       `unexpected average: ${s.averagePerReview}`
     );
-    assert(s.last24hSpent === 2, `only the 1h-old entry is inside 24h, got ${s.last24hSpent}`);
-    assert(s.last7dSpent === 5, `the 1h and 48h entries are inside 7d, got ${s.last7dSpent}`);
+    assert(
+      s.last24hSpent === 2,
+      `only the 1h-old entry is inside 24h, got ${s.last24hSpent}`
+    );
+    assert(
+      s.last7dSpent === 5,
+      `the 1h and 48h entries are inside 7d, got ${s.last7dSpent}`
+    );
     assert(s.firstRecordedAt < s.lastRecordedAt, 'first should precede last');
   });
 
   await test('summary counts uncosted reviews but excludes them from the average', async () => {
     resetLedger();
-    await creditLedger.record({ at: new Date().toISOString(), prNumber: 1, coinsSpent: 4 });
+    await creditLedger.record({
+      at: new Date().toISOString(),
+      prNumber: 1,
+      coinsSpent: 4,
+    });
     // Balance lookup failed for this one — the review happened, its cost is unknown.
-    await creditLedger.record({ at: new Date().toISOString(), prNumber: 2, coinsSpent: null });
+    await creditLedger.record({
+      at: new Date().toISOString(),
+      prNumber: 2,
+      coinsSpent: null,
+    });
 
     const s = await creditLedger.summary();
-    assert(s.reviewCount === 2, `both reviews should be counted, got ${s.reviewCount}`);
-    assert(s.totalSpent === 4, `an unknown cost must add nothing, got ${s.totalSpent}`);
+    assert(
+      s.reviewCount === 2,
+      `both reviews should be counted, got ${s.reviewCount}`
+    );
+    assert(
+      s.totalSpent === 4,
+      `an unknown cost must add nothing, got ${s.totalSpent}`
+    );
     assert(
       s.averagePerReview === 4,
       `the average must divide by known costs only, got ${s.averagePerReview}`
@@ -667,9 +865,15 @@ async function main() {
   await test('summary of an absent ledger is empty, not an error', async () => {
     resetLedger();
     const s = await creditLedger.summary();
-    assert(s.reviewCount === 0 && s.totalSpent === 0, 'a fresh container starts empty');
+    assert(
+      s.reviewCount === 0 && s.totalSpent === 0,
+      'a fresh container starts empty'
+    );
     assert(s.averagePerReview === null, 'no reviews means no average');
-    assert(s.firstRecordedAt === null && s.lastRecordedAt === null, 'no timestamps yet');
+    assert(
+      s.firstRecordedAt === null && s.lastRecordedAt === null,
+      'no timestamps yet'
+    );
   });
 
   await test('buildCumulative runs oldest-first regardless of input order', () => {
@@ -681,14 +885,26 @@ async function main() {
     ]);
 
     assert(series.length === 3, `expected 3 points, got ${series.length}`);
-    assert(series[0].at === '2026-08-01T00:00:00.000Z', 'the series must start oldest');
-    assert(series[0].cumulativeSpent === 2, `unexpected running total: ${series[0].cumulativeSpent}`);
+    assert(
+      series[0].at === '2026-08-01T00:00:00.000Z',
+      'the series must start oldest'
+    );
+    assert(
+      series[0].cumulativeSpent === 2,
+      `unexpected running total: ${series[0].cumulativeSpent}`
+    );
     assert(
       series[1].spent === 0 && series[1].cumulativeSpent === 2,
       'an unknown cost contributes zero rather than breaking the line'
     );
-    assert(series[2].cumulativeSpent === 5, `unexpected final total: ${series[2].cumulativeSpent}`);
-    assert(series[2].remaining === 90, `remaining should carry through: ${series[2].remaining}`);
+    assert(
+      series[2].cumulativeSpent === 5,
+      `unexpected final total: ${series[2].cumulativeSpent}`
+    );
+    assert(
+      series[2].remaining === 90,
+      `remaining should carry through: ${series[2].remaining}`
+    );
   });
 
   // Restore the environment and remove the scratch directory.

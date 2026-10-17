@@ -23,17 +23,20 @@ npm start -- --pr <number>            # review a single PR from the CLI
 ## Tests
 
 ```bash
-npm run test:all
+npm run test:all   # or npm test, which runs the same suite
 ```
+
+These run without a `.env`. `npm run test:live` is different:
+it runs a real review and posts real comments to GitHub, so run it only on purpose.
 
 ## Deploy
 
-`./deploy_ce.sh` reads everything it needs from `.env`. See README → Deployment.
+`./deploy_ce.sh` reads everything it needs from `.env`. See [README → Deploy](README.md#deploy).
 
 ## Pull requests
 
 - Branch from `main`.
-- Run the tests before you push.
+- Run `npm run format` and the tests before you push. CI checks both.
 - Keep changes focused: one concern per pull request.
 - Never commit secrets or `.env`.
 - Say why in the description, not just what changed.

@@ -19,8 +19,8 @@ WORKDIR /app
 
 COPY package.json ./
 
-# `npm install`, not `npm ci`: this repo's .npmrc sets package-lock=false and
-# package-lock.json is gitignored, so no lockfile exists to install from.
+# `npm install`, not `npm ci`: package-lock.json is gitignored, so no lockfile
+# exists to install from.
 #
 # --registry is pinned explicitly because a developer's ~/.npmrc may default to
 # IBM Artifactory. That registry needs credentials the image does not carry, and
@@ -177,5 +177,3 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 # The API server, not src/index.js: this deployment is the long-running console
 # that owns MCP refresh and triggers reviews, rather than a one-shot review run.
 CMD ["node", "src/api/server.js"]
-
-# Made with Bob

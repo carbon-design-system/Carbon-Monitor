@@ -11,7 +11,7 @@ function generateLargeReview(numFindings, truncateAt) {
 {
   "summaryMarkdown": "This is a comprehensive review with multiple findings across different files.",
   "findings": [`;
-  
+
   for (let i = 0; i < numFindings; i++) {
     if (i > 0) json += ',';
     json += `
@@ -24,19 +24,19 @@ function generateLargeReview(numFindings, truncateAt) {
       "carbonVerified": false,
       "verificationSource": "not-carbon-specific"
     }`;
-    
+
     // Truncate at specified position if we've reached it
     if (truncateAt && json.length >= truncateAt) {
       return json.substring(0, truncateAt);
     }
   }
-  
+
   json += `
   ],
   "shouldPostInlineComments": true
 }
 END_REVIEW_JSON`;
-  
+
   return json;
 }
 
@@ -48,7 +48,9 @@ const largeReview1 = generateLargeReview(50, 8165);
 console.log(`Generated JSON length: ${largeReview1.length} characters`);
 const result1 = parseReviewOutput(largeReview1);
 if (result1 && result1.findings && result1.findings.length > 0) {
-  console.log(`✅ PASS: Recovered ${result1.findings.length} findings from truncated JSON`);
+  console.log(
+    `✅ PASS: Recovered ${result1.findings.length} findings from truncated JSON`
+  );
   console.log(`   Summary: "${result1.summaryMarkdown.substring(0, 50)}..."`);
 } else {
   console.log('❌ FAIL: Could not parse truncated JSON');
@@ -77,9 +79,14 @@ const midProperty = `BEGIN_REVIEW_JSON
       "tit`;
 const result2 = parseReviewOutput(midProperty);
 if (result2 && result2.findings.length === 1) {
-  console.log('✅ PASS: Recovered 1 complete finding, discarded incomplete one');
+  console.log(
+    '✅ PASS: Recovered 1 complete finding, discarded incomplete one'
+  );
 } else {
-  console.log('❌ FAIL: Expected 1 finding, got:', result2?.findings?.length || 'null');
+  console.log(
+    '❌ FAIL: Expected 1 finding, got:',
+    result2?.findings?.length || 'null'
+  );
 }
 console.log();
 
@@ -104,7 +111,10 @@ const result3 = parseReviewOutput(midArray);
 if (result3 && result3.findings.length === 1) {
   console.log('✅ PASS: Recovered 1 complete finding');
 } else {
-  console.log('❌ FAIL: Expected 1 finding, got:', result3?.findings?.length || 'null');
+  console.log(
+    '❌ FAIL: Expected 1 finding, got:',
+    result3?.findings?.length || 'null'
+  );
 }
 console.log();
 
@@ -133,7 +143,10 @@ const result4 = parseReviewOutput(withEscapes);
 if (result4 && result4.findings.length === 1) {
   console.log('✅ PASS: Handled escaped quotes correctly, recovered 1 finding');
 } else {
-  console.log('❌ FAIL: Expected 1 finding, got:', result4?.findings?.length || 'null');
+  console.log(
+    '❌ FAIL: Expected 1 finding, got:',
+    result4?.findings?.length || 'null'
+  );
 }
 console.log();
 
@@ -153,10 +166,11 @@ const result5 = parseReviewOutput(noComplete);
 if (result5 && result5.findings.length === 0) {
   console.log('✅ PASS: Correctly returned empty findings array');
 } else {
-  console.log('❌ FAIL: Expected 0 findings, got:', result5?.findings?.length || 'null');
+  console.log(
+    '❌ FAIL: Expected 0 findings, got:',
+    result5?.findings?.length || 'null'
+  );
 }
 console.log();
 
 console.log('🏁 Edge case tests complete');
-
-// Made with Bob

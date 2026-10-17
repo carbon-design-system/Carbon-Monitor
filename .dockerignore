@@ -20,6 +20,7 @@ client/
 vite.config.mjs
 scripts/
 tests/
+skills/
 .git/
 .github/
 kibana/
