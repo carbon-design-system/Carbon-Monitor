@@ -42,7 +42,9 @@ if (!GITHUB_TOKEN) {
   process.exit(1);
 }
 if (!OWNER || !REPO) {
-  console.error('❌  TEST_PR_OWNER and TEST_PR_REPO are not set (use a scratch repo, never the one being reviewed)');
+  console.error(
+    '❌  TEST_PR_OWNER and TEST_PR_REPO are not set (use a scratch repo, never the one being reviewed)'
+  );
   process.exit(1);
 }
 
@@ -399,14 +401,18 @@ async function main() {
 
   // Sanity-check line counts so hunk arithmetic is always correct
   const storiesLines = STORIES_AFTER.split('\n').length - 1;
-  const bannerLines  = BANNER_COMPONENT.split('\n').length - 1;
+  const bannerLines = BANNER_COMPONENT.split('\n').length - 1;
   console.log(`   Stories: ${storiesLines} lines (Cat 1 at line 67)`);
   console.log(`   Banner:  ${bannerLines} lines (Cat 2 at line 42)`);
   if (storiesLines !== 77) {
-    throw new Error(`Expected 77 stories lines, got ${storiesLines} — check STORIES_AFTER`);
+    throw new Error(
+      `Expected 77 stories lines, got ${storiesLines} — check STORIES_AFTER`
+    );
   }
   if (bannerLines !== 68) {
-    throw new Error(`Expected 68 banner lines, got ${bannerLines} — check BANNER_COMPONENT`);
+    throw new Error(
+      `Expected 68 banner lines, got ${bannerLines} — check BANNER_COMPONENT`
+    );
   }
 
   const [storiesBlob, bannerBlob, diffBlob, filesBlob] = await Promise.all([
@@ -438,10 +444,30 @@ async function main() {
     body: {
       base_tree: baseSha,
       tree: [
-        { path: STORIES_PATH,          mode: '100644', type: 'blob', sha: storiesBlob.sha },
-        { path: BANNER_PATH,           mode: '100644', type: 'blob', sha: bannerBlob.sha },
-        { path: 'ORIGINAL_DIFF.patch', mode: '100644', type: 'blob', sha: diffBlob.sha },
-        { path: 'ORIGINAL_FILES.json', mode: '100644', type: 'blob', sha: filesBlob.sha },
+        {
+          path: STORIES_PATH,
+          mode: '100644',
+          type: 'blob',
+          sha: storiesBlob.sha,
+        },
+        {
+          path: BANNER_PATH,
+          mode: '100644',
+          type: 'blob',
+          sha: bannerBlob.sha,
+        },
+        {
+          path: 'ORIGINAL_DIFF.patch',
+          mode: '100644',
+          type: 'blob',
+          sha: diffBlob.sha,
+        },
+        {
+          path: 'ORIGINAL_FILES.json',
+          mode: '100644',
+          type: 'blob',
+          sha: filesBlob.sha,
+        },
       ],
     },
   });
@@ -459,10 +485,10 @@ async function main() {
   console.log(`   Commit SHA: ${commit.sha}`);
 
   // 6. Update branch ref
-  await ghFetch(
-    `/repos/${OWNER}/${REPO}/git/refs/heads/${HEAD_BRANCH}`,
-    { method: 'PATCH', body: { sha: commit.sha, force: false } }
-  );
+  await ghFetch(`/repos/${OWNER}/${REPO}/git/refs/heads/${HEAD_BRANCH}`, {
+    method: 'PATCH',
+    body: { sha: commit.sha, force: false },
+  });
   console.log('   ✅ Branch updated');
 
   // 7. Open PR
@@ -505,11 +531,17 @@ Open \`Components/Notifications/Actionable\` and verify the new \`WithDismissBut
   console.log(`   Head SHA:   ${commit.sha}`);
   console.log('\n📋 Expected findings for Carbon Monitor:');
   console.log(`   Cat 1 (Carbon API) — ${STORIES_PATH}:67`);
-  console.log(`     <Button kind="outlined"> — "outlined" is not a valid Carbon ButtonKind`);
+  console.log(
+    `     <Button kind="outlined"> — "outlined" is not a valid Carbon ButtonKind`
+  );
   console.log(`     → diff position 68 (verified against live GitHub PR diff)`);
   console.log(`   Cat 2 (Generic)    — ${BANNER_PATH}:42`);
-  console.log(`     setTimeout return value discarded; clearTimeout(undefined) is a no-op`);
-  console.log(`     → diff position 43 (agent may report 42 or 46; both resolve inline)`);
+  console.log(
+    `     setTimeout return value discarded; clearTimeout(undefined) is a no-op`
+  );
+  console.log(
+    `     → diff position 43 (agent may report 42 or 46; both resolve inline)`
+  );
   console.log(`\n💡 Point Carbon Monitor at ${OWNER}/${REPO}:`);
   console.log(`   GITHUB_AI_AGENT_OWNER=${OWNER}`);
   console.log(`   GITHUB_AI_AGENT_REPO=${REPO}\n`);

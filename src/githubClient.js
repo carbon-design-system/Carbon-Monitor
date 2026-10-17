@@ -29,14 +29,19 @@ function createGitHubClient(octokit) {
           state: 'open',
           sort: 'created',
           direction: 'desc',
-          per_page: 100
+          per_page: 100,
         });
 
         // Filter out PRs that should not be reviewed
-        const filtered = prs.filter(pr => {
+        const filtered = prs.filter((pr) => {
           if (pr.draft) return false;
           if (new Date(pr.created_at) < since) return false;
-          if (pr.labels.some(l => l.name === label || SKIP_LABELS.includes(l.name))) return false;
+          if (
+            pr.labels.some(
+              (l) => l.name === label || SKIP_LABELS.includes(l.name)
+            )
+          )
+            return false;
           if (pr.user.type === 'Bot') return false;
           return true;
         });
@@ -67,8 +72,8 @@ function createGitHubClient(octokit) {
           repo,
           pull_number: pullNumber,
           mediaType: {
-            format: 'diff'
-          }
+            format: 'diff',
+          },
         });
         return diff;
       } catch (error) {
@@ -92,7 +97,7 @@ function createGitHubClient(octokit) {
             repo,
             pull_number: pullNumber,
             per_page: 100,
-            page
+            page,
           });
           allFiles.push(...files);
           if (files.length < 100) break;
@@ -117,7 +122,9 @@ function createGitHubClient(octokit) {
         }
 
         // Filter out comments that don't have required fields
-        const validComments = comments.filter(c => c.path && c.position && c.body);
+        const validComments = comments.filter(
+          (c) => c.path && c.position && c.body
+        );
 
         if (validComments.length === 0) {
           return null;
@@ -129,37 +136,52 @@ function createGitHubClient(octokit) {
         const postedComments = [];
         for (const comment of validComments) {
           try {
-            const { data: reviewComment } = await octokit.rest.pulls.createReviewComment({
-              owner,
-              repo,
-              pull_number: pullNumber,
-              commit_id: commitId,
-              path: comment.path,
-              body: comment.body,
-              position: comment.position
-            });
+            const { data: reviewComment } =
+              await octokit.rest.pulls.createReviewComment({
+                owner,
+                repo,
+                pull_number: pullNumber,
+                commit_id: commitId,
+                path: comment.path,
+                body: comment.body,
+                position: comment.position,
+              });
             postedComments.push(reviewComment);
-            console.log(`✅ Posted inline comment on ${comment.path}:${comment.position}`);
+            console.log(
+              `✅ Posted inline comment on ${comment.path}:${comment.position}`
+            );
           } catch (commentError) {
-            console.error(`⚠️  Failed to post comment on ${comment.path}:${comment.position}:`, commentError.message);
+            console.error(
+              `⚠️  Failed to post comment on ${comment.path}:${comment.position}:`,
+              commentError.message
+            );
             if (commentError.response) {
-              console.error('   Response status:', commentError.response.status);
-              console.error('   Response data:', JSON.stringify(commentError.response.data, null, 2));
+              console.error(
+                '   Response status:',
+                commentError.response.status
+              );
+              console.error(
+                '   Response data:',
+                JSON.stringify(commentError.response.data, null, 2)
+              );
             }
             // Continue with other comments even if one fails
           }
         }
-        
+
         // Return null if no comments were successfully posted
         if (postedComments.length === 0) {
           console.error('❌ No inline comments were successfully posted');
           return null;
         }
-        
+
         // Return a summary object similar to createReview response
         const review = {
-          id: postedComments.length > 0 ? postedComments[0].pull_request_review_id : null,
-          comments: postedComments
+          id:
+            postedComments.length > 0
+              ? postedComments[0].pull_request_review_id
+              : null,
+          comments: postedComments,
         };
 
         return review;
@@ -167,7 +189,10 @@ function createGitHubClient(octokit) {
         console.error('❌ Error posting review:', error.message);
         if (error.response) {
           console.error('Response status:', error.response.status);
-          console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+          console.error(
+            'Response data:',
+            JSON.stringify(error.response.data, null, 2)
+          );
         }
         console.error('Error posting review comments:', error.message);
         // Don't throw - inline comments are optional
@@ -187,7 +212,7 @@ function createGitHubClient(octokit) {
           owner,
           repo,
           issue_number: pullNumber,
-          body
+          body,
         });
         return comment;
       } catch (error) {
@@ -207,7 +232,7 @@ function createGitHubClient(octokit) {
           owner,
           repo,
           issue_number: pullNumber,
-          labels: [label]
+          labels: [label],
         });
         return labels;
       } catch (error) {
@@ -225,7 +250,7 @@ function createGitHubClient(octokit) {
       const { data: pr } = await octokit.rest.pulls.get({
         owner,
         repo,
-        pull_number: pullNumber
+        pull_number: pullNumber,
       });
       return pr;
     },
@@ -245,7 +270,9 @@ function createGitHubClient(octokit) {
         // Parse first GitHub closing keyword reference (case-insensitive).
         // All 9 GitHub-documented forms: close, closes, closed, fix, fixes, fixed,
         // resolve, resolves, resolved. \b prevents partial-word matches (e.g. "hotfix").
-        const match = prBody.match(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i);
+        const match = prBody.match(
+          /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/i
+        );
         if (!match) {
           console.log('ℹ️  No linked issue found in PR body');
           return { found: false };
@@ -257,13 +284,13 @@ function createGitHubClient(octokit) {
         const { data: subIssueData } = await octokit.rest.issues.get({
           owner,
           repo,
-          issue_number: issueNumber
+          issue_number: issueNumber,
         });
 
         const subIssue = {
           number: subIssueData.number,
           title: subIssueData.title,
-          body: subIssueData.body || ''
+          body: subIssueData.body || '',
         };
 
         // parent_issue_url is present in GitHub's sub-issues API response when the
@@ -273,28 +300,35 @@ function createGitHubClient(octokit) {
         // octokit.request() accepts the full URL directly, handling cross-repo parents.
         let parentIssue = null;
         if (subIssueData.parent_issue_url) {
-          console.log(`🔗 Fetching parent issue from ${subIssueData.parent_issue_url}...`);
+          console.log(
+            `🔗 Fetching parent issue from ${subIssueData.parent_issue_url}...`
+          );
           try {
-            const { data: parentData } = await octokit.request(subIssueData.parent_issue_url);
+            const { data: parentData } = await octokit.request(
+              subIssueData.parent_issue_url
+            );
             parentIssue = {
               number: parentData.number,
               title: parentData.title,
-              body: parentData.body || ''
+              body: parentData.body || '',
             };
           } catch (parentError) {
             // Parent fetch failure is non-fatal — degrade gracefully with the
             // sub-issue context still intact rather than discarding everything.
-            console.warn(`⚠️  Could not fetch parent issue context: ${parentError.message}`);
+            console.warn(
+              `⚠️  Could not fetch parent issue context: ${parentError.message}`
+            );
           }
         }
 
         return { found: true, subIssue, parentIssue };
-
       } catch (error) {
-        console.warn(`⚠️  Could not fetch linked issue context: ${error.message}`);
+        console.warn(
+          `⚠️  Could not fetch linked issue context: ${error.message}`
+        );
         return { found: false };
       }
-    }
+    },
   };
 }
 

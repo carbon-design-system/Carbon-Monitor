@@ -25,26 +25,29 @@
 'use strict';
 
 require('dotenv').config();
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 
 const DRY = process.argv.includes('--dry-run');
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const ES_URL      = (process.env.ES_URL      || '').trim();
+const ES_URL = (process.env.ES_URL || '').trim();
 const ES_USERNAME = (process.env.ES_USERNAME || 'elastic').trim();
 const ES_PASSWORD = (process.env.ES_PASSWORD || '').trim();
-const ES_CA_CERT  = (process.env.ES_CA_CERT_PATH || '').trim();
-const RETENTION   = Math.max(90, parseInt(process.env.EVENTS_RETENTION_DAYS || '180', 10));
+const ES_CA_CERT = (process.env.ES_CA_CERT_PATH || '').trim();
+const RETENTION = Math.max(
+  90,
+  parseInt(process.env.EVENTS_RETENTION_DAYS || '180', 10)
+);
 
-const ALIAS    = 'carbon-monitor-events';
+const ALIAS = 'carbon-monitor-events';
 const TEMPLATE = 'carbon-monitor-events-template';
 const ILM_NAME = 'carbon-monitor-events-ilm';
 
 function currentMonthIndex() {
-  const now  = new Date();
+  const now = new Date();
   const yyyy = now.getUTCFullYear();
-  const mm   = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
   return `${ALIAS}-${yyyy}.${mm}`;
 }
 
@@ -53,7 +56,9 @@ let Client;
 try {
   ({ Client } = require('@elastic/elasticsearch'));
 } catch (_) {
-  console.error('❌  @elastic/elasticsearch is not installed. Run: npm install');
+  console.error(
+    '❌  @elastic/elasticsearch is not installed. Run: npm install'
+  );
   process.exit(1);
 }
 
@@ -76,7 +81,10 @@ if (ES_CA_CERT) {
   } catch (e) {
     console.warn('⚠️   Could not read ES_CA_CERT_PATH:', e.message);
   }
-} else if (ES_URL.startsWith('https://localhost') || ES_URL.startsWith('https://127.')) {
+} else if (
+  ES_URL.startsWith('https://localhost') ||
+  ES_URL.startsWith('https://127.')
+) {
   clientOpts.tls = { rejectUnauthorized: false };
   console.log('ℹ️   Local HTTPS — TLS verification disabled');
 }
@@ -89,46 +97,49 @@ const client = new Client(clientOpts);
 const INDEX_MAPPING = {
   dynamic: false,
   properties: {
-    doc_type:       { type: 'keyword' },
-    event_id:       { type: 'keyword' },
-    event_type:     { type: 'keyword' },
-    level:          { type: 'keyword' },
-    timestamp:      { type: 'date' },
+    doc_type: { type: 'keyword' },
+    event_id: { type: 'keyword' },
+    event_type: { type: 'keyword' },
+    level: { type: 'keyword' },
+    timestamp: { type: 'date' },
     correlation_id: { type: 'keyword' },
-    repo:           { type: 'keyword' },
-    pr_number:      { type: 'long' },
-    pr_author:      { type: 'keyword' },
-    pr_title:       { type: 'text', fields: { keyword: { type: 'keyword', ignore_above: 512 } } },
-    agent:          { type: 'keyword' },
-    commit_sha:     { type: 'keyword' },
+    repo: { type: 'keyword' },
+    pr_number: { type: 'long' },
+    pr_author: { type: 'keyword' },
+    pr_title: {
+      type: 'text',
+      fields: { keyword: { type: 'keyword', ignore_above: 512 } },
+    },
+    agent: { type: 'keyword' },
+    commit_sha: { type: 'keyword' },
     payload: {
       dynamic: true,
       properties: {
         // Flat numeric fields used by Kibana Lens sum/average aggregations
-        recommendation:          { type: 'keyword' },
-        findings_total:          { type: 'integer' },
-        findings_blocking:       { type: 'integer' },
-        findings_major:          { type: 'integer' },
-        findings_minor:          { type: 'integer' },
-        findings_nit:            { type: 'integer' },
-        cat1_findings:           { type: 'integer' },
-        cat2_findings:           { type: 'integer' },
-        catalogue_present:       { type: 'boolean' },
-        skill_activated:         { type: 'boolean' },
-        skill_files_read:        { type: 'integer' },
-        inline_comments_posted:  { type: 'integer' },
-        summary_findings:        { type: 'integer' },
-        token_input:             { type: 'integer' },
-        token_output:            { type: 'integer' },
-        token_total:             { type: 'integer' },
-        bobcoins_spent:          { type: 'float' },
-        bobcoins_remaining:      { type: 'float' },
-        duration_ms:             { type: 'long' },
-        prs_reviewed:            { type: 'integer' },
-        prs_requested:           { type: 'integer' },
-        prs_fetch_failed:        { type: 'integer' },
-        target_mode:             { type: 'keyword' },
-        error:                   { type: 'text' },
+        recommendation: { type: 'keyword' },
+        findings_total: { type: 'integer' },
+        findings_blocking: { type: 'integer' },
+        findings_major: { type: 'integer' },
+        findings_minor: { type: 'integer' },
+        findings_nit: { type: 'integer' },
+        cat1_findings: { type: 'integer' },
+        cat2_findings: { type: 'integer' },
+        catalogue_present: { type: 'boolean' },
+        skill_activated: { type: 'boolean' },
+        skill_files_read: { type: 'integer' },
+        inline_comments_posted: { type: 'integer' },
+        summary_findings: { type: 'integer' },
+        token_input: { type: 'integer' },
+        token_output: { type: 'integer' },
+        token_total: { type: 'integer' },
+        bobcoins_spent: { type: 'float' },
+        bobcoins_remaining: { type: 'float' },
+        duration_ms: { type: 'long' },
+        prs_reviewed: { type: 'integer' },
+        prs_requested: { type: 'integer' },
+        prs_fetch_failed: { type: 'integer' },
+        target_mode: { type: 'keyword' },
+        error: { type: 'text' },
       },
     },
   },
@@ -138,21 +149,36 @@ const INDEX_MAPPING = {
 const ILM_POLICY = {
   policy: {
     phases: {
-      hot:    { min_age: '0d',    actions: { set_priority: { priority: 100 } } },
-      warm:   { min_age: '30d',   actions: { readonly: {}, set_priority: { priority: 50 }, allocate: { number_of_replicas: 0 } } },
-      cold:   { min_age: '90d',   actions: { set_priority: { priority: 0 } } },
+      hot: { min_age: '0d', actions: { set_priority: { priority: 100 } } },
+      warm: {
+        min_age: '30d',
+        actions: {
+          readonly: {},
+          set_priority: { priority: 50 },
+          allocate: { number_of_replicas: 0 },
+        },
+      },
+      cold: { min_age: '90d', actions: { set_priority: { priority: 0 } } },
       delete: { min_age: `${RETENTION}d`, actions: { delete: {} } },
     },
   },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function step(msg) { console.log('\n' + msg); }
-function ok(msg)   { console.log('  ✅ ' + msg); }
-function skip(msg) { console.log('  ⏭️  ' + msg + ' (dry-run)'); }
+function step(msg) {
+  console.log('\n' + msg);
+}
+function ok(msg) {
+  console.log('  ✅ ' + msg);
+}
+function skip(msg) {
+  console.log('  ⏭️  ' + msg + ' (dry-run)');
+}
 
 async function run() {
-  console.log('\n── Carbon Monitor — Elasticsearch Bootstrap ────────────────────');
+  console.log(
+    '\n── Carbon Monitor — Elasticsearch Bootstrap ────────────────────'
+  );
   if (DRY) console.log('   (DRY RUN — no writes)\n');
 
   // 1. Ping
@@ -162,8 +188,13 @@ async function run() {
 
   // 2. ILM policy
   step(`2. ILM policy "${ILM_NAME}" (retention ${RETENTION} days)`);
-  if (DRY) { skip('PUT _ilm/policy'); } else {
-    await client.ilm.putLifecycle({ name: ILM_NAME, policy: ILM_POLICY.policy });
+  if (DRY) {
+    skip('PUT _ilm/policy');
+  } else {
+    await client.ilm.putLifecycle({
+      name: ILM_NAME,
+      policy: ILM_POLICY.policy,
+    });
     ok('ILM policy upserted');
   }
 
@@ -182,7 +213,9 @@ async function run() {
       mappings: INDEX_MAPPING,
     },
   };
-  if (DRY) { skip('PUT _index_template'); } else {
+  if (DRY) {
+    skip('PUT _index_template');
+  } else {
     await client.indices.putIndexTemplate({ name: TEMPLATE, ...template });
     ok('Index template upserted');
   }
@@ -193,7 +226,9 @@ async function run() {
   let indexExists = false;
   try {
     indexExists = await client.indices.exists({ index: monthIdx });
-  } catch (_) { /* treat as not-exists */ }
+  } catch (_) {
+    /* treat as not-exists */
+  }
 
   if (indexExists) {
     // Only add new fields — cannot change the type of existing mapped fields.
@@ -201,7 +236,9 @@ async function run() {
     // schema; existing indices receive only additive updates.
     ok(`Index already exists — no schema migration needed`);
   } else {
-    if (DRY) { skip(`Create index ${monthIdx}`); } else {
+    if (DRY) {
+      skip(`Create index ${monthIdx}`);
+    } else {
       await client.indices.create({
         index: monthIdx,
         settings: {
@@ -228,8 +265,14 @@ async function run() {
 
   const aliasMissing = Object.keys(aliases).length === 0;
   if (aliasMissing) {
-    if (DRY) { skip(`Create alias ${ALIAS}`); } else {
-      await client.indices.putAlias({ index: monthIdx, name: ALIAS, is_write_index: true });
+    if (DRY) {
+      skip(`Create alias ${ALIAS}`);
+    } else {
+      await client.indices.putAlias({
+        index: monthIdx,
+        name: ALIAS,
+        is_write_index: true,
+      });
       ok(`Alias created: ${ALIAS} → ${monthIdx}`);
     }
   } else {
@@ -240,27 +283,34 @@ async function run() {
     if (currentWrite === monthIdx) {
       ok(`Alias already points at ${monthIdx} (write index) — nothing to do`);
     } else {
-      if (DRY) { skip(`Update alias write-index to ${monthIdx}`); } else {
+      if (DRY) {
+        skip(`Update alias write-index to ${monthIdx}`);
+      } else {
         const actions = [];
         if (currentWrite) {
           actions.push({ remove: { index: currentWrite, alias: ALIAS } });
         }
-        actions.push({ add: { index: monthIdx, alias: ALIAS, is_write_index: true } });
+        actions.push({
+          add: { index: monthIdx, alias: ALIAS, is_write_index: true },
+        });
         await client.indices.updateAliases({ actions });
         ok(`Alias write-index updated → ${monthIdx}`);
       }
     }
   }
 
-  console.log('\n── Bootstrap complete ──────────────────────────────────────────');
+  console.log(
+    '\n── Bootstrap complete ──────────────────────────────────────────'
+  );
   console.log(`   Index pattern: ${ALIAS}-*`);
   console.log(`   Write alias:   ${ALIAS}`);
   console.log(`   ILM policy:    ${ILM_NAME} (delete after ${RETENTION}d)`);
   console.log();
 }
 
-run().catch(err => {
+run().catch((err) => {
   console.error('\n❌ Bootstrap failed:', err.message);
-  if (err.meta?.body) console.error('   ES response:', JSON.stringify(err.meta.body, null, 2));
+  if (err.meta?.body)
+    console.error('   ES response:', JSON.stringify(err.meta.body, null, 2));
   process.exit(1);
 });

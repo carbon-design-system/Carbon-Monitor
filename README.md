@@ -29,14 +29,14 @@ repository or your own job.
 
 ## What it does
 
-| Stage | What happens |
-|-------|--------------|
-| **Fetch** | Queries GitHub for open PRs, excluding drafts, bot-authored PRs (Dependabot, Renovate), PRs older than 21 days and PRs already labelled `AIReviewed`. Up to 10 PRs per run. Both limits are configurable. |
+| Stage      | What happens                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fetch**  | Queries GitHub for open PRs, excluding drafts, bot-authored PRs (Dependabot, Renovate), PRs older than 21 days and PRs already labelled `AIReviewed`. Up to 10 PRs per run. Both limits are configurable.                                                                                                                                                                         |
 | **Bundle** | Builds a temporary workspace per PR: `PR_REVIEW_REQUEST.md` (description, changed files, full unified diff), `pr.json` / `files.json` / `diff.patch`, the agent rules in `.bob/rules/01-output.md`, and the Carbon Builder skill. A `Closes #N`, `Fixes #N` or `Resolves #N` reference pulls in the linked issue (and its parent) as acceptance criteria, capped at 5,000 tokens. |
-| **Review** | Runs `bob run --trust --accept-license [--team-id …] "<prompt>"` in the bundle. Bob writes a visible catalogue of every suspicious item per file, classified as Category 1 (Carbon API, needs MCP) or Category 2 (visible in the diff). |
-| **Verify** | Resolves every catalogue item. Category 1 items are checked with the Carbon Builder skill and Carbon MCP tools (`code_search`, `docs_search`, `get_charts`); Category 2 items from the diff alone. The parser flags runs that skipped the catalogue or hid their resolutions. |
-| **Post** | Findings that map to a diff line become inline review comments. The rest, plus the summary and recommendation, go in one PR comment. The `AIReviewed` label is added. |
-| **Report** | Scheduled runs post a digest to Slack when `SLACK_WEBHOOK_URL` is set. Review events are written to Elasticsearch for the Kibana dashboard. |
+| **Review** | Runs `bob run --trust --accept-license [--team-id …] "<prompt>"` in the bundle. Bob writes a visible catalogue of every suspicious item per file, classified as Category 1 (Carbon API, needs MCP) or Category 2 (visible in the diff).                                                                                                                                           |
+| **Verify** | Resolves every catalogue item. Category 1 items are checked with the Carbon Builder skill and Carbon MCP tools (`code_search`, `docs_search`, `get_charts`); Category 2 items from the diff alone. The parser flags runs that skipped the catalogue or hid their resolutions.                                                                                                     |
+| **Post**   | Findings that map to a diff line become inline review comments. The rest, plus the summary and recommendation, go in one PR comment. The `AIReviewed` label is added.                                                                                                                                                                                                             |
+| **Report** | Scheduled runs post a digest to Slack when `SLACK_WEBHOOK_URL` is set. Review events are written to Elasticsearch for the Kibana dashboard.                                                                                                                                                                                                                                       |
 
 ## Built as a harness
 
@@ -45,21 +45,21 @@ it on a schedule in IBM Cloud, pays for it, logs it, and reports on it. The
 review logic is the one part that is specific to the job, and it sits behind
 named seams.
 
-| Harness, kept as is | Task layer, replaced per job |
-|---------------------|------------------------------|
-| Code Engine deployment, image, secret sync | Work-item source (GitHub today) |
-| Daily schedule with budget auto-pause | Workspace, prompt and output parser |
-| Agent runner and MCP token refresh | Write-back and the done marker |
-| Cost ledger, Elasticsearch events, Kibana | Event fields, digest lines, console labels |
-| Slack transport, console shell, sign-in | Health tiles for the external system |
+| Harness, kept as is                        | Task layer, replaced per job               |
+| ------------------------------------------ | ------------------------------------------ |
+| Code Engine deployment, image, secret sync | Work-item source (GitHub today)            |
+| Daily schedule with budget auto-pause      | Workspace, prompt and output parser        |
+| Agent runner and MCP token refresh         | Write-back and the done marker             |
+| Cost ledger, Elasticsearch events, Kibana  | Event fields, digest lines, console labels |
+| Slack transport, console shell, sign-in    | Health tiles for the external system       |
 
 Three ways to make it yours:
 
-| Path | What changes |
-|------|--------------|
-| **Another repository** | Configuration, the reviewing account's access, and optionally the rubric and the MCP server |
-| **Another job** | The task layer, against any system: Jira, ServiceNow, Box, a database, a feed |
-| **Another agent** | The agent slot: install, invocation, authentication, MCP configuration, cost. Bob is the tested path; Claude Code, Codex, Gemini CLI and Copilot CLI are mapped |
+| Path                   | What changes                                                                                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Another repository** | Configuration, the reviewing account's access, and optionally the rubric and the MCP server                                                                     |
+| **Another job**        | The task layer, against any system: Jira, ServiceNow, Box, a database, a feed                                                                                   |
+| **Another agent**      | The agent slot: install, invocation, authentication, MCP configuration, cost. Bob is the tested path; Claude Code, Codex, Gemini CLI and Copilot CLI are mapped |
 
 The `carbon-monitor-adapt-harness` skill walks you through any of them. It
 reads the harness map, asks at most ten questions, and writes a SPEC you
@@ -90,20 +90,20 @@ swap notes and two finished example SPECs are in [docs/adapt-harness](docs/adapt
 
 Every review ends in one of three recommendations:
 
-| Value | Meaning |
-|-------|---------|
-| `Consider Revising` | One or more `blocking` findings, or two or more `major` findings |
+| Value                    | Meaning                                                             |
+| ------------------------ | ------------------------------------------------------------------- |
+| `Consider Revising`      | One or more `blocking` findings, or two or more `major` findings    |
 | `Suggested Improvements` | Any `major` or `minor` finding, or review reliability was uncertain |
-| `Looks Good` | `nit`-level findings only, or no findings |
+| `Looks Good`             | `nit`-level findings only, or no findings                           |
 
 Each finding carries a severity:
 
-| Severity | Meaning |
-|----------|---------|
-| `blocking` | Breaks user-facing behaviour or violates an accessibility requirement |
-| `major` | Likely to cause a visible rendering difference or runtime error |
-| `minor` | Maintainability risk or subtle behaviour difference — not immediately breaking |
-| `nit` | Convention / hygiene — no functional consequence |
+| Severity   | Meaning                                                                        |
+| ---------- | ------------------------------------------------------------------------------ |
+| `blocking` | Breaks user-facing behaviour or violates an accessibility requirement          |
+| `major`    | Likely to cause a visible rendering difference or runtime error                |
+| `minor`    | Maintainability risk or subtle behaviour difference — not immediately breaking |
+| `nit`      | Convention / hygiene — no functional consequence                               |
 
 The inline and summary comment formats, and the reliability checks behind the
 recommendation, are in [docs/REVIEW_OUTPUT.md](docs/REVIEW_OUTPUT.md).
@@ -145,12 +145,12 @@ recommendation, are in [docs/REVIEW_OUTPUT.md](docs/REVIEW_OUTPUT.md).
 
 ## Quick start
 
-| Prerequisite | Notes |
-|--------------|-------|
-| Node.js >= 22.15.0 | Required by Bob Shell |
-| GitHub token | For the reviewing GitHub account (i.e. machine user), which needs the **Triage role on the target repo**, plus Pull requests and Issues write and Contents read. See [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md). |
-| Bob Shell CLI | Installed and on `PATH` |
-| Carbon MCP | Configured in Bob as a streamable-HTTP connection |
+| Prerequisite       | Notes                                                                                                                                                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node.js >= 22.15.0 | Required by Bob Shell                                                                                                                                                                                                |
+| GitHub token       | For the reviewing GitHub account (i.e. machine user), which needs the **Triage role on the target repo**, plus Pull requests and Issues write and Contents read. See [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md). |
+| Bob Shell CLI      | Installed and on `PATH`                                                                                                                                                                                              |
+| Carbon MCP         | Configured in Bob as a streamable-HTTP connection                                                                                                                                                                    |
 
 ```bash
 git clone https://github.com/carbon-design-system/Carbon-Monitor.git
@@ -181,15 +181,15 @@ npm start -- --pr <number>            # review a single PR
 The variables most deployments set. Every variable, with its default, is in
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GITHUB_AI_AGENT_TOKEN` | Yes | — | GitHub PAT. Needs Pull requests + Issues write and Contents read, **and Triage on the repo** — see [GitHub access](docs/GITHUB_ACCESS.md) |
-| `BOB_API_KEY` | Yes | — | Bob Shell API key. Create with Scope **Inference** in the Bob web portal — browser SSO cannot complete in a container |
-| `GITHUB_AI_AGENT_OWNER` | No | `carbon-design-system` | Repository owner |
-| `GITHUB_AI_AGENT_REPO` | No | `carbon` | Repository name |
-| `GITHUB_AI_AGENT_MAX_PRS` | No | `10` | Max PRs reviewed per run |
-| `GITHUB_AI_AGENT_DAYS_BACK` | No | `21` | How far back to look for PRs (days) |
-| `GITHUB_AI_AGENT_CLI` | No | `bob` | Worker agent. `bob` is the tested path; the others are mapped in [docs/adapt-harness](docs/adapt-harness/agents/bob.md) |
+| Variable                    | Required | Default                | Description                                                                                                                               |
+| --------------------------- | -------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `GITHUB_AI_AGENT_TOKEN`     | Yes      | —                      | GitHub PAT. Needs Pull requests + Issues write and Contents read, **and Triage on the repo** — see [GitHub access](docs/GITHUB_ACCESS.md) |
+| `BOB_API_KEY`               | Yes      | —                      | Bob Shell API key. Create with Scope **Inference** in the Bob web portal — browser SSO cannot complete in a container                     |
+| `GITHUB_AI_AGENT_OWNER`     | No       | `carbon-design-system` | Repository owner                                                                                                                          |
+| `GITHUB_AI_AGENT_REPO`      | No       | `carbon`               | Repository name                                                                                                                           |
+| `GITHUB_AI_AGENT_MAX_PRS`   | No       | `10`                   | Max PRs reviewed per run                                                                                                                  |
+| `GITHUB_AI_AGENT_DAYS_BACK` | No       | `21`                   | How far back to look for PRs (days)                                                                                                       |
+| `GITHUB_AI_AGENT_CLI`       | No       | `bob`                  | Worker agent. `bob` is the tested path; the others are mapped in [docs/adapt-harness](docs/adapt-harness/agents/bob.md)                   |
 
 **Bob Shell.** Install with the official script,
 `curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash` (IBM network or
@@ -235,11 +235,11 @@ contract, including request bodies, validation and authentication, is in
 
 ## Deploy
 
-| Target | How |
-|--------|-----|
-| **Local** | `npm run build:client && npm run api` serves the console and API on one port: `PORT`, then `API_PORT`, default `3000`. |
-| **Container** | `npm run build:client`, then `podman build --platform linux/amd64 -t carbon-monitor .` and `podman run -d -p 8080:8080 --env-file .env carbon-monitor`, or `docker compose up -d` with the included `docker-compose.yml`, which keeps `/workspace` in a named volume so a restart does not force a new IBMid sign-in. The image must be Debian-based: Bob Shell's `node-pty` prebuild needs glibc, so Alpine cannot run it. |
-| **IBM Cloud Code Engine** | `./deploy_ce.sh` reads credentials and the deployment target (`REGION`, `RESOURCE_GROUP`, `PROJECT`, `NAMESPACE`) from `.env`, syncs the secret, builds, pushes and deploys. The app runs at min-scale 1 and max-scale 1: the Carbon MCP refresh timer needs an instance that never scales to zero, and the rotating refresh token needs exactly one writer. |
+| Target                    | How                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Local**                 | `npm run build:client && npm run api` serves the console and API on one port: `PORT`, then `API_PORT`, default `3000`.                                                                                                                                                                                                                                                                                                      |
+| **Container**             | `npm run build:client`, then `podman build --platform linux/amd64 -t carbon-monitor .` and `podman run -d -p 8080:8080 --env-file .env carbon-monitor`, or `docker compose up -d` with the included `docker-compose.yml`, which keeps `/workspace` in a named volume so a restart does not force a new IBMid sign-in. The image must be Debian-based: Bob Shell's `node-pty` prebuild needs glibc, so Alpine cannot run it. |
+| **IBM Cloud Code Engine** | `./deploy_ce.sh` reads credentials and the deployment target (`REGION`, `RESOURCE_GROUP`, `PROJECT`, `NAMESPACE`) from `.env`, syncs the secret, builds, pushes and deploys. The app runs at min-scale 1 and max-scale 1: the Carbon MCP refresh timer needs an instance that never scales to zero, and the rotating refresh token needs exactly one writer.                                                                |
 
 After the first deploy, open the console and press **Sign in with IBMid** once.
 The deployment topology, ordering rules and image layout are in
@@ -257,31 +257,31 @@ read status and trigger a review. See
 
 ## Operate
 
-| Feature | What it does |
-|---------|--------------|
-| **Operator console** | Status tiles for Bob Shell, Carbon MCP, GitHub and Elasticsearch that say what is wrong, a Reviews panel to run the latest PRs or a named list, and a live log of the current or last run. |
-| **Scheduled reviews** | One daily run, configured in **Settings → Scheduled reviews**. Off on a fresh install. `npm start` also runs a single pass and exits, so an external scheduler can drive it. |
-| **Slack digest** | Set `SLACK_WEBHOOK_URL` to a Slack incoming webhook. The digest fires after scheduled runs only; runs started from the console do not post. |
-| **Kibana dashboard** | Review metrics from Elasticsearch, when `ES_URL` is set. Setup is in [kibana/README.md](kibana/README.md). |
-| **Bobcoins tracking** | Shows the Bob balance and per-review spend. Scheduled reviews pause themselves, and alert Slack, when the balance falls below `BOB_CREDITS_LOW_PCT` (default 10%). |
+| Feature               | What it does                                                                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Operator console**  | Status tiles for Bob Shell, Carbon MCP, GitHub and Elasticsearch that say what is wrong, a Reviews panel to run the latest PRs or a named list, and a live log of the current or last run. |
+| **Scheduled reviews** | One daily run, configured in **Settings → Scheduled reviews**. Off on a fresh install. `npm start` also runs a single pass and exits, so an external scheduler can drive it.               |
+| **Slack digest**      | Set `SLACK_WEBHOOK_URL` to a Slack incoming webhook. The digest fires after scheduled runs only; runs started from the console do not post.                                                |
+| **Kibana dashboard**  | Review metrics from Elasticsearch, when `ES_URL` is set. Setup is in [kibana/README.md](kibana/README.md).                                                                                 |
+| **Bobcoins tracking** | Shows the Bob balance and per-review spend. Scheduled reviews pause themselves, and alert Slack, when the balance falls below `BOB_CREDITS_LOW_PCT` (default 10%).                         |
 
 ## Documentation
 
-| Document | Covers |
-|----------|--------|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Container image, Carbon MCP token refresh, authentication, Code Engine deployment, module map |
-| [docs/HARNESS.md](docs/HARNESS.md) | Harness versus task layer, every extension point, the agent slot, the names that change |
-| [skills/carbon-monitor-adapt-harness](skills/carbon-monitor-adapt-harness/README.md) | The skill that interviews you and writes a SPEC for your own repository, job or agent |
-| [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md) | The reviewing GitHub account (i.e. machine user), its token permissions, and why it needs Triage |
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Environment variables, Bob Shell, Carbon MCP and Carbon Builder setup |
-| [docs/API.md](docs/API.md) | REST endpoints and the full review trigger contract |
-| [docs/REVIEW_OUTPUT.md](docs/REVIEW_OUTPUT.md) | Inline and summary comment formats, recommendations, reliability checks |
-| [docs/INLINE_COMMENTS.md](docs/INLINE_COMMENTS.md) | How findings are mapped to diff lines |
-| [docs/TOKEN_USAGE_TRACKING.md](docs/TOKEN_USAGE_TRACKING.md) | Token usage estimates in the summary comment |
-| [docs/MCP_TOKEN_REFRESH.md](docs/MCP_TOKEN_REFRESH.md) | Manual Carbon MCP token refresh, the fallback to IBMid sign-in |
-| [kibana/README.md](kibana/README.md) | Kibana dashboard setup |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, tests and pull request guidelines |
-| [SECURITY.md](SECURITY.md) | Reporting a vulnerability |
+| Document                                                                             | Covers                                                                                           |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                                         | Container image, Carbon MCP token refresh, authentication, Code Engine deployment, module map    |
+| [docs/HARNESS.md](docs/HARNESS.md)                                                   | Harness versus task layer, every extension point, the agent slot, the names that change          |
+| [skills/carbon-monitor-adapt-harness](skills/carbon-monitor-adapt-harness/README.md) | The skill that interviews you and writes a SPEC for your own repository, job or agent            |
+| [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md)                                       | The reviewing GitHub account (i.e. machine user), its token permissions, and why it needs Triage |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md)                                       | Environment variables, Bob Shell, Carbon MCP and Carbon Builder setup                            |
+| [docs/API.md](docs/API.md)                                                           | REST endpoints and the full review trigger contract                                              |
+| [docs/REVIEW_OUTPUT.md](docs/REVIEW_OUTPUT.md)                                       | Inline and summary comment formats, recommendations, reliability checks                          |
+| [docs/INLINE_COMMENTS.md](docs/INLINE_COMMENTS.md)                                   | How findings are mapped to diff lines                                                            |
+| [docs/TOKEN_USAGE_TRACKING.md](docs/TOKEN_USAGE_TRACKING.md)                         | Token usage estimates in the summary comment                                                     |
+| [docs/MCP_TOKEN_REFRESH.md](docs/MCP_TOKEN_REFRESH.md)                               | Manual Carbon MCP token refresh, the fallback to IBMid sign-in                                   |
+| [kibana/README.md](kibana/README.md)                                                 | Kibana dashboard setup                                                                           |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                                                   | Setup, tests and pull request guidelines                                                         |
+| [SECURITY.md](SECURITY.md)                                                           | Reporting a vulnerability                                                                        |
 
 ## Troubleshooting
 

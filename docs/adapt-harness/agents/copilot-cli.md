@@ -64,7 +64,10 @@ the token variable you confirmed. Use the `checkClaude` shape in
     "carbon-mcp": {
       "type": "http",
       "url": "https://mcp.carbondesignsystem.com/mcp",
-      "headers": { "Authorization": "Bearer <token>", "X-MCP-Session": "<session id>" }
+      "headers": {
+        "Authorization": "Bearer <token>",
+        "X-MCP-Session": "<session id>"
+      }
     }
   }
 }

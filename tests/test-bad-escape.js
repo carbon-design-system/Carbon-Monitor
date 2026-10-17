@@ -18,11 +18,18 @@ const {
 let pass = 0;
 let fail = 0;
 const ok = (name, cond) => {
-  if (cond) { pass++; console.log(`  ✅ ${name}`); }
-  else { fail++; console.log(`  ❌ ${name}`); }
+  if (cond) {
+    pass++;
+    console.log(`  ✅ ${name}`);
+  } else {
+    fail++;
+    console.log(`  ❌ ${name}`);
+  }
 };
 
-console.log('\n── escapeInvalidJsonEscapes: unit behaviour ───────────────────');
+console.log(
+  '\n── escapeInvalidJsonEscapes: unit behaviour ───────────────────'
+);
 
 // Valid escapes must pass through untouched (byte-identical).
 const validValues = [
@@ -34,7 +41,10 @@ const validValues = [
 ];
 for (const v of validValues) {
   JSON.parse(v); // sanity: input really is valid JSON
-  ok(`valid JSON unchanged: ${v.slice(0, 40)}…`, escapeInvalidJsonEscapes(v) === v);
+  ok(
+    `valid JSON unchanged: ${v.slice(0, 40)}…`,
+    escapeInvalidJsonEscapes(v) === v
+  );
 }
 
 // Invalid escapes get their backslash doubled so they parse as a literal '\'.
@@ -43,21 +53,40 @@ for (const v of validValues) {
 // — preserving valid escapes is what guarantees a correct review is never corrupted.
 // This case uses only letters that are NOT valid escapes so the literal backslash
 // round-trips exactly.
-const repaired = escapeInvalidJsonEscapes('{"a":"regex \\d+ ok, md \\_ and \\. dot"}');
+const repaired = escapeInvalidJsonEscapes(
+  '{"a":"regex \\d+ ok, md \\_ and \\. dot"}'
+);
 let parsed = null;
-try { parsed = JSON.parse(repaired); } catch (_) { /* leave null */ }
+try {
+  parsed = JSON.parse(repaired);
+} catch (_) {
+  /* leave null */
+}
 ok('bad escapes (\\d, \\_, \\.) become parseable', parsed !== null);
-ok('repaired value preserves the literal backslashes',
-  parsed && parsed.a === 'regex \\d+ ok, md \\_ and \\. dot');
+ok(
+  'repaired value preserves the literal backslashes',
+  parsed && parsed.a === 'regex \\d+ ok, md \\_ and \\. dot'
+);
 
 // A path whose escape happens to be a valid JSON escape letter still RECOVERS
 // (the whole point — the review is not dropped), even if exact fidelity varies.
-const pathRepaired = escapeInvalidJsonEscapes('{"a":"see C:\\Users\\proj\\src for details"}');
+const pathRepaired = escapeInvalidJsonEscapes(
+  '{"a":"see C:\\Users\\proj\\src for details"}'
+);
 let pathParsed = null;
-try { pathParsed = JSON.parse(pathRepaired); } catch (_) { /* leave null */ }
-ok('windows-ish path with mixed escapes still becomes parseable', pathParsed !== null);
+try {
+  pathParsed = JSON.parse(pathRepaired);
+} catch (_) {
+  /* leave null */
+}
+ok(
+  'windows-ish path with mixed escapes still becomes parseable',
+  pathParsed !== null
+);
 
-console.log('\n── parseReviewOutput: end-to-end recovery ─────────────────────');
+console.log(
+  '\n── parseReviewOutput: end-to-end recovery ─────────────────────'
+);
 
 // Mirrors the cloud failure on PR #23212: a lone backslash inside a finding body.
 const badEscapeReview = [
@@ -86,12 +115,22 @@ const rawJson = badEscapeReview.slice(
   badEscapeReview.lastIndexOf('}') + 1
 );
 let rawErr = '';
-try { JSON.parse(rawJson); } catch (e) { rawErr = e.message; }
-ok('raw payload reproduces "Bad escaped character"', /[Bb]ad escaped character/.test(rawErr));
+try {
+  JSON.parse(rawJson);
+} catch (e) {
+  rawErr = e.message;
+}
+ok(
+  'raw payload reproduces "Bad escaped character"',
+  /[Bb]ad escaped character/.test(rawErr)
+);
 
 const recovered = parseReviewOutput(badEscapeReview);
 ok('review is recovered (not dropped)', !!recovered);
-ok('exactly one finding parsed', !!recovered && recovered.findings.length === 1);
+ok(
+  'exactly one finding parsed',
+  !!recovered && recovered.findings.length === 1
+);
 
 // A clean review must still parse on the first attempt — the escaper is only a
 // fallback and must never be needed here.
@@ -100,9 +139,14 @@ const cleanReview =
   '{"summaryMarkdown":"ok","findings":[],"shouldPostInlineComments":false}\n' +
   'END_REVIEW_JSON';
 const clean = parseReviewOutput(cleanReview);
-ok('clean review still parses (happy path untouched)', !!clean && clean.findings.length === 0);
+ok(
+  'clean review still parses (happy path untouched)',
+  !!clean && clean.findings.length === 0
+);
 
-console.log('\n── jsonrepair last-resort fallback ────────────────────────────');
+console.log(
+  '\n── jsonrepair last-resort fallback ────────────────────────────'
+);
 
 // jsonrepair runs ONLY after the escaper has also failed. These lock in that it
 // recovers malformations the escaper cannot — so they no longer fall through to
@@ -113,7 +157,11 @@ function runCapturingWarnings(agentOutput) {
   const warnings = [];
   console.warn = (...args) => warnings.push(args.join(' '));
   let review = null;
-  try { review = parseReviewOutput(agentOutput); } finally { console.warn = originalWarn; }
+  try {
+    review = parseReviewOutput(agentOutput);
+  } finally {
+    console.warn = originalWarn;
+  }
   return { review, warnings: warnings.join('\n') };
 }
 
@@ -124,7 +172,9 @@ const goodFinding =
   '"carbonVerified":false,"verificationSource":"not-carbon-specific"}';
 
 // 1. Trailing comma — no bad escape for the escaper to fix, so it reaches jsonrepair.
-const trailingComma = mk(`{"summaryMarkdown":"ok","findings":[${goodFinding},],"shouldPostInlineComments":false}`);
+const trailingComma = mk(
+  `{"summaryMarkdown":"ok","findings":[${goodFinding},],"shouldPostInlineComments":false}`
+);
 const tc = runCapturingWarnings(trailingComma);
 ok('trailing comma recovered', !!tc.review);
 ok('trailing comma used the jsonrepair layer', /jsonrepair/.test(tc.warnings));
@@ -133,23 +183,32 @@ ok('trailing comma used the jsonrepair layer', /jsonrepair/.test(tc.warnings));
 //    runs for v2-padded output, so this would otherwise fall through to the retry.
 const unescQuote = mk(
   '{"summaryMarkdown":"ok","findings":[{"severity":"minor","file":"a.ts","line":1,' +
-  '"title":"t","body":"the attr role="dialog" is required; add an actionable fix sentence",' +
-  '"carbonVerified":false,"verificationSource":"not-carbon-specific"}],"shouldPostInlineComments":false}'
+    '"title":"t","body":"the attr role="dialog" is required; add an actionable fix sentence",' +
+    '"carbonVerified":false,"verificationSource":"not-carbon-specific"}],"shouldPostInlineComments":false}'
 );
 const uq = runCapturingWarnings(unescQuote);
 ok('unescaped interior quote (non-padded) recovered', !!uq.review);
-ok('unescaped interior quote used the jsonrepair layer', /jsonrepair/.test(uq.warnings));
+ok(
+  'unescaped interior quote used the jsonrepair layer',
+  /jsonrepair/.test(uq.warnings)
+);
 
 // 3. Escaper path UNTOUCHED: the bad-escape payload is still fixed by the escaper,
 //    and jsonrepair is NOT invoked — the layering the fallback must preserve.
 const be = runCapturingWarnings(badEscapeReview);
-ok('bad-escape still recovered by the escaper, not jsonrepair',
-  !!be.review && /Escaped invalid backslash/.test(be.warnings) && !/jsonrepair/.test(be.warnings));
+ok(
+  'bad-escape still recovered by the escaper, not jsonrepair',
+  !!be.review &&
+    /Escaped invalid backslash/.test(be.warnings) &&
+    !/jsonrepair/.test(be.warnings)
+);
 
 // 4. Clean review invokes NO repair layer at all.
 const cl = runCapturingWarnings(cleanReview);
-ok('clean review triggers no repair layer',
-  !!cl.review && !/Escaped invalid backslash|jsonrepair/.test(cl.warnings));
+ok(
+  'clean review triggers no repair layer',
+  !!cl.review && !/Escaped invalid backslash|jsonrepair/.test(cl.warnings)
+);
 
 console.log('\n────────────────────────────────────────────────────────────');
 console.log(`Results: ${pass} passed, ${fail} failed`);

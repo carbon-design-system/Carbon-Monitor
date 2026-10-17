@@ -35,9 +35,17 @@ function run(command, args, timeoutMs = 20_000) {
   return new Promise((resolve) => {
     let proc;
     try {
-      proc = spawn(command, args, { shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+      proc = spawn(command, args, {
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
     } catch (error) {
-      return resolve({ code: null, stdout: '', stderr: error.message, failure: 'spawn' });
+      return resolve({
+        code: null,
+        stdout: '',
+        stderr: error.message,
+        failure: 'spawn',
+      });
     }
 
     let stdout = '';
@@ -95,7 +103,11 @@ async function checkBob() {
   // a linux/amd64 image on an arm64 host). A tight limit here reports a healthy
   // Bob as broken, so the ceiling is generous and overridable.
   const timeoutMs = Number(process.env.BOB_CHECK_TIMEOUT_MS || 20_000);
-  const { code, stdout, stderr, failure } = await run('bob', ['--version'], timeoutMs);
+  const { code, stdout, stderr, failure } = await run(
+    'bob',
+    ['--version'],
+    timeoutMs
+  );
 
   if (failure === 'timeout') {
     return {
@@ -351,7 +363,12 @@ async function checkGitHub() {
     // throws, and because the label is the de-duplication key, a run without it
     // re-reviews the same PRs and posts duplicate comments every time.
     const perms = repoBody.permissions || {};
-    const canLabel = !!(perms.push || perms.triage || perms.maintain || perms.admin);
+    const canLabel = !!(
+      perms.push ||
+      perms.triage ||
+      perms.maintain ||
+      perms.admin
+    );
 
     // Reported second and non-fatally: it is a number for the tile, not a gate,
     // and /rate_limit is itself exempt from rate limiting.
@@ -472,7 +489,10 @@ async function checkBobCredits() {
       id: 'bobcoins',
       label: 'Bobcoins',
       status: OK,
-      detail: balance.usage !== null ? `${balance.usage} spent this period` : 'No budget reported',
+      detail:
+        balance.usage !== null
+          ? `${balance.usage} spent this period`
+          : 'No budget reported',
       hint,
     };
   }
@@ -483,21 +503,25 @@ async function checkBobCredits() {
       label: 'Bobcoins',
       status: FAILED,
       detail: `0 of ${balance.budgetLimit} remaining`,
-      hint: resets || 'The monthly allowance is spent. Reviews will be refused.',
+      hint:
+        resets || 'The monthly allowance is spent. Reviews will be refused.',
     };
   }
 
   // Same reasoning as the GitHub rate-limit tile: a nearly-spent budget still
   // works right now and fails the next review, so it warns rather than passing.
   const lowPct = Number(process.env.BOB_CREDITS_LOW_PCT || 10);
-  const low = balance.percentRemaining !== null && balance.percentRemaining < lowPct;
+  const low =
+    balance.percentRemaining !== null && balance.percentRemaining < lowPct;
 
   return {
     id: 'bobcoins',
     label: 'Bobcoins',
     status: low ? WARNING : OK,
     detail: `${balance.remaining} of ${balance.budgetLimit} remaining`,
-    hint: low ? `Below ${lowPct}% of the monthly budget. ${resets || ''}`.trim() : hint,
+    hint: low
+      ? `Below ${lowPct}% of the monthly budget. ${resets || ''}`.trim()
+      : hint,
   };
 }
 

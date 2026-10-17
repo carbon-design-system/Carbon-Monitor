@@ -13,5 +13,6 @@
 ## Checklist
 
 - [ ] `npm run test:all` passes
+- [ ] `npm run format:check` passes
 - [ ] No secrets or `.env` committed
 - [ ] Docs updated if behaviour changed

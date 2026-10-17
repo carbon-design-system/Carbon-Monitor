@@ -58,20 +58,36 @@ function getSchedulePath() {
   if (process.env.SCHEDULE_STATE_PATH) return process.env.SCHEDULE_STATE_PATH;
 
   if (process.env.MCP_STATE_PATH) {
-    return path.join(path.dirname(process.env.MCP_STATE_PATH), 'carbon-monitor-schedule.json');
+    return path.join(
+      path.dirname(process.env.MCP_STATE_PATH),
+      'carbon-monitor-schedule.json'
+    );
   }
 
-  const newPath = path.join(os.homedir(), '.config', 'carbon-monitor', 'schedule.json');
-  const oldPath = path.join(os.homedir(), '.bob', 'carbon-monitor-schedule.json');
+  const newPath = path.join(
+    os.homedir(),
+    '.config',
+    'carbon-monitor',
+    'schedule.json'
+  );
+  const oldPath = path.join(
+    os.homedir(),
+    '.bob',
+    'carbon-monitor-schedule.json'
+  );
 
   const fssync = require('fs');
   if (fssync.existsSync(oldPath) && !fssync.existsSync(newPath)) {
     try {
       fssync.mkdirSync(path.dirname(newPath), { recursive: true });
       fssync.renameSync(oldPath, newPath);
-      console.warn('[scheduleManager] migrated schedule to ~/.config/carbon-monitor/schedule.json');
+      console.warn(
+        '[scheduleManager] migrated schedule to ~/.config/carbon-monitor/schedule.json'
+      );
     } catch (e) {
-      console.warn(`[scheduleManager] migration skipped, using legacy path: ${e.message}`);
+      console.warn(
+        `[scheduleManager] migration skipped, using legacy path: ${e.message}`
+      );
       return oldPath;
     }
   }
@@ -83,7 +99,9 @@ function getSchedulePath() {
 
 // Zone of the stored run time. Configurable so a team sets its own; the console
 // converts for whatever zone the operator picks.
-const SCHEDULE_TIMEZONE = (process.env.SCHEDULE_TIMEZONE || 'America/Chicago').trim();
+const SCHEDULE_TIMEZONE = (
+  process.env.SCHEDULE_TIMEZONE || 'America/Chicago'
+).trim();
 
 /**
  * Convert a wall-clock "HH:MM" from one IANA zone to another, on today's date.
@@ -95,12 +113,20 @@ function convertWallClock(hhmm, fromTz, toTz) {
     const [h, m] = hhmm.split(':').map(Number);
     const now = new Date();
     const day = new Intl.DateTimeFormat('en-CA', {
-      timeZone: fromTz, year: 'numeric', month: '2-digit', day: '2-digit',
+      timeZone: fromTz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
     }).format(now);
-    const utcMs = Date.parse(`${day}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00Z`)
-      + getZoneOffsetMs(now, fromTz);
+    const utcMs =
+      Date.parse(
+        `${day}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00Z`
+      ) + getZoneOffsetMs(now, fromTz);
     const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: toTz, hour: '2-digit', minute: '2-digit', hour12: false,
+      timeZone: toTz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
     }).formatToParts(new Date(utcMs));
     const hh = parts.find((p) => p.type === 'hour')?.value;
     const mm = parts.find((p) => p.type === 'minute')?.value;
@@ -116,11 +142,21 @@ function convertWallClock(hhmm, fromTz, toTz) {
  * time in America/New_York. Convert it once so the absolute firing time is kept.
  */
 function migrateState(state) {
-  if (!state || typeof state !== 'object' || state.timeEST === undefined || state.timeLocal !== undefined) {
+  if (
+    !state ||
+    typeof state !== 'object' ||
+    state.timeEST === undefined ||
+    state.timeLocal !== undefined
+  ) {
     return state;
   }
   const { timeEST, ...rest } = state;
-  return { ...rest, timeLocal: convertWallClock(timeEST, 'America/New_York', SCHEDULE_TIMEZONE) || timeEST };
+  return {
+    ...rest,
+    timeLocal:
+      convertWallClock(timeEST, 'America/New_York', SCHEDULE_TIMEZONE) ||
+      timeEST,
+  };
 }
 
 function defaultState() {
@@ -211,7 +247,9 @@ async function loadSchedule() {
     // when the file exists it is always preferred (faster, no network hop).
     const esState = await esLoadSchedule();
     if (esState) {
-      console.log('[schedule] restored state from Elasticsearch (no local file found)');
+      console.log(
+        '[schedule] restored state from Elasticsearch (no local file found)'
+      );
       _state = migrateState(esState);
       if (esState.timeEST !== undefined) saveSchedule(_state).catch(() => {});
       return _state;
@@ -261,7 +299,9 @@ async function saveSchedule(state) {
   // failure must never prevent the idempotency token from being recorded
   // (design principle #2). The file is always written first.
   esSaveSchedule(state).catch((err) => {
-    console.warn(`[schedule] could not upsert state to Elasticsearch: ${err.message}`);
+    console.warn(
+      `[schedule] could not upsert state to Elasticsearch: ${err.message}`
+    );
   });
 }
 
@@ -275,7 +315,11 @@ async function saveSchedule(state) {
  */
 async function getSchedule() {
   if (!_state) await loadSchedule();
-  return { ..._state, timezone: SCHEDULE_TIMEZONE, nextRunAt: computeNextRunAt(_state.timeLocal) };
+  return {
+    ..._state,
+    timezone: SCHEDULE_TIMEZONE,
+    nextRunAt: computeNextRunAt(_state.timeLocal),
+  };
 }
 
 /**
@@ -306,7 +350,8 @@ async function setSchedule(patch) {
     next.paused = patch.paused;
   }
 
-  if (patch.timeEST !== undefined && patch.timeLocal === undefined) patch = { ...patch, timeLocal: patch.timeEST };
+  if (patch.timeEST !== undefined && patch.timeLocal === undefined)
+    patch = { ...patch, timeLocal: patch.timeEST };
   if (patch.timeLocal !== undefined) {
     const err = validateTimeLocal(patch.timeLocal);
     if (err) return { ok: false, error: err };
@@ -314,7 +359,10 @@ async function setSchedule(patch) {
   }
 
   await saveSchedule(next);
-  return { ok: true, state: { ...next, nextRunAt: computeNextRunAt(next.timeLocal) } };
+  return {
+    ok: true,
+    state: { ...next, nextRunAt: computeNextRunAt(next.timeLocal) },
+  };
 }
 
 // ── Validation ───────────────────────────────────────────────────────────────
@@ -325,11 +373,14 @@ async function setSchedule(patch) {
  * @returns {string|null} Error message, or null if valid
  */
 function validateTimeLocal(value) {
-  if (typeof value !== 'string') return '"timeLocal" must be a string in HH:MM format';
-  if (!/^\d{2}:\d{2}$/.test(value)) return '"timeLocal" must be in HH:MM format (e.g. "09:00")';
+  if (typeof value !== 'string')
+    return '"timeLocal" must be a string in HH:MM format';
+  if (!/^\d{2}:\d{2}$/.test(value))
+    return '"timeLocal" must be in HH:MM format (e.g. "09:00")';
   const [h, m] = value.split(':').map(Number);
   if (h < 0 || h > 23) return `"timeLocal" hour must be 00–23, got "${value}"`;
-  if (m < 0 || m > 59) return `"timeLocal" minute must be 00–59, got "${value}"`;
+  if (m < 0 || m > 59)
+    return `"timeLocal" minute must be 00–59, got "${value}"`;
   return null;
 }
 
@@ -427,15 +478,23 @@ function getZoneOffsetMs(date, tz = SCHEDULE_TIMEZONE) {
   // Format the same instant in ET and UTC, compare the difference.
   const utcParts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'UTC',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
     hour12: false,
   }).formatToParts(date);
 
   const zoneParts = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
     hour12: false,
   }).formatToParts(date);
 
@@ -444,7 +503,14 @@ function getZoneOffsetMs(date, tz = SCHEDULE_TIMEZONE) {
       const val = parts.find((p) => p.type === type)?.value ?? '0';
       return Number(val === '24' ? '0' : val);
     };
-    return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+    return Date.UTC(
+      get('year'),
+      get('month') - 1,
+      get('day'),
+      get('hour'),
+      get('minute'),
+      get('second')
+    );
   }
 
   return toMs(utcParts) - toMs(zoneParts);
@@ -487,7 +553,9 @@ function startScheduler(reviewPRs, reviewState, reviewLog) {
 
   // Warm the in-memory cache before the first tick.
   loadSchedule().catch((err) => {
-    console.warn(`[schedule] could not pre-load schedule state: ${err.message}`);
+    console.warn(
+      `[schedule] could not pre-load schedule state: ${err.message}`
+    );
   });
 
   _tickInterval = setInterval(() => {
@@ -581,7 +649,11 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   // (uncapped plan) must never block a review — only a confirmed low reading pauses.
   const balance = await getBalance();
   const lowPct = Number(process.env.BOB_CREDITS_LOW_PCT || 10);
-  if (balance.available && balance.percentRemaining !== null && balance.percentRemaining < lowPct) {
+  if (
+    balance.available &&
+    balance.percentRemaining !== null &&
+    balance.percentRemaining < lowPct
+  ) {
     console.warn(
       `[schedule] auto-pausing — Bobcoins at ${balance.percentRemaining}% (threshold ${lowPct}%)`
     );
@@ -592,7 +664,9 @@ async function tick(reviewPRs, reviewState, reviewLog) {
       lastSkipReason: `Auto-paused: Bobcoins at ${balance.percentRemaining}% (below ${lowPct}% threshold)`,
     };
     await saveSchedule(autoPaused).catch((err) => {
-      console.warn(`[schedule] could not persist auto-pause state: ${err.message}`);
+      console.warn(
+        `[schedule] could not persist auto-pause state: ${err.message}`
+      );
     });
     postLowTokenAlert({
       percentRemaining: balance.percentRemaining,
@@ -633,7 +707,9 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   reviewState.mode = 'auto';
   reviewState.prNumbers = null;
 
-  console.log(`[schedule] triggering scheduled review at ${current} ${SCHEDULE_TIMEZONE}`);
+  console.log(
+    `[schedule] triggering scheduled review at ${current} ${SCHEDULE_TIMEZONE}`
+  );
 
   // 8. Start log capture so the console can show output, same as a manual run.
   reviewLog.start(reviewState.startedAt);

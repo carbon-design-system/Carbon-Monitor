@@ -1,9 +1,9 @@
 /******************************************************************************
  * Carbon PR Review Agent
- * 
+ *
  * Simplified PR review agent for carbon-design-system/carbon repository
  * Uses modular architecture with CLI agents (bob/claude/codex)
- * 
+ *
  * Based on the original agent_prs.js but streamlined for Carbon's needs:
  * - Single repository only (no multi-repo loop)
  * - Minimal metadata (only AIReviewed label)
@@ -36,7 +36,9 @@ let TARGET_PR = null;
 if (_rawTargetPR != null) {
   const _parsed = Number(_rawTargetPR);
   if (!Number.isInteger(_parsed) || _parsed <= 0) {
-    console.error(`❌ Invalid PR number: "${_rawTargetPR}". Must be a positive integer.`);
+    console.error(
+      `❌ Invalid PR number: "${_rawTargetPR}". Must be a positive integer.`
+    );
     console.error('   Example: node src/index.js --pr 12345');
     process.exit(1);
   }
@@ -46,9 +48,20 @@ if (_rawTargetPR != null) {
 const { randomUUID } = require('crypto');
 const { createGitHubClient } = require('./githubClient');
 const { buildReviewBundle } = require('./reviewBundle');
-const { runAgent, getConfiguredAgent, isAgentAvailable } = require('./agentRunner');
-const { parseReviewOutput, extractCarbonBuilderSkillReads } = require('./reviewParser');
-const { formatSummaryComment, formatInlineComment, estimateTokenUsage } = require('./reviewPrompt');
+const {
+  runAgent,
+  getConfiguredAgent,
+  isAgentAvailable,
+} = require('./agentRunner');
+const {
+  parseReviewOutput,
+  extractCarbonBuilderSkillReads,
+} = require('./reviewParser');
+const {
+  formatSummaryComment,
+  formatInlineComment,
+  estimateTokenUsage,
+} = require('./reviewPrompt');
 const { splitFindings } = require('./diffMapper');
 const { emitEvent } = require('./observability/eventService');
 const bobCredits = require('./api/bobCredits');
@@ -139,7 +152,9 @@ async function cleanupBundle(bundle) {
     console.log('🧹 Cleaning up...');
     await bundle.cleanup();
   } catch (error) {
-    console.warn(`⚠️  Could not remove review bundle ${bundle.dir}: ${error.message}`);
+    console.warn(
+      `⚠️  Could not remove review bundle ${bundle.dir}: ${error.message}`
+    );
   }
 }
 
@@ -187,7 +202,8 @@ function describeValue(value) {
  *          `ok: true` with `prNumbers: null` means auto-select.
  */
 function parsePrNumbers(input, maxPRs = MAX_PRS_PER_RUN) {
-  if (input === undefined || input === null) return { ok: true, prNumbers: null };
+  if (input === undefined || input === null)
+    return { ok: true, prNumbers: null };
 
   let entries;
   if (Array.isArray(input)) {
@@ -284,14 +300,30 @@ function parsePrNumbers(input, maxPRs = MAX_PRS_PER_RUN) {
 function resolveReviewTargets(options = {}, targetPr = TARGET_PR) {
   const parsed = parsePrNumbers(options.prNumbers);
   if (!parsed.ok) {
-    return { ok: false, mode: 'auto', prNumbers: null, source: 'argument', error: parsed.error };
+    return {
+      ok: false,
+      mode: 'auto',
+      prNumbers: null,
+      source: 'argument',
+      error: parsed.error,
+    };
   }
 
   if (parsed.prNumbers) {
-    return { ok: true, mode: 'explicit', prNumbers: parsed.prNumbers, source: 'argument' };
+    return {
+      ok: true,
+      mode: 'explicit',
+      prNumbers: parsed.prNumbers,
+      source: 'argument',
+    };
   }
   if (targetPr) {
-    return { ok: true, mode: 'explicit', prNumbers: [targetPr], source: 'cli-env' };
+    return {
+      ok: true,
+      mode: 'explicit',
+      prNumbers: [targetPr],
+      source: 'cli-env',
+    };
   }
   return { ok: true, mode: 'auto', prNumbers: null, source: 'auto' };
 }
@@ -336,23 +368,25 @@ async function reviewPRs(options = {}) {
         : `auto (max ${MAX_PRS_PER_RUN}, last ${N_DAYS_SINCE_PR_CREATED} days)`
     }`
   );
-  
+
   // Validate environment
   if (!GITHUB_TOKEN) {
     console.error('❌ GITHUB_AI_AGENT_TOKEN not set');
     return;
   }
-  
+
   // Get configured agent
   const agent = REVIEW_AGENT;
-  
+
   // Validate agent
   const validAgents = ['bob', 'claude', 'codex'];
   if (!validAgents.includes(agent)) {
-    console.error(`❌ Invalid agent: ${agent}. Must be one of: ${validAgents.join(', ')}`);
+    console.error(
+      `❌ Invalid agent: ${agent}. Must be one of: ${validAgents.join(', ')}`
+    );
     return;
   }
-  
+
   // Check if agent is available
   const available = await isAgentAvailable(agent);
   if (!available) {
@@ -370,17 +404,19 @@ async function reviewPRs(options = {}) {
   // a figure that is structurally always zero, at that.
   const tracksBobcoins = agent === 'bob';
   if (!tracksBobcoins) {
-    console.log(`ℹ️  Bobcoins accounting skipped — '${agent}' does not spend them\n`);
+    console.log(
+      `ℹ️  Bobcoins accounting skipped — '${agent}' does not spend them\n`
+    );
   }
-  
+
   // Create GitHub client
   const { Octokit } = await import('@octokit/rest');
   const octokit = new Octokit({
     auth: GITHUB_TOKEN,
-    baseUrl: process.env.GITHUB_API_BASE_URL || 'https://api.github.com'
+    baseUrl: process.env.GITHUB_API_BASE_URL || 'https://api.github.com',
   });
   const client = createGitHubClient(octokit);
-  
+
   await emitEvent({
     event_type: 'run_started',
     correlation_id: correlationId,
@@ -411,14 +447,16 @@ async function reviewPRs(options = {}) {
             await client.fetchSinglePR({
               owner: GITHUB_OWNER,
               repo: GITHUB_REPO,
-              pullNumber
+              pullNumber,
             })
           );
         } catch (fetchError) {
           // One bad number — a typo, a PR from another repo, one since deleted —
           // must not cost the operator the rest of the list. Naming several PRs
           // is a request for one pass over all of them, not an all-or-nothing bet.
-          console.error(`❌ Could not fetch PR #${pullNumber}: ${fetchError.message}`);
+          console.error(
+            `❌ Could not fetch PR #${pullNumber}: ${fetchError.message}`
+          );
           fetchFailures.push(pullNumber);
           await emitEvent({
             event_type: 'pr_review_failed',
@@ -441,7 +479,7 @@ async function reviewPRs(options = {}) {
         repo: GITHUB_REPO,
         label: REVIEW_LABEL,
         maxPRs: MAX_PRS_PER_RUN,
-        daysBack: N_DAYS_SINCE_PR_CREATED
+        daysBack: N_DAYS_SINCE_PR_CREATED,
       });
 
       if (prs.length === 0) {
@@ -472,7 +510,9 @@ async function reviewPRs(options = {}) {
         console.log(`\n${'='.repeat(80)}`);
         console.log(`📌 Reviewing PR #${pr.number}: ${pr.title}`);
         console.log(`   Author: @${pr.user.login}`);
-        console.log(`   Created: ${new Date(pr.created_at).toLocaleDateString()}`);
+        console.log(
+          `   Created: ${new Date(pr.created_at).toLocaleDateString()}`
+        );
         console.log(`   URL: ${pr.html_url}`);
         console.log(`${'='.repeat(80)}\n`);
 
@@ -485,25 +525,37 @@ async function reviewPRs(options = {}) {
             owner: GITHUB_OWNER,
             repo: GITHUB_REPO,
             path: 'ORIGINAL_FILES.json',
-            ref: pr.head.sha
+            ref: pr.head.sha,
           });
-          files = JSON.parse(Buffer.from(filesFile.content, 'base64').toString('utf8'));
+          files = JSON.parse(
+            Buffer.from(filesFile.content, 'base64').toString('utf8')
+          );
           filesFromTestFixture = true;
-          console.log(`✅ Files: ${files.length} changed (from ORIGINAL_FILES.json)`);
+          console.log(
+            `✅ Files: ${files.length} changed (from ORIGINAL_FILES.json)`
+          );
         } catch {
           files = await client.fetchPRFiles({
             owner: GITHUB_OWNER,
             repo: GITHUB_REPO,
-            pullNumber: pr.number
+            pullNumber: pr.number,
           });
           console.log(`✅ Files: ${files.length} changed`);
         }
-        files.forEach(f => console.log(`   - ${f.filename} (+${f.additions}/-${f.deletions})`));
+        files.forEach((f) =>
+          console.log(`   - ${f.filename} (+${f.additions}/-${f.deletions})`)
+        );
 
         // Size gate — auto mode only. Explicit mode (--pr N) bypasses this so
         // the operator can force-review any PR regardless of size.
-        if (target.mode === 'auto' && !filesFromTestFixture && files.length > MAX_FILES_PER_PR) {
-          console.warn(`⏭️  PR #${pr.number} skipped — ${files.length} files exceeds MAX_FILES_PER_PR (${MAX_FILES_PER_PR})`);
+        if (
+          target.mode === 'auto' &&
+          !filesFromTestFixture &&
+          files.length > MAX_FILES_PER_PR
+        ) {
+          console.warn(
+            `⏭️  PR #${pr.number} skipped — ${files.length} files exceeds MAX_FILES_PER_PR (${MAX_FILES_PER_PR})`
+          );
 
           await emitEvent({
             event_type: 'pr_skipped_too_large',
@@ -527,13 +579,18 @@ async function reviewPRs(options = {}) {
             labelAdded = true;
             console.log('✅ AIReviewed label added (too-large skip)');
           } catch (labelErr) {
-            console.warn(`⚠️  Could not add AIReviewed label to PR #${pr.number}: ${labelErr.message}`);
+            console.warn(
+              `⚠️  Could not add AIReviewed label to PR #${pr.number}: ${labelErr.message}`
+            );
           }
 
-          const postSummary = process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
+          const postSummary =
+            process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
           if (labelAdded && postSummary) {
             const baseUrl = (process.env.BASE_URL || '').trim();
-            const consoleRef = baseUrl ? `the [Carbon Monitor console](${baseUrl})` : 'the Carbon Monitor console';
+            const consoleRef = baseUrl
+              ? `the [Carbon Monitor console](${baseUrl})`
+              : 'the Carbon Monitor console';
             try {
               await client.postSummaryComment({
                 owner: GITHUB_OWNER,
@@ -542,7 +599,9 @@ async function reviewPRs(options = {}) {
                 body: `## Carbon Monitor — Review Skipped\n\nThis PR has **${files.length} changed files**, which exceeds the ${MAX_FILES_PER_PR}-file limit for automatic review. It has been marked as \`AIReviewed\` and will not be re-queued.\n\nTo request a manual AI review, visit ${consoleRef} and enter this PR number directly.`,
               });
             } catch (commentErr) {
-              console.warn(`⚠️  Could not post skip comment on PR #${pr.number}: ${commentErr.message}`);
+              console.warn(
+                `⚠️  Could not post skip comment on PR #${pr.number}: ${commentErr.message}`
+              );
             }
           }
 
@@ -575,19 +634,21 @@ async function reviewPRs(options = {}) {
             owner: GITHUB_OWNER,
             repo: GITHUB_REPO,
             path: 'ORIGINAL_DIFF.patch',
-            ref: pr.head.sha
+            ref: pr.head.sha,
           });
           diff = Buffer.from(patchFile.content, 'base64').toString('utf8');
-          console.log(`✅ Diff: ${diff.length} characters (from ORIGINAL_DIFF.patch)`);
+          console.log(
+            `✅ Diff: ${diff.length} characters (from ORIGINAL_DIFF.patch)`
+          );
         } catch {
           diff = await client.fetchPRDiff({
             owner: GITHUB_OWNER,
             repo: GITHUB_REPO,
-            pullNumber: pr.number
+            pullNumber: pr.number,
           });
           console.log(`✅ Diff: ${diff.length} characters`);
         }
-        
+
         // Build review bundle
         bundle = await buildReviewBundle({
           owner: GITHUB_OWNER,
@@ -595,7 +656,7 @@ async function reviewPRs(options = {}) {
           pr,
           diff,
           files,
-          client
+          client,
         });
         console.log(`✅ Bundle: ${bundle.dir}`);
 
@@ -614,7 +675,9 @@ async function reviewPRs(options = {}) {
         let agentSucceeded = false;
 
         if (tracksBobcoins) {
-          coinsBefore = await bobCredits.getBalance({ force: true }).catch(() => null);
+          coinsBefore = await bobCredits
+            .getBalance({ force: true })
+            .catch(() => null);
         }
 
         let agentOutput;
@@ -623,7 +686,7 @@ async function reviewPRs(options = {}) {
             agent,
             cwd: bundle.dir,
             prompt: bundle.prompt,
-            timeout: 10 * 60 * 1000 // 10 minutes
+            timeout: 10 * 60 * 1000, // 10 minutes
           });
           agentSucceeded = true;
         } catch (agentErr) {
@@ -656,7 +719,9 @@ async function reviewPRs(options = {}) {
               if (coinsSpent !== null) {
                 console.log(`\n🪙 Bobcoins spent: ${coinsSpent}`);
               } else if (coinsAfter && !coinsAfter.available) {
-                console.log(`\n🪙 Bobcoins: balance unavailable (${coinsAfter.reason})`);
+                console.log(
+                  `\n🪙 Bobcoins: balance unavailable (${coinsAfter.reason})`
+                );
               }
             }
 
@@ -687,9 +752,13 @@ async function reviewPRs(options = {}) {
           const how = skillFilesRead.includes('use_skill:carbon-builder')
             ? 'invoked it via the use_skill tool'
             : `read ${skillFilesRead.length} skill file(s): ${skillFilesRead.join(', ')}`;
-          console.log(`\n🔬 Carbon Builder skill: ✅ loaded and used by the agent — ${how}`);
+          console.log(
+            `\n🔬 Carbon Builder skill: ✅ loaded and used by the agent — ${how}`
+          );
         } else {
-          console.log('\n🔬 Carbon Builder skill: ⚠️  NOT loaded — the agent transcript shows no use_skill call and no read of .bob/skills/carbon-builder/. Carbon claims in this review are unverified by the skill.');
+          console.log(
+            '\n🔬 Carbon Builder skill: ⚠️  NOT loaded — the agent transcript shows no use_skill call and no read of .bob/skills/carbon-builder/. Carbon claims in this review are unverified by the skill.'
+          );
         }
         // ─────────────────────────────────────────────────────────────────
 
@@ -701,11 +770,15 @@ async function reviewPRs(options = {}) {
         // sequence the sanitiser can't repair) frequently clears on a second attempt.
         // Re-run the agent once and re-parse before skipping the PR entirely.
         if (!review) {
-          console.warn('⚠️  Parse failed — retrying bob review once (output is non-deterministic)');
+          console.warn(
+            '⚠️  Parse failed — retrying bob review once (output is non-deterministic)'
+          );
           try {
             let retryCoinsBefore = null;
             if (tracksBobcoins) {
-              retryCoinsBefore = await bobCredits.getBalance({ force: true }).catch(() => null);
+              retryCoinsBefore = await bobCredits
+                .getBalance({ force: true })
+                .catch(() => null);
             }
             let retryOutput;
             try {
@@ -713,15 +786,20 @@ async function reviewPRs(options = {}) {
                 agent,
                 cwd: bundle.dir,
                 prompt: bundle.prompt,
-                timeout: 10 * 60 * 1000
+                timeout: 10 * 60 * 1000,
               });
             } finally {
               // Mirror the first run's billing: the retry burns coins too, so record
               // its spend. Guarded so an accounting failure never masks the retry.
               try {
                 if (tracksBobcoins) {
-                  const retryCoinsAfter = await bobCredits.getBalance({ force: true });
-                  const retrySpent = bobCredits.computeSpend(retryCoinsBefore, retryCoinsAfter);
+                  const retryCoinsAfter = await bobCredits.getBalance({
+                    force: true,
+                  });
+                  const retrySpent = bobCredits.computeSpend(
+                    retryCoinsBefore,
+                    retryCoinsAfter
+                  );
                   if (retrySpent !== null) {
                     console.log(`\n🪙 Bobcoins spent (retry): ${retrySpent}`);
                   }
@@ -735,7 +813,9 @@ async function reviewPRs(options = {}) {
                   });
                 }
               } catch (costErr) {
-                console.warn(`⚠️  Bobcoins accounting failed (retry): ${costErr.message}`);
+                console.warn(
+                  `⚠️  Bobcoins accounting failed (retry): ${costErr.message}`
+                );
               }
             }
             if (retryOutput) {
@@ -746,14 +826,16 @@ async function reviewPRs(options = {}) {
                 // actually used.
                 agentOutput = retryOutput;
                 skillFilesRead = extractCarbonBuilderSkillReads(retryOutput);
-                console.log('✅ Retry succeeded — parsed review from second attempt');
+                console.log(
+                  '✅ Retry succeeded — parsed review from second attempt'
+                );
               }
             }
           } catch (retryErr) {
             console.warn(`⚠️  Retry run failed: ${retryErr.message}`);
           }
         }
-        
+
         if (!review) {
           console.error('❌ Failed to parse review output');
           console.error('Skipping this PR');
@@ -768,14 +850,20 @@ async function reviewPRs(options = {}) {
           // The `finally` below removes the bundle on the way out.
           continue;
         }
-        
+
         console.log(`✅ Parsed: ${review.findings.length} findings`);
-        console.log(`✅ Recommendation: ${review.recommendation} — ${review.recommendationRationale}`);
+        console.log(
+          `✅ Recommendation: ${review.recommendation} — ${review.recommendationRationale}`
+        );
 
         // Warn when the agent skipped its catalogue step.
         if (!review.hasCatalogue) {
-          console.warn('⚠️  No visible catalogue in agent output — agent may have skipped Step 1');
-          console.warn('   Zero findings from this run should be treated as unreliable');
+          console.warn(
+            '⚠️  No visible catalogue in agent output — agent may have skipped Step 1'
+          );
+          console.warn(
+            '   Zero findings from this run should be treated as unreliable'
+          );
         }
 
         // Emit skill_unavailable when carbon-builder was never read
@@ -789,7 +877,7 @@ async function reviewPRs(options = {}) {
             commit_sha: pr.head.sha,
           });
         }
-        
+
         // Split findings into inline-able and summary-only
         const { inlineFindings, summaryFindings } = splitFindings(
           review.findings,
@@ -797,90 +885,125 @@ async function reviewPRs(options = {}) {
           files,
           bundle.mdDiffStartLine
         );
-        console.log(`✅ Inline: ${inlineFindings.length}, Summary: ${summaryFindings.length}`);
-        
+        console.log(
+          `✅ Inline: ${inlineFindings.length}, Summary: ${summaryFindings.length}`
+        );
+
         // Post inline review comments if any (check env flag)
-        const postInline = process.env.GITHUB_AI_AGENT_POST_INLINE_COMMENTS !== 'false';
-        if (inlineFindings.length > 0 && review.shouldPostInlineComments !== false && postInline) {
-          const inlineComments = inlineFindings.map(finding => ({
+        const postInline =
+          process.env.GITHUB_AI_AGENT_POST_INLINE_COMMENTS !== 'false';
+        if (
+          inlineFindings.length > 0 &&
+          review.shouldPostInlineComments !== false &&
+          postInline
+        ) {
+          const inlineComments = inlineFindings.map((finding) => ({
             path: finding.diffPosition.path,
             position: finding.diffPosition.position,
-            body: formatInlineComment(finding)
+            body: formatInlineComment(finding),
           }));
-          
+
           const reviewResult = await client.postReviewComments({
             owner: GITHUB_OWNER,
             repo: GITHUB_REPO,
             pullNumber: pr.number,
             commitId: pr.head.sha,
-            comments: inlineComments
+            comments: inlineComments,
           });
-          
-          if (reviewResult && reviewResult.comments && reviewResult.comments.length > 0) {
-            console.log(`✅ Posted ${reviewResult.comments.length} of ${inlineFindings.length} inline comment(s)`);
+
+          if (
+            reviewResult &&
+            reviewResult.comments &&
+            reviewResult.comments.length > 0
+          ) {
+            console.log(
+              `✅ Posted ${reviewResult.comments.length} of ${inlineFindings.length} inline comment(s)`
+            );
 
             // Move findings whose inline comment failed into summaryFindings
             if (reviewResult.comments.length < inlineFindings.length) {
               const postedKeys = new Set(
-                reviewResult.comments.map(c => `${c.path}:${c.position}`)
+                reviewResult.comments.map((c) => `${c.path}:${c.position}`)
               );
-              const failedFindings = inlineFindings.filter(f =>
-                !postedKeys.has(`${f.diffPosition.path}:${f.diffPosition.position}`)
+              const failedFindings = inlineFindings.filter(
+                (f) =>
+                  !postedKeys.has(
+                    `${f.diffPosition.path}:${f.diffPosition.position}`
+                  )
               );
               if (failedFindings.length > 0) {
-                console.log(`⚠️  ${failedFindings.length} inline comment(s) failed, moving to summary`);
+                console.log(
+                  `⚠️  ${failedFindings.length} inline comment(s) failed, moving to summary`
+                );
                 summaryFindings.push(...failedFindings);
               }
             }
           } else {
-            console.log('⚠️  All inline comments failed, will include in summary');
+            console.log(
+              '⚠️  All inline comments failed, will include in summary'
+            );
             summaryFindings.push(...inlineFindings);
             inlineFindings.length = 0;
           }
         }
-        
+
         // Calculate token usage estimate
         const tokenUsage = estimateTokenUsage({
           prompt: bundle.prompt,
           diff: diff,
-          agentOutput: agentOutput
+          agentOutput: agentOutput,
         });
-        console.log(`✅ Estimated tokens: ~${tokenUsage.total.toLocaleString()} (input: ~${tokenUsage.input.toLocaleString()}, output: ~${tokenUsage.output.toLocaleString()})`);
+        console.log(
+          `✅ Estimated tokens: ~${tokenUsage.total.toLocaleString()} (input: ~${tokenUsage.input.toLocaleString()}, output: ~${tokenUsage.output.toLocaleString()})`
+        );
 
         // ── Emit metrics event for this review ──────────────────────────────
         await emitEvent({
-          event_type:     'pr_review_completed',
+          event_type: 'pr_review_completed',
           correlation_id: correlationId,
-          repo:           `${GITHUB_OWNER}/${GITHUB_REPO}`,
-          pr_number:      pr.number,
-          agent:          REVIEW_AGENT,
-          commit_sha:     pr.head.sha,
+          repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+          pr_number: pr.number,
+          agent: REVIEW_AGENT,
+          commit_sha: pr.head.sha,
           payload: {
             // pr_title is stored so Kibana runtime fields can extract any embedded
             // identifiers (e.g. original Carbon PR numbers in test PR titles).
             pr_title: pr.title,
             recommendation: review.recommendation,
-            findings_total:    review.findings.length,
-            findings_blocking: review.findings.filter(f => f.severity === 'blocking').length,
-            findings_major:    review.findings.filter(f => f.severity === 'major').length,
-            findings_minor:    review.findings.filter(f => f.severity === 'minor').length,
-            findings_nit:      review.findings.filter(f => f.severity === 'nit').length,
-            cat1_findings: review.findings.filter(f => f.verificationSource !== 'not-carbon-specific').length,
-            cat2_findings: review.findings.filter(f => f.verificationSource === 'not-carbon-specific').length,
-            token_input:  tokenUsage.input,
+            findings_total: review.findings.length,
+            findings_blocking: review.findings.filter(
+              (f) => f.severity === 'blocking'
+            ).length,
+            findings_major: review.findings.filter(
+              (f) => f.severity === 'major'
+            ).length,
+            findings_minor: review.findings.filter(
+              (f) => f.severity === 'minor'
+            ).length,
+            findings_nit: review.findings.filter((f) => f.severity === 'nit')
+              .length,
+            cat1_findings: review.findings.filter(
+              (f) => f.verificationSource !== 'not-carbon-specific'
+            ).length,
+            cat2_findings: review.findings.filter(
+              (f) => f.verificationSource === 'not-carbon-specific'
+            ).length,
+            token_input: tokenUsage.input,
             token_output: tokenUsage.output,
-            token_total:  tokenUsage.total,
+            token_total: tokenUsage.total,
             coinsSpent,
-            remainingAfter: coinsAfter && coinsAfter.available ? coinsAfter.remaining : null,
+            remainingAfter:
+              coinsAfter && coinsAfter.available ? coinsAfter.remaining : null,
             durationMs: Date.now() - prStartedAt,
           },
         });
 
         prsReviewedThisRun++;
         // ────────────────────────────────────────────────────────────────────
-        
+
         // Format and post summary comment (check env flag)
-        const postSummary = process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
+        const postSummary =
+          process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
         if (postSummary) {
           const commentBody = formatSummaryComment({
             agent,
@@ -893,29 +1016,29 @@ async function reviewPRs(options = {}) {
             recommendation: review.recommendation,
             recommendationRationale: review.recommendationRationale,
             catalogueWarning: review.catalogueWarning,
-            findingsTable: review.findingsTable
+            findingsTable: review.findingsTable,
           });
-          
+
           await client.postSummaryComment({
             owner: GITHUB_OWNER,
             repo: GITHUB_REPO,
             pullNumber: pr.number,
-            body: commentBody
+            body: commentBody,
           });
           console.log('✅ Summary comment posted');
         } else {
           console.log('⏭️  Summary comment skipped (disabled by env var)');
         }
-        
+
         // Add AIReviewed label
         await client.addReviewedLabel({
           owner: GITHUB_OWNER,
           repo: GITHUB_REPO,
           pullNumber: pr.number,
-          label: REVIEW_LABEL
+          label: REVIEW_LABEL,
         });
         console.log('✅ Label added');
-        
+
         console.log(`\n✅ PR #${pr.number} review complete`);
 
         // Record success for the Slack digest
@@ -926,9 +1049,11 @@ async function reviewPRs(options = {}) {
           summary: review.summaryMarkdown,
           recommendation: review.recommendation,
         });
-
       } catch (prError) {
-        console.error(`\n❌ Error reviewing PR #${pr.number}:`, prError.message);
+        console.error(
+          `\n❌ Error reviewing PR #${pr.number}:`,
+          prError.message
+        );
         console.error(prError.stack);
         await emitEvent({
           event_type: 'pr_review_failed',
@@ -964,7 +1089,8 @@ async function reviewPRs(options = {}) {
         duration_ms: runDurationMs,
         // Flat scalars, matching the rest of the payloads: a run that reviewed
         // two of the three PRs it was given is not the same as one given two.
-        prs_requested: target.mode === 'explicit' ? target.prNumbers.length : null,
+        prs_requested:
+          target.mode === 'explicit' ? target.prNumbers.length : null,
         prs_fetch_failed: fetchFailures.length,
         target_mode: target.mode,
       },
@@ -985,7 +1111,6 @@ async function reviewPRs(options = {}) {
     console.log(`\n${'='.repeat(80)}`);
     console.log('✅ Carbon PR Review Agent Complete');
     console.log(`${'='.repeat(80)}\n`);
-    
   } catch (error) {
     console.error('\n❌ Fatal error:', error.message);
     console.error(error.stack);
@@ -1016,7 +1141,7 @@ module.exports = { reviewPRs, parsePrNumbers, resolveReviewTargets };
 
 // Run if executed directly
 if (require.main === module) {
-  reviewPRs().catch(error => {
+  reviewPRs().catch((error) => {
     console.error('Fatal error:', error);
     process.exit(1);
   });

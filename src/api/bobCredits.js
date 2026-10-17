@@ -33,7 +33,10 @@ const ADMIN_SERVICE_PATH = '/admin/v1';
 
 /** Gateway origin, overridable for a non-us-east instance. */
 function getBaseUrl() {
-  return (process.env.BOB_GATEWAY_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
+  return (process.env.BOB_GATEWAY_BASE_URL || DEFAULT_BASE_URL).replace(
+    /\/+$/,
+    ''
+  );
 }
 
 /** Warned-about variables, so a bad value is reported once and not per call. */
@@ -58,7 +61,9 @@ function positiveMsFromEnv(name, fallback) {
 
   if (!warnedEnv.has(name)) {
     warnedEnv.add(name);
-    console.warn(`[bobCredits] ${name}="${raw}" is not a positive number — using ${fallback}ms`);
+    console.warn(
+      `[bobCredits] ${name}="${raw}" is not a positive number — using ${fallback}ms`
+    );
   }
   return fallback;
 }
@@ -144,7 +149,10 @@ function looksLikeProfile(obj) {
   return (
     !!obj &&
     typeof obj === 'object' &&
-    ('usage' in obj || 'budget_limit' in obj || 'plan' in obj || 'plan_name' in obj)
+    ('usage' in obj ||
+      'budget_limit' in obj ||
+      'plan' in obj ||
+      'plan_name' in obj)
   );
 }
 
@@ -165,12 +173,17 @@ function pickActive(list, activeId) {
 
   if (activeId !== null && activeId !== undefined) {
     const match = usable.find(
-      (p) => p.id === activeId || p.profile_id === activeId || p.instance_id === activeId
+      (p) =>
+        p.id === activeId ||
+        p.profile_id === activeId ||
+        p.instance_id === activeId
     );
     if (match) return match;
   }
 
-  return usable.find((p) => p.is_active === true || p.active === true) || usable[0];
+  return (
+    usable.find((p) => p.is_active === true || p.active === true) || usable[0]
+  );
 }
 
 /**
@@ -205,7 +218,10 @@ function pickProfile(body) {
   if (Array.isArray(body)) return pickActive(body, null);
 
   if (Array.isArray(body.profiles)) {
-    return pickActive(body.profiles, body.activeProfileId ?? body.active_profile_id ?? null);
+    return pickActive(
+      body.profiles,
+      body.activeProfileId ?? body.active_profile_id ?? null
+    );
   }
 
   if (looksLikeProfile(body.profile)) return body.profile;
@@ -233,7 +249,8 @@ function pickFromInstances(body) {
 
   const wantedInstance = process.env.BOB_INSTANCE_ID;
   const instance =
-    (wantedInstance && instances.find((i) => i && i.instance_id === wantedInstance)) ||
+    (wantedInstance &&
+      instances.find((i) => i && i.instance_id === wantedInstance)) ||
     (instances.length === 1 ? instances[0] : null) ||
     instances[0];
 
@@ -241,13 +258,15 @@ function pickFromInstances(body) {
 
   const teams = Array.isArray(instance.teams) ? instance.teams : [];
   const billable = teams.filter(
-    (t) => t && (toNumber(t.usage) !== null || toNumber(t.budget_limit) !== null)
+    (t) =>
+      t && (toNumber(t.usage) !== null || toNumber(t.budget_limit) !== null)
   );
   if (billable.length === 0) return null;
 
   const wantedTeam = process.env.BOB_TEAM_ID;
   const team =
-    (wantedTeam && billable.find((t) => t.id === wantedTeam || t.team_id === wantedTeam)) ||
+    (wantedTeam &&
+      billable.find((t) => t.id === wantedTeam || t.team_id === wantedTeam)) ||
     billable.find((t) => t.name === 'default') ||
     billable[0];
 
@@ -307,7 +326,9 @@ function toBalance(profile) {
   // there would light up the console as if the account were exhausted.
   const percentRemaining =
     remaining !== null && budgetLimit !== null && budgetLimit > 0
-      ? Math.round(Math.min(100, Math.max(0, (remaining / budgetLimit) * 100)) * 100) / 100
+      ? Math.round(
+          Math.min(100, Math.max(0, (remaining / budgetLimit) * 100)) * 100
+        ) / 100
       : null;
 
   const plan = typeof profile.plan === 'string' ? profile.plan : null;
@@ -322,7 +343,8 @@ function toBalance(profile) {
     plan,
     // Mirrors Bob's getPlanDisplayName: prefer the server's label, else strip
     // the internal `ibm_bob_` prefix so the console shows "trial", not the slug.
-    planName: profile.plan_name || (plan ? plan.replace(/^ibm_bob_/, '') : null),
+    planName:
+      profile.plan_name || (plan ? plan.replace(/^ibm_bob_/, '') : null),
     isTrial: !!plan && plan.includes('ibm_bob_trial'),
     refreshAt: toIsoDate(profile.refresh_at),
     fetchedAt: new Date().toISOString(),
@@ -381,7 +403,8 @@ async function fetchBalance(apiKey) {
     Accept: 'application/json',
     'User-Agent': 'carbon-monitor',
   };
-  if (process.env.BOB_INSTANCE_ID) headers['x-instance-id'] = process.env.BOB_INSTANCE_ID;
+  if (process.env.BOB_INSTANCE_ID)
+    headers['x-instance-id'] = process.env.BOB_INSTANCE_ID;
   if (process.env.BOB_TEAM_ID) headers['x-team-id'] = process.env.BOB_TEAM_ID;
 
   let result;
@@ -415,7 +438,8 @@ async function fetchBalance(apiKey) {
       } catch (error) {
         // A body that was cut off is a reachability failure, not a malformed
         // profile, and must not be relabelled as one on the way past.
-        if (controller.signal.aborted || error.name === 'AbortError') throw error;
+        if (controller.signal.aborted || error.name === 'AbortError')
+          throw error;
         body = null;
       }
 
@@ -485,16 +509,24 @@ function oversized(res) {
  *   - the "before" reset instant has already passed by the time "after" was read
  */
 function budgetResetBetween(before, after) {
-  if (before.refreshAt && after.refreshAt && before.refreshAt !== after.refreshAt) return true;
+  if (
+    before.refreshAt &&
+    after.refreshAt &&
+    before.refreshAt !== after.refreshAt
+  )
+    return true;
 
   const resetAt = Date.parse(before.refreshAt);
   const afterAt = Date.parse(after.fetchedAt);
-  return Number.isFinite(resetAt) && Number.isFinite(afterAt) && resetAt <= afterAt;
+  return (
+    Number.isFinite(resetAt) && Number.isFinite(afterAt) && resetAt <= afterAt
+  );
 }
 
 function computeSpend(before, after) {
   if (!before || !after || !before.available || !after.available) return null;
-  if (typeof before.usage !== 'number' || typeof after.usage !== 'number') return null;
+  if (typeof before.usage !== 'number' || typeof after.usage !== 'number')
+    return null;
   if (budgetResetBetween(before, after)) return null;
 
   const delta = after.usage - before.usage;

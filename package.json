@@ -27,7 +27,9 @@
     "test:schedule": "node tests/scheduleManager.test.js",
     "test:slack": "node tests/slackNotifier.test.js",
     "test:prompt": "node tests/reviewPrompt.test.js",
-    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js && node tests/linkedIssue.test.js && node tests/prTargeting.test.js && node tests/sessionAuth.test.js && node tests/apiAuth.test.js && node tests/mcpConnection.test.js && node tests/creditsEs.test.js && node tests/bobCredits.test.js && node tests/reviewTargeting.test.js && node tests/reviewablePrs.test.js && node tests/scheduleManager.test.js && node tests/slackNotifier.test.js && node tests/reviewPrompt.test.js"
+    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js && node tests/linkedIssue.test.js && node tests/prTargeting.test.js && node tests/sessionAuth.test.js && node tests/apiAuth.test.js && node tests/mcpConnection.test.js && node tests/creditsEs.test.js && node tests/bobCredits.test.js && node tests/reviewTargeting.test.js && node tests/reviewablePrs.test.js && node tests/scheduleManager.test.js && node tests/slackNotifier.test.js && node tests/reviewPrompt.test.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "keywords": [
     "carbon",
@@ -43,8 +45,13 @@
   ],
   "author": "IBM",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "git+https://github.com/carbon-design-system/Carbon-Monitor.git" },
-  "bugs": { "url": "https://github.com/carbon-design-system/Carbon-Monitor/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carbon-design-system/Carbon-Monitor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/carbon-design-system/Carbon-Monitor/issues"
+  },
   "homepage": "https://github.com/carbon-design-system/Carbon-Monitor#readme",
   "dependencies": {
     "@carbon/charts": "^1.27.18",
@@ -57,6 +64,7 @@
   "devDependencies": {
     "@carbon/react": "^1.113.0",
     "@vitejs/plugin-react": "^6.0.5",
+    "prettier": "^3.9.10",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "sass": "^1.102.0",

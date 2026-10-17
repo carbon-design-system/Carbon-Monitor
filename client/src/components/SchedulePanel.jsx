@@ -82,24 +82,24 @@ export function toLocalTz(isoString, tz = DEFAULT_TIMEZONE) {
  * list keeps the dropdown scannable.
  */
 const TIMEZONES = [
-  { value: 'America/New_York',    label: 'Eastern Time (ET)'        },
-  { value: 'America/Chicago',     label: 'Central Time (CT)'        },
-  { value: 'America/Denver',      label: 'Mountain Time (MT)'       },
-  { value: 'America/Phoenix',     label: 'Mountain Time – AZ (MST)' },
-  { value: 'America/Los_Angeles', label: 'Pacific Time (PT)'        },
-  { value: 'America/Anchorage',   label: 'Alaska Time (AKT)'        },
-  { value: 'Pacific/Honolulu',    label: 'Hawaii Time (HT)'         },
-  { value: 'America/Sao_Paulo',   label: 'Brasília Time (BRT)'      },
-  { value: 'Europe/London',       label: 'London (GMT/BST)'         },
-  { value: 'Europe/Paris',        label: 'Central European (CET)'   },
-  { value: 'Europe/Helsinki',     label: 'Eastern European (EET)'   },
-  { value: 'Asia/Dubai',          label: 'Gulf Time (GST)'          },
-  { value: 'Asia/Kolkata',        label: 'India (IST)'              },
-  { value: 'Asia/Bangkok',        label: 'Indochina (ICT)'          },
-  { value: 'Asia/Shanghai',       label: 'China (CST)'              },
-  { value: 'Asia/Tokyo',          label: 'Japan (JST)'              },
-  { value: 'Australia/Sydney',    label: 'Sydney (AEST/AEDT)'       },
-  { value: 'Pacific/Auckland',    label: 'New Zealand (NZST/NZDT)'  },
+  { value: 'America/New_York', label: 'Eastern Time (ET)' },
+  { value: 'America/Chicago', label: 'Central Time (CT)' },
+  { value: 'America/Denver', label: 'Mountain Time (MT)' },
+  { value: 'America/Phoenix', label: 'Mountain Time – AZ (MST)' },
+  { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
+  { value: 'America/Anchorage', label: 'Alaska Time (AKT)' },
+  { value: 'Pacific/Honolulu', label: 'Hawaii Time (HT)' },
+  { value: 'America/Sao_Paulo', label: 'Brasília Time (BRT)' },
+  { value: 'Europe/London', label: 'London (GMT/BST)' },
+  { value: 'Europe/Paris', label: 'Central European (CET)' },
+  { value: 'Europe/Helsinki', label: 'Eastern European (EET)' },
+  { value: 'Asia/Dubai', label: 'Gulf Time (GST)' },
+  { value: 'Asia/Kolkata', label: 'India (IST)' },
+  { value: 'Asia/Bangkok', label: 'Indochina (ICT)' },
+  { value: 'Asia/Shanghai', label: 'China (CST)' },
+  { value: 'Asia/Tokyo', label: 'Japan (JST)' },
+  { value: 'Australia/Sydney', label: 'Sydney (AEST/AEDT)' },
+  { value: 'Pacific/Auckland', label: 'New Zealand (NZST/NZDT)' },
 ];
 
 // ── Time conversion helpers ───────────────────────────────────────────────────
@@ -110,12 +110,23 @@ const TIMEZONES = [
 function zoneOffsetMsAt(refUtcMs, tz) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: tz,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
     hour12: false,
   }).formatToParts(new Date(refUtcMs));
   const get = (type) => Number(parts.find((p) => p.type === type)?.value ?? 0);
-  const localMs = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour') === 24 ? 0 : get('hour'), get('minute'), get('second'));
+  const localMs = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    get('hour') === 24 ? 0 : get('hour'),
+    get('minute'),
+    get('second')
+  );
   return refUtcMs - localMs;
 }
 
@@ -129,20 +140,27 @@ const REF_UTC_MS = Date.UTC(2000, 0, 5, 12, 0, 0);
  * display zone, as { display: "h:mm", period: "AM"|"PM" }.
  */
 function canonicalToDisplay(hhmm, targetTz, canonicalTz) {
-  if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return { display: '9:00', period: 'AM' };
+  if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm))
+    return { display: '9:00', period: 'AM' };
   try {
     const [hStr, mStr] = hhmm.split(':');
-    const utcMs = Date.UTC(2000, 0, 5, Number(hStr), Number(mStr), 0) + zoneOffsetMsAt(REF_UTC_MS, canonicalTz);
+    const utcMs =
+      Date.UTC(2000, 0, 5, Number(hStr), Number(mStr), 0) +
+      zoneOffsetMsAt(REF_UTC_MS, canonicalTz);
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: targetTz,
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
     }).formatToParts(new Date(utcMs));
-    const hourPart   = parts.find((p) => p.type === 'hour')?.value   ?? '9';
+    const hourPart = parts.find((p) => p.type === 'hour')?.value ?? '9';
     const minutePart = parts.find((p) => p.type === 'minute')?.value ?? '00';
-    const dayPeriod  = parts.find((p) => p.type === 'dayPeriod')?.value?.toUpperCase() ?? 'AM';
-    return { display: `${Number(hourPart)}:${minutePart}`, period: dayPeriod.startsWith('P') ? 'PM' : 'AM' };
+    const dayPeriod =
+      parts.find((p) => p.type === 'dayPeriod')?.value?.toUpperCase() ?? 'AM';
+    return {
+      display: `${Number(hourPart)}:${minutePart}`,
+      period: dayPeriod.startsWith('P') ? 'PM' : 'AM',
+    };
   } catch (_) {
     return { display: '9:00', period: 'AM' };
   }
@@ -157,10 +175,14 @@ function displayToCanonical(display, period, sourceTz, canonicalTz) {
   if (!display || !/^\d{1,2}:\d{2}$/.test(display)) return null;
   let [h, m] = display.split(':').map(Number);
   if (h < 1 || h > 12 || m < 0 || m > 59) return null;
-  if (period === 'AM') { h = h === 12 ? 0 : h; }
-  else                 { h = h === 12 ? 12 : h + 12; }
+  if (period === 'AM') {
+    h = h === 12 ? 0 : h;
+  } else {
+    h = h === 12 ? 12 : h + 12;
+  }
   try {
-    const utcMs = Date.UTC(2000, 0, 5, h, m, 0) + zoneOffsetMsAt(REF_UTC_MS, sourceTz);
+    const utcMs =
+      Date.UTC(2000, 0, 5, h, m, 0) + zoneOffsetMsAt(REF_UTC_MS, sourceTz);
     const canonicalMs = utcMs - zoneOffsetMsAt(REF_UTC_MS, canonicalTz);
     const d = new Date(canonicalMs);
     return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
@@ -171,7 +193,14 @@ function displayToCanonical(display, period, sourceTz, canonicalTz) {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange, resetKey }) {
+function SchedulePanel({
+  schedule,
+  config,
+  onChanged,
+  timezone,
+  onTimezoneChange,
+  resetKey,
+}) {
   // The zone the stored time is expressed in, reported by the server.
   const canonicalTz = schedule?.timezone ?? DEFAULT_TIMEZONE;
   // Local form state — initialised from the server's current values.
@@ -184,14 +213,23 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
   // 12-hour display state derived from the stored value converted to the
   // selected timezone (lifted to Console, received as a prop).
   const [timeDisplay, setTimeDisplay] = useState(
-    () => canonicalToDisplay(schedule?.timeLocal ?? '09:00', timezone, canonicalTz).display
+    () =>
+      canonicalToDisplay(schedule?.timeLocal ?? '09:00', timezone, canonicalTz)
+        .display
   );
   const [timePeriod, setTimePeriod] = useState(
-    () => canonicalToDisplay(schedule?.timeLocal ?? '09:00', timezone, canonicalTz).period
+    () =>
+      canonicalToDisplay(schedule?.timeLocal ?? '09:00', timezone, canonicalTz)
+        .period
   );
 
   // A null means the display field is incomplete/invalid.
-  const timeError = !displayToCanonical(timeDisplay, timePeriod, timezone, canonicalTz)
+  const timeError = !displayToCanonical(
+    timeDisplay,
+    timePeriod,
+    timezone,
+    canonicalTz
+  )
     ? 'Enter a valid time'
     : null;
 
@@ -206,7 +244,9 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
   // onTimezoneChange below), so switching zones must never read as an
   // unsaved change.
   const [savedEnabled, setSavedEnabled] = useState(schedule?.enabled ?? false);
-  const [savedTimeLocal, setSavedTimeLocal] = useState(schedule?.timeLocal ?? '09:00');
+  const [savedTimeLocal, setSavedTimeLocal] = useState(
+    schedule?.timeLocal ?? '09:00'
+  );
 
   const isDirty = enabled !== savedEnabled || timeLocal !== savedTimeLocal;
 
@@ -231,7 +271,11 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
     setEnabled(schedule?.enabled ?? false);
     setPaused(schedule?.paused ?? false);
     const synced24 = schedule?.timeLocal ?? '09:00';
-    const { display, period } = canonicalToDisplay(synced24, timezone, canonicalTz);
+    const { display, period } = canonicalToDisplay(
+      synced24,
+      timezone,
+      canonicalTz
+    );
     setTimeLocal(synced24);
     setTimeDisplay(display);
     setTimePeriod(period);
@@ -244,7 +288,12 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
     setBusy(true);
     setMessage(null);
     // Convert the display time in the selected timezone back to the canonical zone for storage.
-    const value24 = displayToCanonical(timeDisplay, timePeriod, timezone, canonicalTz);
+    const value24 = displayToCanonical(
+      timeDisplay,
+      timePeriod,
+      timezone,
+      canonicalTz
+    );
     const finalTimeLocal = value24 ?? timeLocal;
     try {
       await api.setSchedule({ enabled, timeLocal: finalTimeLocal });
@@ -253,7 +302,11 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
       setMessage({ kind: 'success', title: 'Schedule saved' });
       onChanged();
     } catch (err) {
-      setMessage({ kind: 'error', title: 'Could not save schedule', subtitle: err.message });
+      setMessage({
+        kind: 'error',
+        title: 'Could not save schedule',
+        subtitle: err.message,
+      });
     } finally {
       setBusy(false);
     }
@@ -267,7 +320,11 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
   function handleDiscard() {
     setEnabled(savedEnabled);
     setTimeLocal(savedTimeLocal);
-    const { display, period } = canonicalToDisplay(savedTimeLocal, timezone, canonicalTz);
+    const { display, period } = canonicalToDisplay(
+      savedTimeLocal,
+      timezone,
+      canonicalTz
+    );
     setTimeDisplay(display);
     setTimePeriod(period);
     setMessage(null);
@@ -285,11 +342,16 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
         setMessage({
           kind: 'info',
           title: 'Schedule resumed.',
-          subtitle: 'If token balance is still low, the schedule will re-pause automatically.',
+          subtitle:
+            'If token balance is still low, the schedule will re-pause automatically.',
         });
       }
     } catch (err) {
-      setMessage({ kind: 'error', title: 'Could not update pause state', subtitle: err.message });
+      setMessage({
+        kind: 'error',
+        title: 'Could not update pause state',
+        subtitle: err.message,
+      });
     } finally {
       setPauseBusy(false);
     }
@@ -314,7 +376,10 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
         <InlineNotification
           kind="warning"
           title="Last scheduled run was skipped"
-          subtitle={schedule.lastSkipReason || 'A manual review was in flight at the scheduled time.'}
+          subtitle={
+            schedule.lastSkipReason ||
+            'A manual review was in flight at the scheduled time.'
+          }
           hideCloseButton
           className="cm-login__notification"
         />
@@ -324,7 +389,9 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
         <InlineNotification
           kind="warning"
           title="Scheduled reviews are paused."
-          subtitle={schedule?.lastSkipReason || 'Click Resume schedule to re-enable.'}
+          subtitle={
+            schedule?.lastSkipReason || 'Click Resume schedule to re-enable.'
+          }
           hideCloseButton
           className="cm-login__notification"
         />
@@ -351,7 +418,12 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
             onChange={(e) => {
               const display = e.target.value;
               setTimeDisplay(display);
-              const v24 = displayToCanonical(display, timePeriod, timezone, canonicalTz);
+              const v24 = displayToCanonical(
+                display,
+                timePeriod,
+                timezone,
+                canonicalTz
+              );
               if (v24) setTimeLocal(v24);
             }}
             invalid={enabled && Boolean(timeError)}
@@ -365,7 +437,12 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
               onChange={(e) => {
                 const period = e.target.value;
                 setTimePeriod(period);
-                const v24 = displayToCanonical(timeDisplay, period, timezone, canonicalTz);
+                const v24 = displayToCanonical(
+                  timeDisplay,
+                  period,
+                  timezone,
+                  canonicalTz
+                );
                 if (v24) setTimeLocal(v24);
               }}
               disabled={busy || !enabled}
@@ -382,7 +459,11 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
                 // Re-derive the display time in the new timezone from the
                 // current stored value so the field updates immediately
                 // when the user switches zones.
-                const { display, period } = canonicalToDisplay(timeLocal, newTz, canonicalTz);
+                const { display, period } = canonicalToDisplay(
+                  timeLocal,
+                  newTz,
+                  canonicalTz
+                );
                 onTimezoneChange(newTz);
                 setTimeDisplay(display);
                 setTimePeriod(period);
@@ -419,12 +500,16 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
             {busy ? 'Saving…' : 'Save changes'}
           </Button>
 
-          <Button kind="secondary" onClick={handleDiscard} disabled={!isDirty || busy}>
+          <Button
+            kind="secondary"
+            onClick={handleDiscard}
+            disabled={!isDirty || busy}
+          >
             Discard changes
           </Button>
 
-          {schedule?.enabled && (
-            paused ? (
+          {schedule?.enabled &&
+            (paused ? (
               <Button
                 kind="primary"
                 onClick={handlePauseToggle}
@@ -440,8 +525,7 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
               >
                 {pauseBusy ? 'Pausing…' : 'Pause schedule'}
               </Button>
-            )
-          )}
+            ))}
 
           {/*
             Spelled out in text, not colour alone (WCAG 1.4.1) — matching the
@@ -463,7 +547,11 @@ function SchedulePanel({ schedule, config, onChanged, timezone, onTimezoneChange
         <div className="cm-schedule-panel__status">
           <dl className="cm-definition-list">
             <dt>Last scheduled run</dt>
-            <dd>{schedule.lastRunAt ? toLocalTz(schedule.lastRunAt, timezone) : 'Never'}</dd>
+            <dd>
+              {schedule.lastRunAt
+                ? toLocalTz(schedule.lastRunAt, timezone)
+                : 'Never'}
+            </dd>
 
             <dt>Next scheduled run</dt>
             <dd>

@@ -107,7 +107,11 @@ function Login({ onSuccess }) {
               disabled={loading}
               style={{ marginTop: '1rem' }}
             />
-            <Button type="submit" disabled={loading} className="cm-login__submit">
+            <Button
+              type="submit"
+              disabled={loading}
+              className="cm-login__submit"
+            >
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>
           </Form>

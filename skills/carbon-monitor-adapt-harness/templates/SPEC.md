@@ -1,12 +1,12 @@
 # SPEC: <short name of the adapted system>
 
-| | |
-|---|---|
-| Status | draft |
-| Source | Carbon-Monitor at commit `<sha>` |
-| Branch | PR review for another repo / New job on the harness |
+|              |                                                      |
+| ------------ | ---------------------------------------------------- |
+| Status       | draft                                                |
+| Source       | Carbon-Monitor at commit `<sha>`                     |
+| Branch       | PR review for another repo / New job on the harness  |
 | Worker agent | bob / claude-code / codex / gemini-cli / copilot-cli |
-| Written | <date> |
+| Written      | <date>                                               |
 
 <!-- Every section is required. Write "none" rather than leaving one out.
      Facts come from docs/HARNESS.md, docs/ARCHITECTURE.md and the interview.
@@ -19,9 +19,9 @@ schedule, against which external system, and what a person sees when it is done.
 
 ## 2. Interview record
 
-| # | Question | Answer | Default used |
-|---|----------|--------|--------------|
-| 1 | | | yes / no |
+| #   | Question | Answer | Default used |
+| --- | -------- | ------ | ------------ |
+| 1   |          |        | yes / no     |
 
 ## 3. Keep / change map
 
@@ -30,11 +30,11 @@ with a decision. Decisions: **keep** (untouched), **configure** (env only),
 **modify** (edit in place), **replace** (new module, same slot), **remove**,
 **add** (new slot the harness does not have).
 
-| Area | File / function | Decision | What changes |
-|------|-----------------|----------|--------------|
-| Harness · deployment | `Dockerfile`, `deploy_ce.sh` | keep | |
-| Harness · scheduler | `src/api/scheduleManager.js` | keep | |
-| Task · work-item source | `src/githubClient.js` `fetchReviewablePRs` | | |
+| Area                    | File / function                            | Decision | What changes |
+| ----------------------- | ------------------------------------------ | -------- | ------------ |
+| Harness · deployment    | `Dockerfile`, `deploy_ce.sh`               | keep     |              |
+| Harness · scheduler     | `src/api/scheduleManager.js`               | keep     |              |
+| Task · work-item source | `src/githubClient.js` `fetchReviewablePRs` |          |              |
 
 ## 4. External system contract
 
@@ -65,11 +65,11 @@ environment variable prefix, event types, index name and payload fields, Slack
 wording, labels or markers in the external system. "none" on branch one when
 nothing is renamed.
 
-| Kind | Today | New |
-|------|-------|-----|
-| API route | `/api/review/trigger` | |
-| Env prefix | `GITHUB_AI_AGENT_*` | |
-| Event type | `pr_review_completed` | |
+| Kind       | Today                 | New |
+| ---------- | --------------------- | --- |
+| API route  | `/api/review/trigger` |     |
+| Env prefix | `GITHUB_AI_AGENT_*`   |     |
+| Event type | `pr_review_completed` |     |
 
 ## 7. Configuration
 

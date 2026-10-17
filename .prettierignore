@@ -1,0 +1,25 @@
+# Dependencies and build output
+node_modules/
+dist/
+client/public/plex/
+
+# Environment files
+.env
+.env.*
+
+# Package manager files
+package-lock.json
+
+# Certificates and keys
+*.crt
+*.key
+*.pem
+
+# Vendored upstream skill: kept byte-identical to carbon-mcp's copy
+.bob/skills/
+
+# Rendered assets and the hero's render source
+docs/images/
+
+# Logs
+*.log

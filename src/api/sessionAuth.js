@@ -26,7 +26,8 @@ const SESSION_MAX_AGE_SECONDS = Number(
 );
 
 /** Where a locked-out operator is told to request access to Carbon Monitor. */
-const ACCESS_CONTACT_EMAIL = (process.env.CONSOLE_CONTACT_EMAIL || '').trim() || null;
+const ACCESS_CONTACT_EMAIL =
+  (process.env.CONSOLE_CONTACT_EMAIL || '').trim() || null;
 
 /**
  * Feature flag: whether the console requires a sign-in.
@@ -68,7 +69,10 @@ if (!AUTH_FLAG.recognized) {
 
 // Sign-in is on but unusable without credentials to check against — worth saying
 // at startup rather than letting every attempt fail with a 503.
-if (AUTH_REQUIRED && !(process.env.CONSOLE_USERNAME && process.env.CONSOLE_PASSWORD)) {
+if (
+  AUTH_REQUIRED &&
+  !(process.env.CONSOLE_USERNAME && process.env.CONSOLE_PASSWORD)
+) {
   console.warn(
     '[api/sessionAuth] WARNING: AUTH_REQUIRED is set but CONSOLE_USERNAME/CONSOLE_PASSWORD ' +
       'are not — nobody will be able to sign in.'
@@ -89,7 +93,9 @@ const IS_SECURE = process.env.NODE_ENV === 'production';
 const EPHEMERAL_KEY = crypto.randomBytes(32).toString('hex');
 
 function getSigningKey() {
-  return process.env.SESSION_SIGNING_KEY || process.env.API_SECRET || EPHEMERAL_KEY;
+  return (
+    process.env.SESSION_SIGNING_KEY || process.env.API_SECRET || EPHEMERAL_KEY
+  );
 }
 
 // ── Token helpers ───────────────────────────────────────────────────────────
@@ -125,7 +131,8 @@ function verifyToken(token) {
     const expectedBuf = Buffer.from(expected, 'hex');
 
     // timingSafeEqual requires equal lengths — HMAC-SHA256 is always 32 bytes.
-    if (macBuf.length !== expectedBuf.length || macBuf.length === 0) return false;
+    if (macBuf.length !== expectedBuf.length || macBuf.length === 0)
+      return false;
     if (!crypto.timingSafeEqual(macBuf, expectedBuf)) return false;
 
     // Signature is authentic; now enforce the lifetime it claims. Checked after
@@ -259,7 +266,9 @@ function status(req) {
   return {
     authRequired: AUTH_REQUIRED,
     authenticated: hasValidSession(req),
-    configured: !!(process.env.CONSOLE_USERNAME && process.env.CONSOLE_PASSWORD),
+    configured: !!(
+      process.env.CONSOLE_USERNAME && process.env.CONSOLE_PASSWORD
+    ),
   };
 }
 

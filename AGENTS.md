@@ -40,20 +40,20 @@ posts comments to GitHub. Never run it, `deploy_ce.sh`, or
 
 ## Documentation map
 
-| Document | Covers |
-|----------|--------|
-| `README.md` | Overview, quick start, deploy, operate |
-| `docs/HARNESS.md` | Harness versus task layer, every extension point, the agent slot |
-| `docs/ARCHITECTURE.md` | Image, MCP token refresh, authentication, Code Engine topology, module map |
-| `docs/GITHUB_ACCESS.md` | The reviewing GitHub account (i.e. machine user) and its token permissions |
-| `docs/CONFIGURATION.md` | Environment variables and Bob, Carbon MCP and skill setup |
-| `docs/API.md` | REST endpoints and the review trigger contract |
-| `docs/REVIEW_OUTPUT.md` | Comment formats, recommendations, reliability checks |
-| `docs/INLINE_COMMENTS.md` | How findings map to diff lines |
-| `docs/TOKEN_USAGE_TRACKING.md` | Token usage estimates in the summary comment |
-| `docs/MCP_TOKEN_REFRESH.md` | Manual Carbon MCP token refresh, the fallback to IBMid sign-in |
-| `kibana/README.md` | Dashboard setup |
-| `CONTRIBUTING.md`, `SECURITY.md` | Contributing and vulnerability reporting |
+| Document                         | Covers                                                                     |
+| -------------------------------- | -------------------------------------------------------------------------- |
+| `README.md`                      | Overview, quick start, deploy, operate                                     |
+| `docs/HARNESS.md`                | Harness versus task layer, every extension point, the agent slot           |
+| `docs/ARCHITECTURE.md`           | Image, MCP token refresh, authentication, Code Engine topology, module map |
+| `docs/GITHUB_ACCESS.md`          | The reviewing GitHub account (i.e. machine user) and its token permissions |
+| `docs/CONFIGURATION.md`          | Environment variables and Bob, Carbon MCP and skill setup                  |
+| `docs/API.md`                    | REST endpoints and the review trigger contract                             |
+| `docs/REVIEW_OUTPUT.md`          | Comment formats, recommendations, reliability checks                       |
+| `docs/INLINE_COMMENTS.md`        | How findings map to diff lines                                             |
+| `docs/TOKEN_USAGE_TRACKING.md`   | Token usage estimates in the summary comment                               |
+| `docs/MCP_TOKEN_REFRESH.md`      | Manual Carbon MCP token refresh, the fallback to IBMid sign-in             |
+| `kibana/README.md`               | Dashboard setup                                                            |
+| `CONTRIBUTING.md`, `SECURITY.md` | Contributing and vulnerability reporting                                   |
 
 ## Adapting the harness
 

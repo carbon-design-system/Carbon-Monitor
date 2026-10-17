@@ -17,9 +17,10 @@ function escapeAtSign(text) {
   if (!text) return text;
   // Split on inline code spans (`...`). Odd-indexed segments are inside
   // backticks and must not be modified; even-indexed are plain text.
-  return text.split(/(`[^`]*`)/).map((seg, i) =>
-    i % 2 === 0 ? seg.replace(/@(\w)/g, '@\u200B$1') : seg
-  ).join('');
+  return text
+    .split(/(`[^`]*`)/)
+    .map((seg, i) => (i % 2 === 0 ? seg.replace(/@(\w)/g, '@\u200B$1') : seg))
+    .join('');
 }
 
 module.exports = { escapeAtSign };

@@ -31,8 +31,15 @@ import StatusTile from '../components/StatusTile';
 import McpConnectionPanel from '../components/McpConnectionPanel';
 import BobcoinsPanel, { BobcoinsLedger } from '../components/BobcoinsPanel';
 import ReviewLog from '../components/ReviewLog';
-import SchedulePanel, { toLocalTz, DEFAULT_TIMEZONE } from '../components/SchedulePanel';
-import { pluralPRs, targetWindowText, reviewButtonLabel } from '../utils/prPhrasing';
+import SchedulePanel, {
+  toLocalTz,
+  DEFAULT_TIMEZONE,
+} from '../components/SchedulePanel';
+import {
+  pluralPRs,
+  targetWindowText,
+  reviewButtonLabel,
+} from '../utils/prPhrasing';
 
 /** How often the status panel re-polls, in milliseconds. */
 const POLL_INTERVAL_MS = 30_000;
@@ -176,21 +183,27 @@ function Console({ authRequired = false, onSignOut }) {
   const load = useCallback(async () => {
     try {
       // Fetched together so a slow dependency check does not stagger the panel.
-      const [statusResult, mcpResult, reviewResult, creditsResult, historyResult, scheduleResult] =
-        await Promise.all([
-          api.status(),
-          api.mcpStatus(),
-          api.reviewStatus(),
-          // Bobcoin accounting is supplementary: it reaches an external gateway
-          // and only exists on newer builds, so a failure here must degrade the
-          // one panel rather than blank the whole console. BobcoinsPanel
-          // explains the null.
-          api.credits().catch(() => null),
-          api.creditsHistory(CREDIT_HISTORY_LIMIT).catch(() => null),
-          // Schedule config is supplementary: a failure here must degrade only
-          // the schedule panel, not the whole console.
-          api.schedule().catch(() => null),
-        ]);
+      const [
+        statusResult,
+        mcpResult,
+        reviewResult,
+        creditsResult,
+        historyResult,
+        scheduleResult,
+      ] = await Promise.all([
+        api.status(),
+        api.mcpStatus(),
+        api.reviewStatus(),
+        // Bobcoin accounting is supplementary: it reaches an external gateway
+        // and only exists on newer builds, so a failure here must degrade the
+        // one panel rather than blank the whole console. BobcoinsPanel
+        // explains the null.
+        api.credits().catch(() => null),
+        api.creditsHistory(CREDIT_HISTORY_LIMIT).catch(() => null),
+        // Schedule config is supplementary: a failure here must degrade only
+        // the schedule panel, not the whole console.
+        api.schedule().catch(() => null),
+      ]);
       setStatus(statusResult);
       setMcpStatus(mcpResult);
       setReview(reviewResult);
@@ -211,13 +224,19 @@ function Console({ authRequired = false, onSignOut }) {
 
   useEffect(() => {
     load();
-    api.config().then(setConfig).catch(() => {});
+    api
+      .config()
+      .then(setConfig)
+      .catch(() => {});
     // The build version lives on GET /api/health, not GET /api/config — config
     // describes the review target, health describes the running process. Fetched
     // once: the version cannot change without the process restarting. A failure
     // leaves it null and the header shows the product name alone, which is
     // better than "(vundefined)".
-    api.health().then((h) => setVersion(h?.version ?? null)).catch(() => {});
+    api
+      .health()
+      .then((h) => setVersion(h?.version ?? null))
+      .catch(() => {});
     const timer = setInterval(load, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [load]);
@@ -253,13 +272,19 @@ function Console({ authRequired = false, onSignOut }) {
     const isRunning = Boolean(review?.running);
     if (prevRunningRef.current && !isRunning) {
       if (review?.error) {
-        setCompletion({ kind: 'error', title: 'Review run failed', subtitle: review.error });
+        setCompletion({
+          kind: 'error',
+          title: 'Review run failed',
+          subtitle: review.error,
+        });
       } else {
         const n = review?.prNumbers?.length;
         setCompletion({
           kind: 'success',
           title: 'Review complete',
-          subtitle: n ? `Reviewed ${pluralPRs(n)}.` : 'The review run finished.',
+          subtitle: n
+            ? `Reviewed ${pluralPRs(n)}.`
+            : 'The review run finished.',
         });
       }
       // A finished run also changes credits, the ledger and health; the fast poll
@@ -279,7 +304,11 @@ function Console({ authRequired = false, onSignOut }) {
   const maxPRs = cfg?.maxPRs ?? null;
   const daysBack = cfg?.daysBack ?? null;
 
-  const { prNumbers, error: prError, duplicatesDropped } = parsePrNumbers(prInput, maxPRs);
+  const {
+    prNumbers,
+    error: prError,
+    duplicatesDropped,
+  } = parsePrNumbers(prInput, maxPRs);
   const reviewRunning = Boolean(review?.running) || triggering;
 
   // True only once the schedule config has loaded AND enabled is explicitly true.
@@ -295,8 +324,10 @@ function Console({ authRequired = false, onSignOut }) {
 
   // Bobcoins is pulled out of the health row and handed to the tile that already
   // shows the balance, so the dependency is still reported exactly once.
-  const healthChecks = status?.checks?.filter((check) => check.id !== 'bobcoins') || [];
-  const bobcoinsCheck = status?.checks?.find((check) => check.id === 'bobcoins') || null;
+  const healthChecks =
+    status?.checks?.filter((check) => check.id !== 'bobcoins') || [];
+  const bobcoinsCheck =
+    status?.checks?.find((check) => check.id === 'bobcoins') || null;
 
   // Says nothing about a limit the console has not been told, and stays honest
   // when that limit is 1 — where "up to 1, comma separated" would be nonsense.
@@ -351,7 +382,7 @@ function Console({ authRequired = false, onSignOut }) {
 
   /**
    * Surface a 409 from a trigger as the "already running" modal.
-  */
+   */
   async function handleAlreadyRunning(err) {
     setBusyRun(err.body || { message: err.message });
     await load();
@@ -430,7 +461,9 @@ function Console({ authRequired = false, onSignOut }) {
           <HeaderGlobalAction
             aria-label="Help"
             tooltipAlignment="center"
-            onClick={() => window.open('/help', '_blank', 'noopener,noreferrer')}
+            onClick={() =>
+              window.open('/help', '_blank', 'noopener,noreferrer')
+            }
           >
             <Help size={20} />
           </HeaderGlobalAction>
@@ -459,7 +492,12 @@ function Console({ authRequired = false, onSignOut }) {
             would do nothing but imply the console is protected when it is not.
           */}
           {authRequired && (
-            <Button kind="ghost" size="lg" onClick={signOut} className="cm-sign-out">
+            <Button
+              kind="ghost"
+              size="lg"
+              onClick={signOut}
+              className="cm-sign-out"
+            >
               Sign out
             </Button>
           )}
@@ -561,7 +599,8 @@ function Console({ authRequired = false, onSignOut }) {
                     <dd>
                       {cfg.targetPR
                         ? `PR #${cfg.targetPR}`
-                        : targetWindowText(cfg.maxPRs, cfg.daysBack) || 'Loading…'}
+                        : targetWindowText(cfg.maxPRs, cfg.daysBack) ||
+                          'Loading…'}
                     </dd>
                   </>
                 )}
@@ -574,7 +613,9 @@ function Console({ authRequired = false, onSignOut }) {
                     <dt>{review.running ? 'Reviewing' : 'Last run'}</dt>
                     <dd>
                       {review.mode === 'explicit' && review.prNumbers?.length
-                        ? review.prNumbers.map((number) => `#${number}`).join(', ')
+                        ? review.prNumbers
+                            .map((number) => `#${number}`)
+                            .join(', ')
                         : 'Auto-selected'}
                     </dd>
                   </>
@@ -681,7 +722,11 @@ function Console({ authRequired = false, onSignOut }) {
                   <Button
                     kind="secondary"
                     onClick={triggerReview}
-                    disabled={reviewRunning || Boolean(prError) || prNumbers.length === 0}
+                    disabled={
+                      reviewRunning ||
+                      Boolean(prError) ||
+                      prNumbers.length === 0
+                    }
                   >
                     {reviewButtonLabel(prNumbers)}
                   </Button>
@@ -695,7 +740,9 @@ function Console({ authRequired = false, onSignOut }) {
                     loads and never flashes "Configure…" on an unscheduled console.
                   */}
                   <Button kind="ghost" onClick={openScheduleSettings}>
-                    {isAutomated === true ? 'Configure schedule' : 'Set up daily schedule'}
+                    {isAutomated === true
+                      ? 'Configure schedule'
+                      : 'Set up daily schedule'}
                   </Button>
                 </div>
               </div>
@@ -708,7 +755,11 @@ function Console({ authRequired = false, onSignOut }) {
         </Grid>
 
         {/* D. Live output — the answer to "is it actually doing anything?"*/}
-        <Grid narrow withRowGap className={logVisible ? 'cm-tile-grid' : undefined}>
+        <Grid
+          narrow
+          withRowGap
+          className={logVisible ? 'cm-tile-grid' : undefined}
+        >
           <Column sm={4} md={8} lg={16}>
             <ReviewLog
               running={Boolean(review?.running)}
@@ -732,7 +783,6 @@ function Console({ authRequired = false, onSignOut }) {
         </Grid>
       </Content>
 
-
       <Modal
         open={settingsOpen}
         onRequestClose={() => {
@@ -754,7 +804,10 @@ function Console({ authRequired = false, onSignOut }) {
           and nesting Accordion inside AccordionItem produces unreliable focus-trap
           behaviour inside a Modal. Tabs avoid that issue entirely.
         */}
-        <Tabs selectedIndex={settingsTab} onChange={({ selectedIndex }) => setSettingsTab(selectedIndex)}>
+        <Tabs
+          selectedIndex={settingsTab}
+          onChange={({ selectedIndex }) => setSettingsTab(selectedIndex)}
+        >
           <TabList aria-label="Settings sections">
             <Tab>Carbon MCP connection</Tab>
             <Tab>Scheduled reviews</Tab>
@@ -802,9 +855,9 @@ function Console({ authRequired = false, onSignOut }) {
         primaryButtonText="OK"
       >
         <p style={{ marginBottom: '1rem' }}>
-          Carbon Monitor runs one review at a time, so a new run can’t start until
-          the current one finishes. This is deliberate — it stops two agents
-          reviewing the same pull request and posting duplicate comments.
+          Carbon Monitor runs one review at a time, so a new run can’t start
+          until the current one finishes. This is deliberate — it stops two
+          agents reviewing the same pull request and posting duplicate comments.
         </p>
         <dl className="cm-definition-list">
           <dt>Started</dt>
@@ -821,7 +874,8 @@ function Console({ authRequired = false, onSignOut }) {
           </dd>
         </dl>
         <p style={{ marginTop: '1rem' }}>
-          The live output below updates as it runs. Try again once it has finished.
+          The live output below updates as it runs. Try again once it has
+          finished.
         </p>
       </Modal>
 
@@ -878,11 +932,7 @@ function Console({ authRequired = false, onSignOut }) {
         Visually hidden — the ToastNotification below is the visual presentation
         and is left completely unchanged.
       */}
-      <div
-        role="alert"
-        aria-atomic="true"
-        className="cds--visually-hidden"
-      >
+      <div role="alert" aria-atomic="true" className="cds--visually-hidden">
         {completion?.kind === 'error' ? completion.title : ''}
       </div>
 

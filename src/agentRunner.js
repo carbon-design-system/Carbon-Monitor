@@ -14,7 +14,9 @@ async function runAgent({ agent, cwd, prompt, timeout = 10 * 60 * 1000 }) {
   // Validate agent type
   const validAgents = ['bob', 'claude', 'codex'];
   if (!validAgents.includes(agent)) {
-    throw new Error(`Invalid agent type: ${agent}. Must be one of: ${validAgents.join(', ')}`);
+    throw new Error(
+      `Invalid agent type: ${agent}. Must be one of: ${validAgents.join(', ')}`
+    );
   }
 
   return new Promise((resolve, reject) => {
@@ -46,7 +48,7 @@ async function runAgent({ agent, cwd, prompt, timeout = 10 * 60 * 1000 }) {
 
     // Configure CLI command based on agent type
     let command, args;
-    
+
     switch (agent) {
       case 'bob':
         // Bob Shell CLI v2 - headless mode with MCP support
@@ -60,11 +62,7 @@ async function runAgent({ agent, cwd, prompt, timeout = 10 * 60 * 1000 }) {
         // a prior interactive session. Both are idempotent no-ops on a developer Mac
         // that has already trusted the folder and accepted the license.
         command = 'bob';
-        args = [
-          'run',
-          '--trust',
-          '--accept-license',
-        ];
+        args = ['run', '--trust', '--accept-license'];
 
         // Bob authenticates via SSO by default, which cannot complete headlessly.
         // In a container BOB_API_KEY (passed through in env above) is the only viable
@@ -77,7 +75,7 @@ async function runAgent({ agent, cwd, prompt, timeout = 10 * 60 * 1000 }) {
 
         args.push(prompt);
         break;
-        
+
       case 'claude':
         // Claude CLI - print mode with automation flags
         command = 'claude';
@@ -87,17 +85,17 @@ async function runAgent({ agent, cwd, prompt, timeout = 10 * 60 * 1000 }) {
           '--output-format',
           'stream-json',
           '--verbose',
-          prompt
+          prompt,
         ];
         break;
-        
+
       case 'codex':
         // Codex CLI - exec mode with full automation
         command = 'codex';
         args = ['exec', '--full-auto', prompt];
         break;
     }
-    
+
     // Spawn the process with increased timeout for MCP server startup.
     // stdin is set to 'ignore' so bob run never blocks waiting for interactive
     // input (trust prompts, license confirmations, etc.) in a headless context.
@@ -139,9 +137,8 @@ async function runAgent({ agent, cwd, prompt, timeout = 10 * 60 * 1000 }) {
         const step1 = '## Step 1';
         const firstStep1 = stdout.indexOf(step1);
         const lastStep1 = stdout.lastIndexOf(step1);
-        const trimmed = lastStep1 > firstStep1
-          ? stdout.slice(lastStep1)
-          : stdout;
+        const trimmed =
+          lastStep1 > firstStep1 ? stdout.slice(lastStep1) : stdout;
         fs.writeFileSync(path.join(cwd, 'agent-output.txt'), trimmed);
         if (stderr) {
           fs.writeFileSync(path.join(cwd, 'agent-stderr.txt'), stderr);
@@ -153,7 +150,9 @@ async function runAgent({ agent, cwd, prompt, timeout = 10 * 60 * 1000 }) {
       if (code === 0) {
         resolve(stdout);
       } else {
-        reject(new Error(`${agent} exited with code ${code}\nStderr: ${stderr}`));
+        reject(
+          new Error(`${agent} exited with code ${code}\nStderr: ${stderr}`)
+        );
       }
     });
 
@@ -177,7 +176,7 @@ async function runAgent({ agent, cwd, prompt, timeout = 10 * 60 * 1000 }) {
 
 /**
  * Check if a CLI agent is available in the system PATH
- * 
+ *
  * @param {string} agent - Agent type: 'bob', 'claude', or 'codex'
  * @returns {Promise<boolean>} - True if agent is available
  */
@@ -185,7 +184,7 @@ async function isAgentAvailable(agent) {
   return new Promise((resolve) => {
     const proc = spawn(agent, ['--version'], {
       shell: false,
-      stdio: 'ignore'
+      stdio: 'ignore',
     });
 
     proc.on('close', (code) => {
@@ -206,20 +205,22 @@ async function isAgentAvailable(agent) {
 
 /**
  * Get the configured agent from environment variables
- * 
+ *
  * @returns {string} - Agent type: 'bob', 'claude', or 'codex'
  * @throws {Error} - If GITHUB_AI_AGENT_CLI is not set or invalid
  */
 function getConfiguredAgent() {
   const agent = process.env.GITHUB_AI_AGENT_CLI;
-  
+
   if (!agent) {
     throw new Error('GITHUB_AI_AGENT_CLI environment variable is not set');
   }
 
   const validAgents = ['bob', 'claude', 'codex'];
   if (!validAgents.includes(agent)) {
-    throw new Error(`Invalid GITHUB_AI_AGENT_CLI: ${agent}. Must be one of: ${validAgents.join(', ')}`);
+    throw new Error(
+      `Invalid GITHUB_AI_AGENT_CLI: ${agent}. Must be one of: ${validAgents.join(', ')}`
+    );
   }
 
   return agent;
@@ -228,5 +229,5 @@ function getConfiguredAgent() {
 module.exports = {
   runAgent,
   isAgentAvailable,
-  getConfiguredAgent
+  getConfiguredAgent,
 };

@@ -43,7 +43,11 @@ function execCommand(command, args, options = {}) {
 
     proc.on('close', (code) => {
       if (code === 0) finish(resolve, { stdout, stderr, code });
-      else finish(reject, new Error(`Command failed with code ${code}\nStderr: ${stderr}`));
+      else
+        finish(
+          reject,
+          new Error(`Command failed with code ${code}\nStderr: ${stderr}`)
+        );
     });
 
     proc.on('error', (error) =>

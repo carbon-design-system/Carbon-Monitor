@@ -64,19 +64,43 @@ Replace `checkBob` with a `checkClaude` of the same shape:
 ```js
 async function checkClaude() {
   const timeoutMs = Number(process.env.AGENT_CHECK_TIMEOUT_MS || 20_000);
-  const { code, stdout, stderr, failure } = await run('claude', ['--version'], timeoutMs);
+  const { code, stdout, stderr, failure } = await run(
+    'claude',
+    ['--version'],
+    timeoutMs
+  );
   if (failure === 'timeout')
-    return { id: 'agent', label: 'Claude Code', status: WARNING,
-             detail: `Did not respond within ${Math.round(timeoutMs / 1000)}s`, hint: null };
+    return {
+      id: 'agent',
+      label: 'Claude Code',
+      status: WARNING,
+      detail: `Did not respond within ${Math.round(timeoutMs / 1000)}s`,
+      hint: null,
+    };
   if (code !== 0)
-    return { id: 'agent', label: 'Claude Code', status: FAILED,
-             detail: failure === 'missing' ? 'Not found on PATH' : 'Failed to run',
-             hint: stderr.trim() || 'The image did not install Claude Code.' };
+    return {
+      id: 'agent',
+      label: 'Claude Code',
+      status: FAILED,
+      detail: failure === 'missing' ? 'Not found on PATH' : 'Failed to run',
+      hint: stderr.trim() || 'The image did not install Claude Code.',
+    };
   const version = stdout.trim().split('\n')[0] || 'unknown';
   if (!process.env.ANTHROPIC_API_KEY)
-    return { id: 'agent', label: 'Claude Code', status: FAILED,
-             detail: `v${version} — not authenticated`, hint: 'ANTHROPIC_API_KEY is not set.' };
-  return { id: 'agent', label: 'Claude Code', status: OK, detail: `v${version} — API key configured`, hint: null };
+    return {
+      id: 'agent',
+      label: 'Claude Code',
+      status: FAILED,
+      detail: `v${version} — not authenticated`,
+      hint: 'ANTHROPIC_API_KEY is not set.',
+    };
+  return {
+    id: 'agent',
+    label: 'Claude Code',
+    status: OK,
+    detail: `v${version} — API key configured`,
+    hint: null,
+  };
 }
 ```
 
@@ -113,7 +137,10 @@ state:
     "carbon-mcp": {
       "type": "http",
       "url": "https://mcp.carbondesignsystem.com/mcp",
-      "headers": { "Authorization": "Bearer <token>", "X-MCP-Session": "<session id>" }
+      "headers": {
+        "Authorization": "Bearer <token>",
+        "X-MCP-Session": "<session id>"
+      }
     }
   }
 }

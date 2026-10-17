@@ -13,23 +13,23 @@ Serves the operator console and the REST API on one port (`PORT`, then
 `API_PORT`, default `3000`). Code Engine injects `PORT`, and exposes a single
 port per app, which is why both share one.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/health` | Health check — always open |
-| `GET` | `/api/auth/status` | Whether sign-in is required and satisfied — always open |
-| `POST` | `/api/auth/login` / `logout` | Session sign-in — always open |
-| `GET` | `/api/mcp/callback` | OAuth redirect target — guarded by one-shot `state` + PKCE |
-| `GET` | `/api/status` | All dependency checks (Bob, Carbon MCP, GitHub, Elasticsearch, Bobcoins) |
-| `GET` | `/api/config` | Current configuration (sanitised — never returns credentials) |
-| `GET` | `/api/mcp/status` | Carbon MCP connection detail |
-| `POST` | `/api/mcp/connect` | Begin the IBMid OAuth bootstrap |
-| `POST` | `/api/mcp/refresh` | Force a refresh, or store a pasted token / session id |
-| `POST` | `/api/mcp/test` | Live probe — also repairs a session-backed connection |
-| `POST` | `/api/mcp/disconnect` | Forget the stored OAuth state and strip Bob's MCP headers |
-| `GET` | `/api/credits` | Bobcoins balance and spend summary |
-| `GET` | `/api/credits/history` | Per-review spend, plus a cumulative series |
-| `POST` | `/api/review/trigger` | Trigger a review (202, runs in the background) — see [Triggering a review over HTTP](#triggering-a-review-over-http) |
-| `GET` | `/api/review/status` | Current or most recent run, with its mode and PR numbers |
+| Method | Path                         | Description                                                                                                          |
+| ------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/health`                | Health check — always open                                                                                           |
+| `GET`  | `/api/auth/status`           | Whether sign-in is required and satisfied — always open                                                              |
+| `POST` | `/api/auth/login` / `logout` | Session sign-in — always open                                                                                        |
+| `GET`  | `/api/mcp/callback`          | OAuth redirect target — guarded by one-shot `state` + PKCE                                                           |
+| `GET`  | `/api/status`                | All dependency checks (Bob, Carbon MCP, GitHub, Elasticsearch, Bobcoins)                                             |
+| `GET`  | `/api/config`                | Current configuration (sanitised — never returns credentials)                                                        |
+| `GET`  | `/api/mcp/status`            | Carbon MCP connection detail                                                                                         |
+| `POST` | `/api/mcp/connect`           | Begin the IBMid OAuth bootstrap                                                                                      |
+| `POST` | `/api/mcp/refresh`           | Force a refresh, or store a pasted token / session id                                                                |
+| `POST` | `/api/mcp/test`              | Live probe — also repairs a session-backed connection                                                                |
+| `POST` | `/api/mcp/disconnect`        | Forget the stored OAuth state and strip Bob's MCP headers                                                            |
+| `GET`  | `/api/credits`               | Bobcoins balance and spend summary                                                                                   |
+| `GET`  | `/api/credits/history`       | Per-review spend, plus a cumulative series                                                                           |
+| `POST` | `/api/review/trigger`        | Trigger a review (202, runs in the background) — see [Triggering a review over HTTP](#triggering-a-review-over-http) |
+| `GET`  | `/api/review/status`         | Current or most recent run, with its mode and PR numbers                                                             |
 
 `POST /api/mcp/disconnect` is the inverse of **Sign in with IBMid**: it deletes
 the stored refresh token and removes the `Authorization` / `X-MCP-Session`
@@ -226,7 +226,7 @@ After it finishes:
 ```
 
 `mode` and `prNumbers` describe the current run, or the most recent one once
-`running` is `false` — which is how the console can say *what* is being
+`running` is `false` — which is how the console can say _what_ is being
 reviewed, not merely that something is. `error` carries the message from a run
 that threw, and is `null` on success.
 
@@ -251,17 +251,17 @@ The console polls the same endpoint every 30 seconds.
 Explicit mode is validated before anything is fetched, and the message names the
 value that caused the rejection:
 
-| Body | Rejected because |
-|------|------------------|
-| `{"prNumbers": "abc"}` | `abc` is not a number |
-| `{"prNumbers": [22971, 0]}` | `0` is not a positive integer |
-| `{"prNumbers": [-5]}` | negative |
-| `{"prNumbers": [22971.5]}` | not an integer |
-| `{"prNumbers": [22971, null]}` | `null` entry |
-| `{"prNumbers": ", ,"}` | a stray comma leaves an empty value |
-| `{"prNumbers": 22971}` | a bare number is neither an array nor a comma-separated string |
-| `{"prNumbers": {"pr": 22971}}` | an object is neither an array nor a string |
-| more distinct numbers than the limit | more than `GITHUB_AI_AGENT_MAX_PRS` after de-duplication |
+| Body                                 | Rejected because                                               |
+| ------------------------------------ | -------------------------------------------------------------- |
+| `{"prNumbers": "abc"}`               | `abc` is not a number                                          |
+| `{"prNumbers": [22971, 0]}`          | `0` is not a positive integer                                  |
+| `{"prNumbers": [-5]}`                | negative                                                       |
+| `{"prNumbers": [22971.5]}`           | not an integer                                                 |
+| `{"prNumbers": [22971, null]}`       | `null` entry                                                   |
+| `{"prNumbers": ", ,"}`               | a stray comma leaves an empty value                            |
+| `{"prNumbers": 22971}`               | a bare number is neither an array nor a comma-separated string |
+| `{"prNumbers": {"pr": 22971}}`       | an object is neither an array nor a string                     |
+| more distinct numbers than the limit | more than `GITHUB_AI_AGENT_MAX_PRS` after de-duplication       |
 
 `{"prNumbers": []}` and `{"prNumbers": ""}` are **not** errors — an absent list
 means auto mode, and an empty one says the same thing. They return `202` with
@@ -289,7 +289,7 @@ accordingly:
 
 Duplicates are not an error. `[22971, 22971, 22972]` is de-duplicated to
 `[22971, 22972]` with the original order preserved, and the limit is checked
-*after* de-duplication — so listing the same PR six times is fine, while six
+_after_ de-duplication — so listing the same PR six times is fine, while six
 distinct PRs is a `400` on the default configuration. Raise
 `GITHUB_AI_AGENT_MAX_PRS` if you genuinely need a longer list; it governs both
 modes. Malformed JSON, or a body over 256 KB, is also a `400`.

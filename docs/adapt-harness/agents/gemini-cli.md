@@ -63,7 +63,10 @@ label `Gemini CLI` and `id: 'agent'`.
   "mcpServers": {
     "carbon-mcp": {
       "httpUrl": "https://mcp.carbondesignsystem.com/mcp",
-      "headers": { "Authorization": "Bearer <token>", "X-MCP-Session": "<session id>" }
+      "headers": {
+        "Authorization": "Bearer <token>",
+        "X-MCP-Session": "<session id>"
+      }
     }
   }
 }

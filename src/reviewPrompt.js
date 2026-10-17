@@ -26,7 +26,7 @@ function estimateTokenUsage({ prompt, diff, agentOutput }) {
   return {
     input: inputTokens,
     output: outputTokens,
-    total: totalTokens
+    total: totalTokens,
   };
 }
 
@@ -37,7 +37,7 @@ function estimateTokenUsage({ prompt, diff, agentOutput }) {
 const RECOMMENDATION_LABELS = {
   'consider-revising': 'Consider Revising',
   'suggested-improvements': 'Suggested Improvements',
-  'looks-good': 'Looks Good'
+  'looks-good': 'Looks Good',
 };
 
 const RECOMMENDATION_ADVICE = {
@@ -48,14 +48,14 @@ const RECOMMENDATION_ADVICE = {
     'This PR is on the right track. The findings below are suggestions worth considering before or shortly after merging — ' +
     'none are hard blockers, but addressing them would improve correctness or maintainability.',
   'looks-good':
-    'No blocking or major issues were found. Any nit-level notes below are entirely optional and provided for completeness.'
+    'No blocking or major issues were found. Any nit-level notes below are entirely optional and provided for completeness.',
 };
 
 const SEVERITY_GUIDANCE = {
   blocking: 'Should be resolved before this ships.',
   major: 'Worth addressing before merge.',
   minor: 'Consider addressing — not a hard blocker.',
-  nit: 'Optional — provided for completeness.'
+  nit: 'Optional — provided for completeness.',
 };
 
 // ---------------------------------------------------------------------------
@@ -75,9 +75,15 @@ function formatInlineComment(finding) {
   comment += escapeAtSign(finding.body) + '\n\n';
 
   // Only show verification badge for Carbon-specific findings
-  if (finding.carbonVerified && finding.verificationSource === 'carbon-builder') {
+  if (
+    finding.carbonVerified &&
+    finding.verificationSource === 'carbon-builder'
+  ) {
     comment += `*✓ Verified with Carbon Builder + MCP*\n`;
-  } else if (finding.carbonVerified && finding.verificationSource === 'carbon-mcp') {
+  } else if (
+    finding.carbonVerified &&
+    finding.verificationSource === 'carbon-mcp'
+  ) {
     comment += `*✓ Verified with Carbon MCP*\n`;
   }
 
@@ -119,7 +125,7 @@ function formatSummaryComment({
   recommendation = 'looks-good',
   recommendationRationale = '',
   catalogueWarning = null,
-  findingsTable = []
+  findingsTable = [],
 }) {
   const recLabel = RECOMMENDATION_LABELS[recommendation] || recommendation;
   const recAdvice = RECOMMENDATION_ADVICE[recommendation] || '';
@@ -162,7 +168,12 @@ function formatSummaryComment({
     comment += `|------|----------|----------|---------|------|\n`;
     for (const row of findingsTable) {
       // Sanitise cell values: strip pipes and newlines, then escape @ signs
-      const safe = v => escapeAtSign(String(v || '').replace(/[|\n\r]/g, ' ').trim());
+      const safe = (v) =>
+        escapeAtSign(
+          String(v || '')
+            .replace(/[|\n\r]/g, ' ')
+            .trim()
+        );
       comment += `| ${safe(row.area)} | ${safe(row.category)} | ${safe(row.severity)} | ${safe(row.title)} | ${safe(row.file)} |\n`;
     }
     comment += '\n</details>\n\n';
@@ -190,9 +201,15 @@ function formatSummaryComment({
       comment += `\n**Severity:** ${finding.severity} — ${guidance}\n\n`;
       comment += escapeAtSign(finding.body) + '\n\n';
 
-      if (finding.carbonVerified && finding.verificationSource === 'carbon-builder') {
+      if (
+        finding.carbonVerified &&
+        finding.verificationSource === 'carbon-builder'
+      ) {
         comment += `*✓ Verified with Carbon Builder + MCP*\n\n`;
-      } else if (finding.carbonVerified && finding.verificationSource === 'carbon-mcp') {
+      } else if (
+        finding.carbonVerified &&
+        finding.verificationSource === 'carbon-mcp'
+      ) {
         comment += `*✓ Verified with Carbon MCP*\n\n`;
       }
 
@@ -581,5 +598,5 @@ module.exports = {
   formatInlineComment,
   buildReviewPrompt,
   estimateTokenUsage,
-  escapeAtSign
+  escapeAtSign,
 };

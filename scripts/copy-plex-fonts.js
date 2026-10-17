@@ -49,7 +49,9 @@ function main() {
     const to = path.join(DEST, family, SUBPATH);
 
     if (!fs.existsSync(from)) {
-      console.warn(`[copy-plex-fonts] skipping ${family} — not present in @ibm/plex`);
+      console.warn(
+        `[copy-plex-fonts] skipping ${family} — not present in @ibm/plex`
+      );
       continue;
     }
 
@@ -62,11 +64,15 @@ function main() {
   }
 
   if (copied === 0) {
-    console.error('[copy-plex-fonts] no font files were copied — the console would render unstyled text.');
+    console.error(
+      '[copy-plex-fonts] no font files were copied — the console would render unstyled text.'
+    );
     process.exit(1);
   }
 
-  console.log(`[copy-plex-fonts] staged ${copied} IBM Plex files into client/public/plex`);
+  console.log(
+    `[copy-plex-fonts] staged ${copied} IBM Plex files into client/public/plex`
+  );
 }
 
 main();

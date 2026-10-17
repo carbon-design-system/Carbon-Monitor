@@ -48,14 +48,14 @@ if (_rawUrl) {
 function stripMarkdown(text) {
   if (!text) return '';
   return text
-    .replace(/^#{1,6}\s+/gm, '')       // ## headings
-    .replace(/\*\*(.*?)\*\*/g, '$1')   // **bold**
-    .replace(/__(.*?)__/g, '$1')       // __bold__
-    .replace(/_(.*?)_/g, '$1')         // _italic_
-    .replace(/^---+$/gm, '')           // horizontal rules
-    .replace(/^[-*]\s+/gm, '• ')       // bullet lists → •
+    .replace(/^#{1,6}\s+/gm, '') // ## headings
+    .replace(/\*\*(.*?)\*\*/g, '$1') // **bold**
+    .replace(/__(.*?)__/g, '$1') // __bold__
+    .replace(/_(.*?)_/g, '$1') // _italic_
+    .replace(/^---+$/gm, '') // horizontal rules
+    .replace(/^[-*]\s+/gm, '• ') // bullet lists → •
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [text](url) → text
-    .replace(/`([^`]+)`/g, '$1')       // inline code
+    .replace(/`([^`]+)`/g, '$1') // inline code
     .trim();
 }
 
@@ -104,15 +104,17 @@ function flagFor(recommendation) {
 function formatEasternTime(ts) {
   const date = new Date(ts);
   try {
-    return date.toLocaleString('en-US', {
-      timeZone: 'America/New_York',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    }) + ' ET';
+    return (
+      date.toLocaleString('en-US', {
+        timeZone: 'America/New_York',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }) + ' ET'
+    );
   } catch {
     // Fallback for environments without full ICU
     return date.toISOString();
@@ -135,7 +137,12 @@ function formatEasternTime(ts) {
  * @param {boolean}      opts.isReminder       - true on daily reminders after initial pause
  * @returns {Object} Slack API blocks payload
  */
-function buildLowTokenPayload({ percentRemaining, threshold, repo, isReminder }) {
+function buildLowTokenPayload({
+  percentRemaining,
+  threshold,
+  repo,
+  isReminder,
+}) {
   const blocks = [];
 
   // ── Header ──────────────────────────────────────────────────────────────────
@@ -160,10 +167,14 @@ function buildLowTokenPayload({ percentRemaining, threshold, repo, isReminder })
       `*Bobcoins remaining:* ${percentRemaining}% (threshold: ${threshold}%)`
     );
   } else {
-    detailLines.push(`*Bobcoins remaining:* below threshold (threshold: ${threshold}%)`);
+    detailLines.push(
+      `*Bobcoins remaining:* below threshold (threshold: ${threshold}%)`
+    );
   }
   if (isReminder) {
-    detailLines.push('_This is a daily reminder — the schedule remains paused._');
+    detailLines.push(
+      '_This is a daily reminder — the schedule remains paused._'
+    );
   }
 
   blocks.push({
@@ -299,20 +310,16 @@ function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
 
   // ── Footer ───────────────────────────────────────────────────────────────────
   const reviewedCount = results.filter((r) => !r.failed && !r.skipped).length;
-  const failedCount   = results.filter((r) => r.failed).length;
-  const skippedCount  = results.filter((r) => r.skipped).length;
+  const failedCount = results.filter((r) => r.failed).length;
+  const skippedCount = results.filter((r) => r.skipped).length;
   const parts = [];
   if (reviewedCount > 0)
     parts.push(`${reviewedCount} PR${reviewedCount !== 1 ? 's' : ''} reviewed`);
-  if (failedCount > 0)
-    parts.push(`${failedCount} failed`);
-  if (skippedCount > 0)
-    parts.push(`${skippedCount} skipped`);
-  if (parts.length === 0)
-    parts.push('Run complete');
+  if (failedCount > 0) parts.push(`${failedCount} failed`);
+  if (skippedCount > 0) parts.push(`${skippedCount} skipped`);
+  if (parts.length === 0) parts.push('Run complete');
   const baseUrl = (process.env.BASE_URL || '').trim();
-  if (baseUrl)
-    parts.push(`<${baseUrl}|⚙️ Configure schedule>`);
+  if (baseUrl) parts.push(`<${baseUrl}|⚙️ Configure schedule>`);
 
   blocks.push({
     type: 'context',
@@ -396,7 +403,14 @@ function postToSlack(payload) {
  * @param {Function} [opts.emitEvent]  - optional emitEvent fn for ES observability
  * @returns {Promise<void>}
  */
-async function postRunDigest({ startedAt, repo, results, maxPRs, daysBack, emitEvent }) {
+async function postRunDigest({
+  startedAt,
+  repo,
+  results,
+  maxPRs,
+  daysBack,
+  emitEvent,
+}) {
   if (!_enabled) return;
 
   const payload = buildPayload({ startedAt, repo, results, maxPRs, daysBack });
@@ -443,15 +457,30 @@ async function postRunDigest({ startedAt, repo, results, maxPRs, daysBack, emitE
  * @param {Function}     [opts.emitEvent]      - optional emitEvent fn for ES observability
  * @returns {Promise<void>}
  */
-async function postLowTokenAlert({ percentRemaining, threshold, repo, isReminder, emitEvent }) {
+async function postLowTokenAlert({
+  percentRemaining,
+  threshold,
+  repo,
+  isReminder,
+  emitEvent,
+}) {
   if (!_enabled) return;
 
-  const payload = buildLowTokenPayload({ percentRemaining, threshold, repo, isReminder });
-  const eventType = isReminder ? 'schedule_low_token_reminder' : 'schedule_low_token_paused';
+  const payload = buildLowTokenPayload({
+    percentRemaining,
+    threshold,
+    repo,
+    isReminder,
+  });
+  const eventType = isReminder
+    ? 'schedule_low_token_reminder'
+    : 'schedule_low_token_paused';
 
   try {
     await postToSlack(payload);
-    console.log(`[slack] low-token alert posted (${isReminder ? 'reminder' : 'initial'})`);
+    console.log(
+      `[slack] low-token alert posted (${isReminder ? 'reminder' : 'initial'})`
+    );
 
     if (emitEvent) {
       emitEvent({
@@ -470,7 +499,12 @@ async function postLowTokenAlert({ percentRemaining, threshold, repo, isReminder
       emitEvent({
         event_type: eventType,
         repo,
-        payload: { error: err.message, percentRemaining, threshold, isReminder },
+        payload: {
+          error: err.message,
+          percentRemaining,
+          threshold,
+          isReminder,
+        },
       }).catch(() => {});
     }
   }

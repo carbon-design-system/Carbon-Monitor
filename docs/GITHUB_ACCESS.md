@@ -17,13 +17,13 @@ summary) and `issues.addLabels` (the `AIReviewed` label).
 ### The label is the binding requirement
 
 **Adding a label needs the Triage role or higher on the repository.** No token
-scope grants this on its own — the *account* the token belongs to must hold that
+scope grants this on its own — the _account_ the token belongs to must hold that
 role on `carbon-design-system/carbon`.
 
 It is not optional:
 
 - `addReviewedLabel` throws, and the per-PR handler treats that as a failure — so
-  the run fails *after* it has already posted its comments.
+  the run fails _after_ it has already posted its comments.
 - The label is the de-duplication key. `fetchReviewablePRs` skips any PR that
   already carries it, so a token that can comment but not label will **re-review
   the same PR on every run and post duplicate comments each time.**
@@ -33,16 +33,16 @@ continues.
 
 ### Fine-grained token (recommended)
 
-| Setting | Value |
-|---------|-------|
-| Resource owner | `carbon-design-system` |
+| Setting           | Value                                                 |
+| ----------------- | ----------------------------------------------------- |
+| Resource owner    | `carbon-design-system`                                |
 | Repository access | `carbon` — plus any repo hosting linked parent issues |
-| **Pull requests** | Read and write |
-| **Issues** | Read and write |
-| **Contents** | Read |
-| **Metadata** | Read (mandatory, selected automatically) |
+| **Pull requests** | Read and write                                        |
+| **Issues**        | Read and write                                        |
+| **Contents**      | Read                                                  |
+| **Metadata**      | Read (mandatory, selected automatically)              |
 
-*Issues* write is needed for two reasons that are easy to miss: labels are an
+_Issues_ write is needed for two reasons that are easy to miss: labels are an
 issue-level concept, and the PR summary comment is posted through the issues
 endpoint.
 
@@ -56,12 +56,12 @@ failing.
 `public_repo` is sufficient: the target repository is public, and that scope
 grants write. Use full `repo` only when pointing at a private repository.
 
-Classic tokens are coarser — `public_repo` grants write access to *every* public
+Classic tokens are coarser — `public_repo` grants write access to _every_ public
 repository the account can push to, which is why the fine-grained token is
 preferred.
 
 > **Not `write:discussion`.** Earlier revisions of this document listed that
-> scope. It governs *team discussions*, which this agent never touches; it grants
+> scope. It governs _team discussions_, which this agent never touches; it grants
 > nothing the agent needs and can be dropped from existing tokens.
 
 ### Two things that will bite you

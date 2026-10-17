@@ -79,7 +79,11 @@ async function runSizeGate({
   const REVIEW_AGENT = 'bob';
 
   // Replicate the size gate logic from index.js exactly
-  if (targetMode === 'auto' && !filesFromTestFixture && files.length > maxFiles) {
+  if (
+    targetMode === 'auto' &&
+    !filesFromTestFixture &&
+    files.length > maxFiles
+  ) {
     await emitEvent({
       event_type: 'pr_skipped_too_large',
       correlation_id: correlationId,
@@ -134,33 +138,77 @@ async function main() {
     const { runResults, labelCalled } = await runSizeGate({ fileCount: 489 });
     assert.strictEqual(labelCalled, true, 'addReviewedLabel must be called');
     assert.strictEqual(runResults.length, 1, 'one runResults entry');
-    assert.strictEqual(runResults[0].skipped, true, 'entry must have skipped:true');
+    assert.strictEqual(
+      runResults[0].skipped,
+      true,
+      'entry must have skipped:true'
+    );
     assert.strictEqual(runResults[0].prNumber, 23394, 'correct PR number');
-    assert.ok(runResults[0].reason.includes('489'), 'reason must mention file count');
+    assert.ok(
+      runResults[0].reason.includes('489'),
+      'reason must mention file count'
+    );
   });
 
   await test('gate does NOT fire in explicit mode', async () => {
-    const { runResults, labelCalled } = await runSizeGate({ fileCount: 489, targetMode: 'explicit' });
-    assert.strictEqual(labelCalled, false, 'label must not be added in explicit mode');
-    assert.strictEqual(runResults.length, 0, 'no runResults entry in explicit mode');
+    const { runResults, labelCalled } = await runSizeGate({
+      fileCount: 489,
+      targetMode: 'explicit',
+    });
+    assert.strictEqual(
+      labelCalled,
+      false,
+      'label must not be added in explicit mode'
+    );
+    assert.strictEqual(
+      runResults.length,
+      0,
+      'no runResults entry in explicit mode'
+    );
   });
 
   await test('gate does NOT fire when files came from test fixture', async () => {
-    const { runResults, labelCalled } = await runSizeGate({ fileCount: 489, filesFromTestFixture: true });
-    assert.strictEqual(labelCalled, false, 'label must not be added for fixture files');
-    assert.strictEqual(runResults.length, 0, 'no runResults entry for fixture files');
+    const { runResults, labelCalled } = await runSizeGate({
+      fileCount: 489,
+      filesFromTestFixture: true,
+    });
+    assert.strictEqual(
+      labelCalled,
+      false,
+      'label must not be added for fixture files'
+    );
+    assert.strictEqual(
+      runResults.length,
+      0,
+      'no runResults entry for fixture files'
+    );
   });
 
   await test('gate does NOT fire when files.length === MAX_FILES_PER_PR (boundary)', async () => {
     const { runResults } = await runSizeGate({ fileCount: 300, maxFiles: 300 });
-    assert.strictEqual(runResults.length, 0, 'exactly at limit must not trigger the gate');
+    assert.strictEqual(
+      runResults.length,
+      0,
+      'exactly at limit must not trigger the gate'
+    );
   });
 
   await test('comment NOT posted when label-add fails', async () => {
-    const { commentCalled, runResults } = await runSizeGate({ fileCount: 489, labelThrows: true });
-    assert.strictEqual(commentCalled, false, 'comment must not be posted when label fails');
+    const { commentCalled, runResults } = await runSizeGate({
+      fileCount: 489,
+      labelThrows: true,
+    });
+    assert.strictEqual(
+      commentCalled,
+      false,
+      'comment must not be posted when label fails'
+    );
     // runResults still gets the skipped entry so Slack digest reflects the attempt
-    assert.strictEqual(runResults.length, 1, 'skipped entry still pushed even when label fails');
+    assert.strictEqual(
+      runResults.length,
+      1,
+      'skipped entry still pushed even when label fails'
+    );
   });
 
   await test('comment NOT posted when POST_SUMMARY_COMMENT env is false', async () => {
@@ -169,7 +217,11 @@ async function main() {
       postSummaryEnv: 'false',
     });
     assert.strictEqual(labelCalled, true, 'label must still be added');
-    assert.strictEqual(commentCalled, false, 'comment must be suppressed by env flag');
+    assert.strictEqual(
+      commentCalled,
+      false,
+      'comment must be suppressed by env flag'
+    );
   });
 
   // ── Summary ─────────────────────────────────────────────────────────────────

@@ -15,7 +15,10 @@ const fs = require('fs');
 const path = require('path');
 
 // ─── Load the live source files ───────────────────────────────────────────────
-const { buildReviewPrompt, formatSummaryComment } = require('../src/reviewPrompt');
+const {
+  buildReviewPrompt,
+  formatSummaryComment,
+} = require('../src/reviewPrompt');
 const bundleSrc = fs.readFileSync(
   path.resolve(__dirname, '../src/reviewBundle.js'),
   'utf8'
@@ -49,14 +52,17 @@ function assertMentionsBefore(text, first, second, context) {
   assert(
     posFirst < posSecond,
     `Expected "${first}" to appear before "${second}" in ${context}, ` +
-    `but "${first}" is at ${posFirst} and "${second}" is at ${posSecond}`
+      `but "${first}" is at ${posFirst} and "${second}" is at ${posSecond}`
   );
 }
 
 // ─── buildReviewPrompt ────────────────────────────────────────────────────────
 console.log('\n── buildReviewPrompt: carbon-builder authority ───────────────');
 
-const prompt = buildReviewPrompt({ owner: 'carbon-design-system', repo: 'carbon' });
+const prompt = buildReviewPrompt({
+  owner: 'carbon-design-system',
+  repo: 'carbon',
+});
 
 test('prompt contains "invoke the carbon-builder skill" authority language', () => {
   assert(
@@ -71,12 +77,22 @@ test('prompt positions carbon-builder before Carbon MCP in Step 2', () => {
   // Carbon Migration uses "Carbon MCP" (title-case) in the tier ladder; match either form
   const posCB = step2Block.indexOf('carbon-builder');
   const posMCP = Math.min(
-    step2Block.indexOf('Carbon MCP') !== -1 ? step2Block.indexOf('Carbon MCP') : Infinity,
-    step2Block.indexOf('carbon-mcp') !== -1 ? step2Block.indexOf('carbon-mcp') : Infinity
+    step2Block.indexOf('Carbon MCP') !== -1
+      ? step2Block.indexOf('Carbon MCP')
+      : Infinity,
+    step2Block.indexOf('carbon-mcp') !== -1
+      ? step2Block.indexOf('carbon-mcp')
+      : Infinity
   );
   assert(posCB !== -1, '"carbon-builder" not found in Step 2');
-  assert(posMCP !== Infinity, '"Carbon MCP" or "carbon-mcp" not found in Step 2');
-  assert(posCB < posMCP, `Expected carbon-builder (pos ${posCB}) before Carbon MCP (pos ${posMCP}) in Step 2`);
+  assert(
+    posMCP !== Infinity,
+    '"Carbon MCP" or "carbon-mcp" not found in Step 2'
+  );
+  assert(
+    posCB < posMCP,
+    `Expected carbon-builder (pos ${posCB}) before Carbon MCP (pos ${posMCP}) in Step 2`
+  );
 });
 
 test('Step 2 Category 1 branch uses exact Carbon Migration "Carbon API source of truth" phrase', () => {
@@ -92,9 +108,18 @@ test('Step 2 Category 1 branch uses exact Carbon Migration "Carbon API source of
 test('Step 2 ladder uses exact Carbon Migration PREFER / FALLBACK phrasing', () => {
   const step2Start = prompt.indexOf('## Step 2');
   const step2Block = prompt.slice(step2Start, step2Start + 1200);
-  assert(/\*\*PREFER\*\*/.test(step2Block), 'Step 2 must contain **PREFER** (exact Carbon Migration wording)');
-  assert(/\*\*FALLBACK\*\*.*Carbon MCP/.test(step2Block), 'Step 2 must contain **FALLBACK** to Carbon MCP (exact wording)');
-  assert(/\*\*FALLBACK\*\*.*model knowledge/.test(step2Block), 'Step 2 must contain **FALLBACK** to model knowledge (exact wording)');
+  assert(
+    /\*\*PREFER\*\*/.test(step2Block),
+    'Step 2 must contain **PREFER** (exact Carbon Migration wording)'
+  );
+  assert(
+    /\*\*FALLBACK\*\*.*Carbon MCP/.test(step2Block),
+    'Step 2 must contain **FALLBACK** to Carbon MCP (exact wording)'
+  );
+  assert(
+    /\*\*FALLBACK\*\*.*model knowledge/.test(step2Block),
+    'Step 2 must contain **FALLBACK** to model knowledge (exact wording)'
+  );
 });
 
 test('Step 2 uses exact Carbon Migration "MUST NOT halt" + "Uptime is mandatory" sentences', () => {
@@ -115,7 +140,9 @@ test('Step 2 per-item Category 1 instruction uses invoke-first language', () => 
   const step2Block = prompt.slice(step2Start, step2Start + 1600);
   // "Invoke via the Skill tool before making any Carbon claim" is the PREFER sub-bullet
   assert(
-    /Invoke via the.*Skill.*tool before making any Carbon claim/i.test(step2Block),
+    /Invoke via the.*Skill.*tool before making any Carbon claim/i.test(
+      step2Block
+    ),
     'Category 1 PREFER bullet must say "Invoke via the Skill tool before making any Carbon claim"'
   );
   assert(
@@ -129,17 +156,30 @@ test('Step 2 tier ladder positions carbon-builder before Carbon MCP', () => {
   const step2Block = prompt.slice(step2Start, step2Start + 1600);
   const posCB = step2Block.indexOf('carbon-builder');
   const posMCP = Math.min(
-    step2Block.indexOf('Carbon MCP') !== -1 ? step2Block.indexOf('Carbon MCP') : Infinity,
-    step2Block.indexOf('carbon-mcp') !== -1 ? step2Block.indexOf('carbon-mcp') : Infinity
+    step2Block.indexOf('Carbon MCP') !== -1
+      ? step2Block.indexOf('Carbon MCP')
+      : Infinity,
+    step2Block.indexOf('carbon-mcp') !== -1
+      ? step2Block.indexOf('carbon-mcp')
+      : Infinity
   );
   assert(posCB !== -1, '"carbon-builder" not found in Step 2');
-  assert(posMCP !== Infinity, '"Carbon MCP" or "carbon-mcp" not found in Step 2');
-  assert(posCB < posMCP, `Expected carbon-builder (pos ${posCB}) before Carbon MCP (pos ${posMCP}) in Step 2 tier ladder`);
+  assert(
+    posMCP !== Infinity,
+    '"Carbon MCP" or "carbon-mcp" not found in Step 2'
+  );
+  assert(
+    posCB < posMCP,
+    `Expected carbon-builder (pos ${posCB}) before Carbon MCP (pos ${posMCP}) in Step 2 tier ladder`
+  );
 });
 
 test('Step 4 Carbon verification rule uses invoke-first language', () => {
   const ruleStart = prompt.indexOf('**Carbon verification rule:**');
-  assert(ruleStart !== -1, '"**Carbon verification rule:**" not found in Step 4');
+  assert(
+    ruleStart !== -1,
+    '"**Carbon verification rule:**" not found in Step 4'
+  );
   const ruleBlock = prompt.slice(ruleStart, ruleStart + 500);
   assert(
     /invoke.*carbon-builder.*skill first/i.test(ruleBlock),
@@ -153,14 +193,21 @@ test('Step 4 Carbon verification rule uses invoke-first language', () => {
 
 test('Step 4 Category 1 block uses MANDATORY invoke language from Carbon Migration', () => {
   const cat1Start = prompt.lastIndexOf('Category 1 — Carbon API finding');
-  assert(cat1Start !== -1, '"Category 1 — Carbon API finding" not found in Step 4');
+  assert(
+    cat1Start !== -1,
+    '"Category 1 — Carbon API finding" not found in Step 4'
+  );
   const cat1Block = prompt.slice(cat1Start, cat1Start + 800);
   assert(
-    /MANDATORY.*Invoke.*carbon-builder.*skill.*every Category 1/i.test(cat1Block),
+    /MANDATORY.*Invoke.*carbon-builder.*skill.*every Category 1/i.test(
+      cat1Block
+    ),
     'Category 1 block must say "MANDATORY: Invoke the carbon-builder skill for every Category 1 recommendation"'
   );
   assert(
-    /MANDATORY.*carbon-builder.*unavailable.*fall back to Carbon MCP/i.test(cat1Block),
+    /MANDATORY.*carbon-builder.*unavailable.*fall back to Carbon MCP/i.test(
+      cat1Block
+    ),
     'Category 1 block must say "MANDATORY: If carbon-builder is unavailable, fall back to Carbon MCP"'
   );
   assert(
@@ -224,12 +271,22 @@ test('rules file has uptime-is-mandatory statement', () => {
 test('rules file positions carbon-builder before Carbon MCP', () => {
   const posCB = rulesTemplate.indexOf('carbon-builder');
   const posMCP = Math.min(
-    rulesTemplate.indexOf('Carbon MCP') !== -1 ? rulesTemplate.indexOf('Carbon MCP') : Infinity,
-    rulesTemplate.indexOf('carbon-mcp') !== -1 ? rulesTemplate.indexOf('carbon-mcp') : Infinity
+    rulesTemplate.indexOf('Carbon MCP') !== -1
+      ? rulesTemplate.indexOf('Carbon MCP')
+      : Infinity,
+    rulesTemplate.indexOf('carbon-mcp') !== -1
+      ? rulesTemplate.indexOf('carbon-mcp')
+      : Infinity
   );
   assert(posCB !== -1, '"carbon-builder" not found in agent rules');
-  assert(posMCP !== Infinity, '"Carbon MCP" or "carbon-mcp" not found in agent rules');
-  assert(posCB < posMCP, `Expected carbon-builder (pos ${posCB}) before Carbon MCP (pos ${posMCP}) in agent rules`);
+  assert(
+    posMCP !== Infinity,
+    '"Carbon MCP" or "carbon-mcp" not found in agent rules'
+  );
+  assert(
+    posCB < posMCP,
+    `Expected carbon-builder (pos ${posCB}) before Carbon MCP (pos ${posMCP}) in agent rules`
+  );
 });
 
 test('rules file does not instruct agent to use MCP for ALL verification (old pattern)', () => {
@@ -269,7 +326,7 @@ const dummySummary = formatSummaryComment({
   prNumber: 1,
   commitSha: 'abc1234',
   recommendation: 'looks-good',
-  recommendationRationale: 'No issues found.'
+  recommendationRationale: 'No issues found.',
 });
 
 test('summary comment header calls carbon-builder primary authority', () => {
@@ -299,7 +356,10 @@ test('summary comment </details> appears before AI disclaimer', () => {
   const closePos = dummySummary.indexOf('</details>');
   const disclaimerPos = dummySummary.indexOf('AI agent generated');
   assert(closePos !== -1, '</details> tag must be present in summary comment');
-  assert(disclaimerPos !== -1, 'AI disclaimer must be present in summary comment');
+  assert(
+    disclaimerPos !== -1,
+    'AI disclaimer must be present in summary comment'
+  );
   assert(
     closePos < disclaimerPos,
     `</details> (pos ${closePos}) must appear before AI disclaimer (pos ${disclaimerPos})`
@@ -326,7 +386,10 @@ test('prompt does not contain old "Only review SOURCE CODE files" gate', () => {
 
 test('Rule 19 is documentation prose review and caps findings at nit', () => {
   const rule19Start = prompt.indexOf('Documentation prose review');
-  assert(rule19Start !== -1, '"Documentation prose review" not found in prompt — Rule 19 must describe doc prose review');
+  assert(
+    rule19Start !== -1,
+    '"Documentation prose review" not found in prompt — Rule 19 must describe doc prose review'
+  );
   const rule19Block = prompt.slice(rule19Start, rule19Start + 400);
   assert(
     /spelling.*grammar|grammar.*spelling/i.test(rule19Block),
@@ -357,7 +420,9 @@ console.log('\n── Linked issue scope prohibition ─────────
 
 test('prompt prohibits using linked issue or PR description to assess completeness', () => {
   assert(
-    /Do not use the linked issue context or the PR description to assess whether the PR is complete/i.test(prompt),
+    /Do not use the linked issue context or the PR description to assess whether the PR is complete/i.test(
+      prompt
+    ),
     'prompt must prohibit using linked issue context or PR description to assess PR completeness'
   );
 });
@@ -389,8 +454,14 @@ test('rule 9b is positioned inside the per-file rubric block (after rule 9, befo
   assert(rule9Pos !== -1, 'rule 9 not found');
   assert(rule9bPos !== -1, 'rule 9b not found');
   assert(rule10Pos !== -1, 'rule 10 not found');
-  assert(rule9Pos < rule9bPos, `rule 9 (${rule9Pos}) must appear before rule 9b (${rule9bPos})`);
-  assert(rule9bPos < rule10Pos, `rule 9b (${rule9bPos}) must appear before rule 10 (${rule10Pos})`);
+  assert(
+    rule9Pos < rule9bPos,
+    `rule 9 (${rule9Pos}) must appear before rule 9b (${rule9bPos})`
+  );
+  assert(
+    rule9bPos < rule10Pos,
+    `rule 9b (${rule9bPos}) must appear before rule 10 (${rule10Pos})`
+  );
 });
 
 test('rule 9b specifies blocking severity', () => {
@@ -407,11 +478,26 @@ test('rule 9b lists all required do-not-flag guards', () => {
   const rule9bPos = prompt.indexOf('9b. **Unbalanced string literal');
   assert(rule9bPos !== -1, 'rule 9b not found');
   const rule9bBlock = prompt.slice(rule9bPos, rule9bPos + 1200);
-  assert(/template literal|backtick/i.test(rule9bBlock), 'rule 9b must guard against template literals');
-  assert(/escaped quote/i.test(rule9bBlock), 'rule 9b must guard against escaped quotes');
-  assert(/apostrophe|double-quoted/i.test(rule9bBlock), 'rule 9b must guard against apostrophes in opposite-quote strings');
-  assert(/comment/i.test(rule9bBlock), 'rule 9b must guard against comment lines');
-  assert(/multi-line|spans multiple/i.test(rule9bBlock), 'rule 9b must guard against multi-line strings');
+  assert(
+    /template literal|backtick/i.test(rule9bBlock),
+    'rule 9b must guard against template literals'
+  );
+  assert(
+    /escaped quote/i.test(rule9bBlock),
+    'rule 9b must guard against escaped quotes'
+  );
+  assert(
+    /apostrophe|double-quoted/i.test(rule9bBlock),
+    'rule 9b must guard against apostrophes in opposite-quote strings'
+  );
+  assert(
+    /comment/i.test(rule9bBlock),
+    'rule 9b must guard against comment lines'
+  );
+  assert(
+    /multi-line|spans multiple/i.test(rule9bBlock),
+    'rule 9b must guard against multi-line strings'
+  );
 });
 
 test('NO-FINDINGS paragraph includes rule 9b exception', () => {
@@ -420,7 +506,9 @@ test('NO-FINDINGS paragraph includes rule 9b exception', () => {
   // Use 1600 chars to ensure the rule 9b exception at the end of the paragraph is captured
   const noFindingsBlock = prompt.slice(noFindingsPos, noFindingsPos + 1600);
   assert(
-    /unbalanced string literal.*rule 9b|rule 9b.*unbalanced string literal/i.test(noFindingsBlock),
+    /unbalanced string literal.*rule 9b|rule 9b.*unbalanced string literal/i.test(
+      noFindingsBlock
+    ),
     'NO-FINDINGS paragraph must include the rule 9b unbalanced string literal exception'
   );
 });

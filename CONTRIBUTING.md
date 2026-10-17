@@ -36,7 +36,7 @@ it runs a real review and posts real comments to GitHub, so run it only on purpo
 ## Pull requests
 
 - Branch from `main`.
-- Run the tests before you push.
+- Run `npm run format` and the tests before you push. CI checks both.
 - Keep changes focused: one concern per pull request.
 - Never commit secrets or `.env`.
 - Say why in the description, not just what changed.

@@ -111,7 +111,9 @@ export const api = {
   triggerReview: (prNumbers) =>
     request('/api/review/trigger', {
       method: 'POST',
-      ...(prNumbers && prNumbers.length ? { body: JSON.stringify({ prNumbers }) } : {}),
+      ...(prNumbers && prNumbers.length
+        ? { body: JSON.stringify({ prNumbers }) }
+        : {}),
     }),
 
   reviewStatus: () => request('/api/review/status'),

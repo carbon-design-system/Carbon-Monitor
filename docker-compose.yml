@@ -19,16 +19,16 @@ services:
     ports:
       # The console and API share one port, matching Code Engine, which exposes
       # a single port per app.
-      - "8080:8080"
+      - '8080:8080'
     volumes:
       - carbon-monitor-workspace:/workspace
     networks:
       - carbon-network
     logging:
-      driver: "json-file"
+      driver: 'json-file'
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: '10m'
+        max-file: '3'
 
 volumes:
   carbon-monitor-workspace:

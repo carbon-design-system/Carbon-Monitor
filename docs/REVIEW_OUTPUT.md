@@ -61,20 +61,20 @@ Review artifacts:
 
 ### Recommendation values
 
-| Value | Meaning |
-|-------|---------|
-| `Consider Revising` | One or more `blocking` findings, or two or more `major` findings |
+| Value                    | Meaning                                                             |
+| ------------------------ | ------------------------------------------------------------------- |
+| `Consider Revising`      | One or more `blocking` findings, or two or more `major` findings    |
 | `Suggested Improvements` | Any `major` or `minor` finding, or review reliability was uncertain |
-| `Looks Good` | `nit`-level findings only, or no findings |
+| `Looks Good`             | `nit`-level findings only, or no findings                           |
 
 ### Finding severities
 
-| Severity | Meaning |
-|----------|---------|
-| `blocking` | Breaks user-facing behaviour or violates an accessibility requirement |
-| `major` | Likely to cause a visible rendering difference or runtime error |
-| `minor` | Maintainability risk or subtle behaviour difference — not immediately breaking |
-| `nit` | Convention / hygiene — no functional consequence |
+| Severity   | Meaning                                                                        |
+| ---------- | ------------------------------------------------------------------------------ |
+| `blocking` | Breaks user-facing behaviour or violates an accessibility requirement          |
+| `major`    | Likely to cause a visible rendering difference or runtime error                |
+| `minor`    | Maintainability risk or subtle behaviour difference — not immediately breaking |
+| `nit`      | Convention / hygiene — no functional consequence                               |
 
 ---
 

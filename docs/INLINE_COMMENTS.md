@@ -48,6 +48,7 @@ According to the spec (lines 328-336), the bot follows this strategy:
 ### 4. Fallback Handling
 
 If inline comment posting fails:
+
 - Failed findings are moved to summary comment
 - Review continues without blocking
 - User still gets all findings, just in summary format
@@ -71,6 +72,7 @@ Position 9:  unchanged line
 ```
 
 The mapper:
+
 1. Parses the diff to build a line-to-position map
 2. Looks up the finding's line number in the map
 3. Returns the position for GitHub's API
@@ -87,7 +89,7 @@ Severity: major
 
 Detailed explanation of the issue and how to fix it.
 
-*✓ Verified with carbon-builder*
+_✓ Verified with carbon-builder_
 ```
 
 Or if using carbon-mcp fallback:
@@ -99,7 +101,7 @@ Severity: major
 
 Detailed explanation of the issue and how to fix it.
 
-*✓ Verified with carbon-mcp*
+_✓ Verified with carbon-mcp_
 ```
 
 ### API Integration
@@ -116,9 +118,9 @@ await client.postReviewComments({
     {
       path: 'src/file.js',
       position: 15,
-      body: 'Comment text'
-    }
-  ]
+      body: 'Comment text',
+    },
+  ],
 });
 ```
 
@@ -127,12 +129,14 @@ await client.postReviewComments({
 This implementation complies with the spec requirements:
 
 ✅ **Lines 328-336**: Review comment strategy implemented
+
 - Inline comments for specific findings ✓
 - Summary comment for whole review ✓
 - AIReviewed label after success ✓
 - Fallback to summary if mapping fails ✓
 
 ✅ **Lines 336**: "If inline mapping fails, include those findings in the summary comment instead of dropping them"
+
 - Implemented in [`index.js`](../src/index.js)
 
 ## Testing
@@ -144,6 +148,7 @@ npm run test:diff
 ```
 
 Expected output:
+
 ```
 ✅ All tests passed!
 Inline findings: 2
@@ -169,6 +174,7 @@ Set to `false` to disable inline comments and post all findings in summary.
 ### Inline Comment (on code line)
 
 Example with carbon-builder:
+
 ```
 🤖 Bob Review Comment
 
@@ -182,6 +188,7 @@ Icon button needs aria-label for accessibility. Add aria-label prop with descrip
 ```
 
 Example with carbon-mcp (fallback):
+
 ```
 🤖 Bob Review Comment
 
@@ -195,6 +202,7 @@ Icon button needs aria-label for accessibility. Add aria-label prop with descrip
 ```
 
 ### Summary Comment
+
 ```markdown
 [AI agent review — Carbon grounded]
 
@@ -219,6 +227,7 @@ Import statement is not used in this file.
 ---
 
 Review artifacts:
+
 - PR: #123
 - Commit: abc1234
 - Agent: bob
@@ -229,6 +238,7 @@ Review artifacts:
 ## Future Enhancements
 
 Potential improvements:
+
 - Support for multi-line comments (start_line, end_line)
 - Suggestion blocks with code fixes
 - Batch comment posting for better performance

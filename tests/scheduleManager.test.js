@@ -59,7 +59,9 @@ function assertEqual(actual, expected, label) {
  * MCP_STATE_PATH, or ~/.config/carbon-monitor/ — without this the tests would
  * overwrite any real schedule config on disk.
  */
-const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'carbon-monitor-schedule-test-'));
+const sandbox = fs.mkdtempSync(
+  path.join(os.tmpdir(), 'carbon-monitor-schedule-test-')
+);
 const originalHome = process.env.HOME;
 process.env.HOME = sandbox;
 process.env.SCHEDULE_STATE_PATH = path.join(sandbox, 'test-schedule.json');
@@ -85,19 +87,32 @@ async function main() {
     deleteStateFile();
     // Reset internal cache by calling loadSchedule directly.
     const state = await sm.loadSchedule();
-    assert(state.enabled === false, `expected enabled:false, got ${state.enabled}`);
+    assert(
+      state.enabled === false,
+      `expected enabled:false, got ${state.enabled}`
+    );
     assert(typeof state.timeLocal === 'string', 'timeLocal should be a string');
     assert(state.lastRunAt === null, 'lastRunAt should be null');
   });
 
   // ── 2. Corrupt file resets to defaults ──────────────────────────────────
   await test('corrupt schedule file resets to defaults and overwrites', async () => {
-    fs.writeFileSync(process.env.SCHEDULE_STATE_PATH, '{ this is not json }', 'utf8');
+    fs.writeFileSync(
+      process.env.SCHEDULE_STATE_PATH,
+      '{ this is not json }',
+      'utf8'
+    );
     const state = await sm.loadSchedule();
-    assert(state.enabled === false, 'should have reset to default enabled:false');
+    assert(
+      state.enabled === false,
+      'should have reset to default enabled:false'
+    );
     // Verify the file was overwritten with valid JSON
     const written = readStateFile();
-    assert(written.enabled === false, 'overwritten file should have enabled:false');
+    assert(
+      written.enabled === false,
+      'overwritten file should have enabled:false'
+    );
   });
 
   // ── 3. Invalid timeLocal values rejected ──────────────────────────────────
@@ -129,7 +144,10 @@ async function main() {
     const result = await sm.setSchedule({ paused: true });
     assert(result.ok === true, `expected ok:true, got: ${result.error}`);
     const on_disk = readStateFile();
-    assert(on_disk.paused === true, `expected paused:true on disk, got ${on_disk.paused}`);
+    assert(
+      on_disk.paused === true,
+      `expected paused:true on disk, got ${on_disk.paused}`
+    );
   });
 
   await test('setSchedule({ paused: false }) persists paused:false and returns ok:true', async () => {
@@ -138,14 +156,22 @@ async function main() {
     const result = await sm.setSchedule({ paused: false });
     assert(result.ok === true, `expected ok:true, got: ${result.error}`);
     const on_disk = readStateFile();
-    assert(on_disk.paused === false, `expected paused:false on disk, got ${on_disk.paused}`);
+    assert(
+      on_disk.paused === false,
+      `expected paused:false on disk, got ${on_disk.paused}`
+    );
   });
 
   await test('setSchedule({ paused: "yes" }) returns { ok: false } with error', async () => {
     const result = await sm.setSchedule({ paused: 'yes' });
-    assert(result.ok === false, `expected ok:false, got: ${JSON.stringify(result)}`);
-    assert(typeof result.error === 'string' && result.error.length > 0,
-      `expected a non-empty error string, got: ${JSON.stringify(result.error)}`);
+    assert(
+      result.ok === false,
+      `expected ok:false, got: ${JSON.stringify(result)}`
+    );
+    assert(
+      typeof result.error === 'string' && result.error.length > 0,
+      `expected a non-empty error string, got: ${JSON.stringify(result.error)}`
+    );
   });
 
   await test('state file without paused key loads with paused:false via defaultState merge', async () => {
@@ -159,17 +185,25 @@ async function main() {
       lastFiredMinute: null,
       lastFiredAt: null,
     };
-    fs.writeFileSync(process.env.SCHEDULE_STATE_PATH, JSON.stringify(legacyState, null, 2), 'utf8');
+    fs.writeFileSync(
+      process.env.SCHEDULE_STATE_PATH,
+      JSON.stringify(legacyState, null, 2),
+      'utf8'
+    );
     const state = await sm.loadSchedule();
-    assert(state.paused === false,
-      `expected paused:false after loading legacy state, got ${JSON.stringify(state.paused)}`);
+    assert(
+      state.paused === false,
+      `expected paused:false after loading legacy state, got ${JSON.stringify(state.paused)}`
+    );
   });
 
   // ── 5. Tick does not fire when disabled ─────────────────────────────────
   await test('tick does NOT fire when enabled: false', async () => {
     await sm.setSchedule({ enabled: false, timeLocal: '00:00' });
     let fired = false;
-    const fakeReviewPRs = async () => { fired = true; };
+    const fakeReviewPRs = async () => {
+      fired = true;
+    };
     const fakeReviewState = { running: false };
     const fakeReviewLog = { start: () => {}, stop: () => {} };
 
@@ -185,7 +219,11 @@ async function main() {
     await sm.loadSchedule();
     // startScheduler would call tick; we assert the enabled:false guard works
     // by confirming fakeReviewState was never touched.
-    assertEqual(fakeReviewState.running, false, 'reviewState.running must stay false when disabled');
+    assertEqual(
+      fakeReviewState.running,
+      false,
+      'reviewState.running must stay false when disabled'
+    );
     assert(!fired, 'reviewPRs must not be called when enabled:false');
   });
 
@@ -221,7 +259,10 @@ async function main() {
     await sm.setSchedule({ enabled: true, timeLocal: current });
     // Clear the idempotency token by rewriting state.
     const cleared = { ...(await sm.loadSchedule()), lastFiredAt: null };
-    await sm.setSchedule({ enabled: cleared.enabled, timeLocal: cleared.timeLocal });
+    await sm.setSchedule({
+      enabled: cleared.enabled,
+      timeLocal: cleared.timeLocal,
+    });
     // Write lastFiredAt: null directly.
     fs.writeFileSync(
       process.env.SCHEDULE_STATE_PATH,
@@ -234,8 +275,19 @@ async function main() {
     // Simulate the tick by calling the exported startScheduler with a 1ms interval
     // and immediately stopping it after the first opportunity. We use a flag+Promise.
     const firePromise = new Promise((resolve) => {
-      const fakeReviewPRs = async () => { fired = true; resolve(); return; };
-      const fakeState = { running: false, startedAt: null, finishedAt: null, error: null, mode: null, prNumbers: null };
+      const fakeReviewPRs = async () => {
+        fired = true;
+        resolve();
+        return;
+      };
+      const fakeState = {
+        running: false,
+        startedAt: null,
+        finishedAt: null,
+        error: null,
+        mode: null,
+        prNumbers: null,
+      };
       const fakeLog = { start: () => {}, stop: () => {} };
       sm.startScheduler(fakeReviewPRs, fakeState, fakeLog);
     });
@@ -248,20 +300,31 @@ async function main() {
     sm.stopScheduler();
 
     const err = sm.validateTimeLocal(current);
-    assert(err === null, `currentLocalMinute() "${current}" should be a valid timeLocal: ${err}`);
-    assert(typeof current === 'string' && /^\d{2}:\d{2}$/.test(current),
-      `currentLocalMinute() returned unexpected format: ${current}`);
+    assert(
+      err === null,
+      `currentLocalMinute() "${current}" should be a valid timeLocal: ${err}`
+    );
+    assert(
+      typeof current === 'string' && /^\d{2}:\d{2}$/.test(current),
+      `currentLocalMinute() returned unexpected format: ${current}`
+    );
   });
 
   // ── 8. Idempotency — same minute does not fire twice ────────────────────
   await test('same lastFiredAt token prevents a second fire in the same minute', async () => {
     const current = sm.currentLocalMinute();
-    if (!current) { console.log('      (skipped: Intl unavailable)'); passed--; return; }
+    if (!current) {
+      console.log('      (skipped: Intl unavailable)');
+      passed--;
+      return;
+    }
 
     // Build the token the scheduler would write.
     const today = new Intl.DateTimeFormat('en-CA', {
       timeZone: sm.SCHEDULE_TIMEZONE,
-      year: 'numeric', month: '2-digit', day: '2-digit',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
     }).format(new Date());
     const token = `${today}T${current}`;
 
@@ -269,7 +332,11 @@ async function main() {
     const state = await sm.loadSchedule();
     fs.writeFileSync(
       process.env.SCHEDULE_STATE_PATH,
-      JSON.stringify({ ...state, enabled: true, timeLocal: current, lastFiredAt: token }, null, 2),
+      JSON.stringify(
+        { ...state, enabled: true, timeLocal: current, lastFiredAt: token },
+        null,
+        2
+      ),
       'utf8'
     );
     await sm.loadSchedule(); // re-warm cache
@@ -280,28 +347,44 @@ async function main() {
     // We cannot call tick() directly (not exported), but we can verify the guard
     // by checking that lastFiredAt on disk is still the token (it would be
     // overwritten if a new fire happened).
-    assertEqual(before.lastFiredAt, token, 'lastFiredAt should be the existing token');
+    assertEqual(
+      before.lastFiredAt,
+      token,
+      'lastFiredAt should be the existing token'
+    );
     // A second call to setSchedule with the same values must not reset it.
     await sm.setSchedule({ enabled: true, timeLocal: current });
     const after = readStateFile();
     // setSchedule only updates enabled/timeLocal — it must not clear lastFiredAt.
-    assertEqual(after.lastFiredAt, token, 'setSchedule must not clear lastFiredAt');
+    assertEqual(
+      after.lastFiredAt,
+      token,
+      'setSchedule must not clear lastFiredAt'
+    );
   });
 
   // ── 9. Skip when reviewState.running ────────────────────────────────────
   await test('tick skips and records skip reason when reviewState.running is true', async () => {
     const current = sm.currentLocalMinute();
-    if (!current) { console.log('      (skipped: Intl unavailable)'); passed--; return; }
+    if (!current) {
+      console.log('      (skipped: Intl unavailable)');
+      passed--;
+      return;
+    }
 
     // Set up: enabled, time = now, no prior fire.
     fs.writeFileSync(
       process.env.SCHEDULE_STATE_PATH,
-      JSON.stringify({
-        ...(sm.defaultState()),
-        enabled: true,
-        timeLocal: current,
-        lastFiredAt: null,
-      }, null, 2),
+      JSON.stringify(
+        {
+          ...sm.defaultState(),
+          enabled: true,
+          timeLocal: current,
+          lastFiredAt: null,
+        },
+        null,
+        2
+      ),
       'utf8'
     );
     await sm.loadSchedule();
@@ -314,9 +397,18 @@ async function main() {
     assert(stateBeforeSkip.lastFiredAt === null, 'should have no prior fire');
     // The skip path sets lastRunSkipped: true — verify the field exists on defaultState.
     const def = sm.defaultState();
-    assert('lastRunSkipped' in def, 'defaultState must have lastRunSkipped field');
-    assert('lastSkipReason' in def, 'defaultState must have lastSkipReason field');
-    assert(def.lastRunSkipped === false, 'default lastRunSkipped must be false');
+    assert(
+      'lastRunSkipped' in def,
+      'defaultState must have lastRunSkipped field'
+    );
+    assert(
+      'lastSkipReason' in def,
+      'defaultState must have lastSkipReason field'
+    );
+    assert(
+      def.lastRunSkipped === false,
+      'default lastRunSkipped must be false'
+    );
   });
 
   // ── 10. reviewState claimed synchronously ───────────────────────────────
@@ -324,10 +416,16 @@ async function main() {
     // We verify this by inspection: the scheduler code path (in scheduleManager.js)
     // must set reviewState.running = true BEFORE the await reviewPRs() call.
     // Read the source and assert the ordering.
-    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'api', 'scheduleManager.js'), 'utf8');
+    const src = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'api', 'scheduleManager.js'),
+      'utf8'
+    );
     const claimIdx = src.indexOf('reviewState.running = true');
     const fireIdx = src.indexOf('reviewPRs(');
-    assert(claimIdx !== -1, 'reviewState.running = true must appear in scheduleManager.js');
+    assert(
+      claimIdx !== -1,
+      'reviewState.running = true must appear in scheduleManager.js'
+    );
     assert(fireIdx !== -1, 'reviewPRs( must appear in scheduleManager.js');
     assert(
       claimIdx < fireIdx,
@@ -347,8 +445,14 @@ async function main() {
       return;
     }
     const nextMs = Date.parse(nextRunAt);
-    assert(Number.isFinite(nextMs), `nextRunAt should be a valid ISO string, got ${nextRunAt}`);
-    assert(nextMs > Date.now(), `nextRunAt (${nextRunAt}) should be in the future`);
+    assert(
+      Number.isFinite(nextMs),
+      `nextRunAt should be a valid ISO string, got ${nextRunAt}`
+    );
+    assert(
+      nextMs > Date.now(),
+      `nextRunAt (${nextRunAt}) should be in the future`
+    );
   });
 
   // ── 13. computeNextRunAt offset sign — ET wall clock matches nextRunAt ───
@@ -373,7 +477,7 @@ async function main() {
       hour12: false,
     }).formatToParts(new Date(nextRunAt));
 
-    const hour   = parts.find((p) => p.type === 'hour')?.value   ?? '';
+    const hour = parts.find((p) => p.type === 'hour')?.value ?? '';
     const minute = parts.find((p) => p.type === 'minute')?.value ?? '';
     const h = hour === '24' ? '00' : hour;
     const displayed = `${h}:${minute}`;
@@ -409,7 +513,11 @@ async function main() {
     let threw = false;
     try {
       // startScheduler must log a warning and return, not throw.
-      sm.startScheduler(() => {}, { running: false }, { start: () => {}, stop: () => {} });
+      sm.startScheduler(
+        () => {},
+        { running: false },
+        { start: () => {}, stop: () => {} }
+      );
       sm.stopScheduler();
     } catch (_) {
       threw = true;
@@ -418,17 +526,26 @@ async function main() {
     // Restore real Intl immediately.
     global.Intl.DateTimeFormat = realDTF;
 
-    assert(!threw, 'startScheduler must not throw when Intl cannot resolve the schedule zone');
+    assert(
+      !threw,
+      'startScheduler must not throw when Intl cannot resolve the schedule zone'
+    );
   });
 
   // ── 13. Tick does NOT fire when paused: true ─────────────────────────────
   await test('tick does NOT fire when paused: true (structural ordering check)', async () => {
     // Verify via source inspection that the _state.paused check appears before
     // the reviewPRs( call — same pattern as test 10.
-    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'api', 'scheduleManager.js'), 'utf8');
+    const src = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'api', 'scheduleManager.js'),
+      'utf8'
+    );
     const pausedIdx = src.indexOf('if (_state.paused)');
     const fireIdx = src.indexOf('reviewPRs(');
-    assert(pausedIdx !== -1, '_state.paused check must appear in scheduleManager.js');
+    assert(
+      pausedIdx !== -1,
+      '_state.paused check must appear in scheduleManager.js'
+    );
     assert(fireIdx !== -1, 'reviewPRs( must appear in scheduleManager.js');
     assert(
       pausedIdx < fireIdx,
@@ -437,7 +554,10 @@ async function main() {
 
     // Also verify the paused check is before the idempotency token write.
     const tokenWriteIdx = src.indexOf('lastFiredAt: firedToken');
-    assert(tokenWriteIdx !== -1, 'idempotency token write (lastFiredAt: firedToken) must appear in scheduleManager.js');
+    assert(
+      tokenWriteIdx !== -1,
+      'idempotency token write (lastFiredAt: firedToken) must appear in scheduleManager.js'
+    );
     assert(
       pausedIdx < tokenWriteIdx,
       `_state.paused check (pos ${pausedIdx}) must appear BEFORE idempotency token write (pos ${tokenWriteIdx})`
@@ -450,13 +570,26 @@ async function main() {
     if (current) {
       fs.writeFileSync(
         process.env.SCHEDULE_STATE_PATH,
-        JSON.stringify({ ...sm.defaultState(), enabled: true, paused: true, timeLocal: current, lastFiredAt: null }, null, 2),
+        JSON.stringify(
+          {
+            ...sm.defaultState(),
+            enabled: true,
+            paused: true,
+            timeLocal: current,
+            lastFiredAt: null,
+          },
+          null,
+          2
+        ),
         'utf8'
       );
       await sm.loadSchedule();
       const state = await sm.loadSchedule();
       assert(state.paused === true, 'loaded state must have paused:true');
-      assert(state.lastFiredAt === null, 'lastFiredAt must remain null — paused bail-out must not write the token');
+      assert(
+        state.lastFiredAt === null,
+        'lastFiredAt must remain null — paused bail-out must not write the token'
+      );
     }
   });
 
@@ -466,18 +599,38 @@ async function main() {
     //  a) the balance.available guard appears before the lastFiredAt: firedToken write
     //  b) paused: true appears in the autoPaused object
     //  c) the balance check (Sub-Task 3) appears AFTER the reviewState.running check
-    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'api', 'scheduleManager.js'), 'utf8');
+    const src = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'api', 'scheduleManager.js'),
+      'utf8'
+    );
 
-    const balanceGuardIdx = src.indexOf('balance.available && balance.percentRemaining !== null');
+    // Whitespace-tolerant: the formatter may wrap this condition.
+    const balanceGuardIdx = src.search(
+      /balance\.available\s*&&\s*balance\.percentRemaining !== null/
+    );
     // Use the unique step-6 comment as the anchor for the idempotency token write.
-    const tokenWriteIdx = src.indexOf('// 6. Write the idempotency token BEFORE firing');
+    const tokenWriteIdx = src.indexOf(
+      '// 6. Write the idempotency token BEFORE firing'
+    );
     const autoPausedIdx = src.indexOf('paused: true,');
     const runningCheckIdx = src.indexOf('if (reviewState.running)');
 
-    assert(balanceGuardIdx !== -1, 'balance.available guard must appear in scheduleManager.js');
-    assert(tokenWriteIdx !== -1, '// 6. Write the idempotency token comment must appear in scheduleManager.js');
-    assert(autoPausedIdx !== -1, 'paused: true must appear in autoPaused object in scheduleManager.js');
-    assert(runningCheckIdx !== -1, 'reviewState.running check must appear in scheduleManager.js');
+    assert(
+      balanceGuardIdx !== -1,
+      'balance.available guard must appear in scheduleManager.js'
+    );
+    assert(
+      tokenWriteIdx !== -1,
+      '// 6. Write the idempotency token comment must appear in scheduleManager.js'
+    );
+    assert(
+      autoPausedIdx !== -1,
+      'paused: true must appear in autoPaused object in scheduleManager.js'
+    );
+    assert(
+      runningCheckIdx !== -1,
+      'reviewState.running check must appear in scheduleManager.js'
+    );
 
     // Balance guard must come BEFORE the step-6 token write (no idempotency token written on auto-pause).
     assert(
@@ -498,8 +651,14 @@ async function main() {
     );
 
     // Verify that postLowTokenAlert is imported (required by both Sub-Task 2 and 3).
-    assert(src.indexOf("require('../slackNotifier')") !== -1, 'slackNotifier must be required in scheduleManager.js');
-    assert(src.indexOf("require('./bobCredits')") !== -1, 'bobCredits must be required in scheduleManager.js');
+    assert(
+      src.indexOf("require('../slackNotifier')") !== -1,
+      'slackNotifier must be required in scheduleManager.js'
+    );
+    assert(
+      src.indexOf("require('./bobCredits')") !== -1,
+      'bobCredits must be required in scheduleManager.js'
+    );
   });
 
   // ── Cleanup ──────────────────────────────────────────────────────────────

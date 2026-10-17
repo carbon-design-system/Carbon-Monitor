@@ -1,14 +1,14 @@
 # SPEC: ibm-products-monitor
 
-*Example SPEC produced by the adapt-harness skill from an interview; the answers are illustrative.*
+_Example SPEC produced by the adapt-harness skill from an interview; the answers are illustrative._
 
-| | |
-|---|---|
-| Status | example |
-| Source | Carbon-Monitor at commit `48e0a3f` |
-| Branch | PR review for another repo |
-| Worker agent | bob |
-| Written | 2026-10-16 |
+|              |                                    |
+| ------------ | ---------------------------------- |
+| Status       | example                            |
+| Source       | Carbon-Monitor at commit `48e0a3f` |
+| Branch       | PR review for another repo         |
+| Worker agent | bob                                |
+| Written      | 2026-10-16                         |
 
 ## 1. Intent
 
@@ -16,47 +16,47 @@ Each morning at 06:00 America/New_York, the reviewer selects up to 10 open, non-
 
 ## 2. Interview record
 
-| # | Question | Answer | Default used |
-|---|----------|--------|--------------|
-| 1 | Target repository | `carbon-design-system/ibm-products`, a monorepo; review only PRs that touch `packages/ibm-products/` or `packages/ibm-products-web-components/` | no |
-| 2 | Reviewing GitHub account | A dedicated reviewing GitHub account (i.e. machine user) with Triage on `ibm-products` | yes |
-| 3 | Selection rules | 10 PRs per run, 14 days back, skip label `status: blocked`, skip Dependabot and Renovate, reviewed label `AIReviewed` | no (bots and label are default) |
-| 4 | Rubric | Keep the rubric. Add the Carbon for IBM Products component list to Category 1 (the Carbon API category) so the agent verifies `@carbon/ibm-products` props too | no |
-| 5 | Ground truth | Carbon MCP, which the team says covers both libraries (see section 13) | yes |
-| 6 | Worker agent | Bob | yes |
-| 7 | Schedule and digest | Daily at 06:00 America/New_York; Slack digest on | no |
-| 8 | Console access | Sign-in on | yes |
-| 9 | Telemetry | Keep Elasticsearch and the Kibana dashboard | yes |
-| 10 | Comment wording | Unchanged | yes |
+| #   | Question                 | Answer                                                                                                                                                         | Default used                    |
+| --- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| 1   | Target repository        | `carbon-design-system/ibm-products`, a monorepo; review only PRs that touch `packages/ibm-products/` or `packages/ibm-products-web-components/`                | no                              |
+| 2   | Reviewing GitHub account | A dedicated reviewing GitHub account (i.e. machine user) with Triage on `ibm-products`                                                                         | yes                             |
+| 3   | Selection rules          | 10 PRs per run, 14 days back, skip label `status: blocked`, skip Dependabot and Renovate, reviewed label `AIReviewed`                                          | no (bots and label are default) |
+| 4   | Rubric                   | Keep the rubric. Add the Carbon for IBM Products component list to Category 1 (the Carbon API category) so the agent verifies `@carbon/ibm-products` props too | no                              |
+| 5   | Ground truth             | Carbon MCP, which the team says covers both libraries (see section 13)                                                                                         | yes                             |
+| 6   | Worker agent             | Bob                                                                                                                                                            | yes                             |
+| 7   | Schedule and digest      | Daily at 06:00 America/New_York; Slack digest on                                                                                                               | no                              |
+| 8   | Console access           | Sign-in on                                                                                                                                                     | yes                             |
+| 9   | Telemetry                | Keep Elasticsearch and the Kibana dashboard                                                                                                                    | yes                             |
+| 10  | Comment wording          | Unchanged                                                                                                                                                      | yes                             |
 
 ## 3. Keep / change map
 
-| Area | File / function | Decision | What changes |
-|------|-----------------|----------|--------------|
-| Harness · image | `Dockerfile` | keep | |
-| Harness · deployment | `deploy_ce.sh` | modify | Add `--env GITHUB_AI_AGENT_PATH_PREFIXES="${GITHUB_AI_AGENT_PATH_PREFIXES:-}"` to `COMMON_FLAGS`, beside the other `GITHUB_AI_AGENT_*` lines |
-| Harness · scheduler | `src/api/scheduleManager.js` | configure | Set `SCHEDULE_TIMEZONE=America/New_York` in `.env` (the default is `America/Chicago`); the operator sets 06:00 in the console |
-| Harness · sign-in | `src/api/sessionAuth.js` | configure | `AUTH_REQUIRED=true`, new `CONSOLE_USERNAME`, `CONSOLE_PASSWORD`, `SESSION_SIGNING_KEY` |
-| Harness · cost | `src/api/bobCredits.js`, `src/api/creditLedger.js` | keep | |
-| Harness · MCP connection | `src/api/mcpConnection.js`, `src/api/tokenManager.js` | keep | One operator signs in with IBMid once on the new deployment |
-| Harness · telemetry and dashboard | `src/observability/*`, `scripts/init-index.js`, `scripts/init-kibana.js`, `scripts/rebuild-dashboard.js` | configure | `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`, `ES_CA_CERT_PATH` (see section 13 on sharing a cluster) |
-| Task · orchestrator | `src/index.js` `reviewPRs`, `resolveReviewTargets`, `parsePrNumbers`, `recordReviewCost`, `cleanupBundle` | keep | |
-| Task · work-item source | `src/githubClient.js` `fetchReviewablePRs`, `fetchSinglePR`, `fetchPRFiles`, `fetchPRDiff` | modify | Path filter in `fetchReviewablePRs` only; see section 4 |
-| Task · done marker | `addReviewedLabel`; `REVIEW_LABEL`, `SKIP_LABELS` in `src/constants.js` | modify | Append `'status: blocked'` to the hard-coded `SKIP_LABELS` array; the two existing entries stay. `REVIEW_LABEL` stays `AIReviewed` |
-| Task · selection limits | `src/constants.js` `MAX_PRS_PER_RUN`, `N_DAYS_SINCE_PR_CREATED`, `MAX_FILES_PER_PR`, `MAX_INPUT_TOKENS` | configure | `GITHUB_AI_AGENT_MAX_PRS=10`, `GITHUB_AI_AGENT_DAYS_BACK=14`; the other two keep their defaults |
-| Task · workspace | `src/reviewBundle.js` `buildReviewBundle`, `getWorkspaceRoot` | keep | |
-| Task · prompt | `src/reviewPrompt.js` `buildReviewPrompt`, `estimateTokenUsage` | modify | Category 1 also covers Carbon for IBM Products components; see section 5 |
-| Task · output contract and parser | `src/reviewParser.js` `parseReviewOutput`, `computeRecommendation`, `filterUnverifiedCarbonFindings`, `extractCarbonBuilderSkillReads` | keep | `looksCarbonSpecific` already matches `/ibm-products/` |
-| Task · write-back | `src/githubClient.js` `postReviewComments`, `postSummaryComment`; `src/reviewPrompt.js` `formatInlineComment`, `formatSummaryComment`; `src/diffMapper.js` | keep | |
-| Task · ground truth | `src/api/mcpConnection.js` (`CARBON_MCP_URL`, `ALWAYS_ALLOW`), the `carbon-builder` skill, `healthChecks.checkCarbonMcp` | keep | Default `CARBON_MCP_URL` |
-| Task · telemetry vocabulary | event types in `src/index.js`, `src/slackNotifier.js`; `INDEX_MAPPING` in `scripts/init-index.js`; panels in `scripts/rebuild-dashboard.js` | keep | |
-| Task · digest content | `src/slackNotifier.js` `buildPayload` (exported as `_buildPayload`), `flagFor` (`_flagFor`) | keep | |
-| Task · console task surface | `client/src/pages/Console.jsx`, `client/src/pages/HelpGuide.jsx`, `client/src/utils/prPhrasing.js` | keep | The repo name comes from `/api/config` |
-| Task · task API routes | `src/api/server.js` `POST /api/review/trigger`, `GET /api/review/status`, `GET /api/review/logs`, `POST /api/review/logs/clear` | keep | |
-| Task · health tiles | `src/api/healthChecks.js` `checkGitHub`, `checkCarbonMcp` | keep | `checkGitHub` probes the configured repo and reports missing Triage |
-| Task · env prefix | `GITHUB_AI_AGENT_*` in `src/constants.js`, `.env.example`, `deploy_ce.sh` | configure | One new variable, `GITHUB_AI_AGENT_PATH_PREFIXES` (section 7) |
-| Task · test fixtures | `tests/reviewablePrs.test.js`, `tests/reviewPrompt.test.js` and the rest of the list in `docs/HARNESS.md` | modify | Add cases to the two named files; the others are unchanged |
-| Task · scratch-target helpers | `scripts/create-test-pr.js`, `scripts/create-oversized-test-pr.js` | configure | `TEST_PR_OWNER` / `TEST_PR_REPO` point at a scratch fork, never `ibm-products` |
+| Area                              | File / function                                                                                                                                            | Decision  | What changes                                                                                                                                 |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Harness · image                   | `Dockerfile`                                                                                                                                               | keep      |                                                                                                                                              |
+| Harness · deployment              | `deploy_ce.sh`                                                                                                                                             | modify    | Add `--env GITHUB_AI_AGENT_PATH_PREFIXES="${GITHUB_AI_AGENT_PATH_PREFIXES:-}"` to `COMMON_FLAGS`, beside the other `GITHUB_AI_AGENT_*` lines |
+| Harness · scheduler               | `src/api/scheduleManager.js`                                                                                                                               | configure | Set `SCHEDULE_TIMEZONE=America/New_York` in `.env` (the default is `America/Chicago`); the operator sets 06:00 in the console                |
+| Harness · sign-in                 | `src/api/sessionAuth.js`                                                                                                                                   | configure | `AUTH_REQUIRED=true`, new `CONSOLE_USERNAME`, `CONSOLE_PASSWORD`, `SESSION_SIGNING_KEY`                                                      |
+| Harness · cost                    | `src/api/bobCredits.js`, `src/api/creditLedger.js`                                                                                                         | keep      |                                                                                                                                              |
+| Harness · MCP connection          | `src/api/mcpConnection.js`, `src/api/tokenManager.js`                                                                                                      | keep      | One operator signs in with IBMid once on the new deployment                                                                                  |
+| Harness · telemetry and dashboard | `src/observability/*`, `scripts/init-index.js`, `scripts/init-kibana.js`, `scripts/rebuild-dashboard.js`                                                   | configure | `ES_URL`, `ES_USERNAME`, `ES_PASSWORD`, `ES_CA_CERT_PATH` (see section 13 on sharing a cluster)                                              |
+| Task · orchestrator               | `src/index.js` `reviewPRs`, `resolveReviewTargets`, `parsePrNumbers`, `recordReviewCost`, `cleanupBundle`                                                  | keep      |                                                                                                                                              |
+| Task · work-item source           | `src/githubClient.js` `fetchReviewablePRs`, `fetchSinglePR`, `fetchPRFiles`, `fetchPRDiff`                                                                 | modify    | Path filter in `fetchReviewablePRs` only; see section 4                                                                                      |
+| Task · done marker                | `addReviewedLabel`; `REVIEW_LABEL`, `SKIP_LABELS` in `src/constants.js`                                                                                    | modify    | Append `'status: blocked'` to the hard-coded `SKIP_LABELS` array; the two existing entries stay. `REVIEW_LABEL` stays `AIReviewed`           |
+| Task · selection limits           | `src/constants.js` `MAX_PRS_PER_RUN`, `N_DAYS_SINCE_PR_CREATED`, `MAX_FILES_PER_PR`, `MAX_INPUT_TOKENS`                                                    | configure | `GITHUB_AI_AGENT_MAX_PRS=10`, `GITHUB_AI_AGENT_DAYS_BACK=14`; the other two keep their defaults                                              |
+| Task · workspace                  | `src/reviewBundle.js` `buildReviewBundle`, `getWorkspaceRoot`                                                                                              | keep      |                                                                                                                                              |
+| Task · prompt                     | `src/reviewPrompt.js` `buildReviewPrompt`, `estimateTokenUsage`                                                                                            | modify    | Category 1 also covers Carbon for IBM Products components; see section 5                                                                     |
+| Task · output contract and parser | `src/reviewParser.js` `parseReviewOutput`, `computeRecommendation`, `filterUnverifiedCarbonFindings`, `extractCarbonBuilderSkillReads`                     | keep      | `looksCarbonSpecific` already matches `/ibm-products/`                                                                                       |
+| Task · write-back                 | `src/githubClient.js` `postReviewComments`, `postSummaryComment`; `src/reviewPrompt.js` `formatInlineComment`, `formatSummaryComment`; `src/diffMapper.js` | keep      |                                                                                                                                              |
+| Task · ground truth               | `src/api/mcpConnection.js` (`CARBON_MCP_URL`, `ALWAYS_ALLOW`), the `carbon-builder` skill, `healthChecks.checkCarbonMcp`                                   | keep      | Default `CARBON_MCP_URL`                                                                                                                     |
+| Task · telemetry vocabulary       | event types in `src/index.js`, `src/slackNotifier.js`; `INDEX_MAPPING` in `scripts/init-index.js`; panels in `scripts/rebuild-dashboard.js`                | keep      |                                                                                                                                              |
+| Task · digest content             | `src/slackNotifier.js` `buildPayload` (exported as `_buildPayload`), `flagFor` (`_flagFor`)                                                                | keep      |                                                                                                                                              |
+| Task · console task surface       | `client/src/pages/Console.jsx`, `client/src/pages/HelpGuide.jsx`, `client/src/utils/prPhrasing.js`                                                         | keep      | The repo name comes from `/api/config`                                                                                                       |
+| Task · task API routes            | `src/api/server.js` `POST /api/review/trigger`, `GET /api/review/status`, `GET /api/review/logs`, `POST /api/review/logs/clear`                            | keep      |                                                                                                                                              |
+| Task · health tiles               | `src/api/healthChecks.js` `checkGitHub`, `checkCarbonMcp`                                                                                                  | keep      | `checkGitHub` probes the configured repo and reports missing Triage                                                                          |
+| Task · env prefix                 | `GITHUB_AI_AGENT_*` in `src/constants.js`, `.env.example`, `deploy_ce.sh`                                                                                  | configure | One new variable, `GITHUB_AI_AGENT_PATH_PREFIXES` (section 7)                                                                                |
+| Task · test fixtures              | `tests/reviewablePrs.test.js`, `tests/reviewPrompt.test.js` and the rest of the list in `docs/HARNESS.md`                                                  | modify    | Add cases to the two named files; the others are unchanged                                                                                   |
+| Task · scratch-target helpers     | `scripts/create-test-pr.js`, `scripts/create-oversized-test-pr.js`                                                                                         | configure | `TEST_PR_OWNER` / `TEST_PR_REPO` point at a scratch fork, never `ibm-products`                                                               |
 
 ## 4. External system contract
 
@@ -144,11 +144,11 @@ Add path-filter cases to `tests/reviewablePrs.test.js` (AC-1 to AC-4) with a moc
 
 ## 13. Open questions
 
-| Question | Who decides |
-|----------|-------------|
-| Does Carbon MCP index `@carbon/ibm-products` components well enough for Step B checks? If `code_search` returns nothing for them, the prompt rule discards those findings as "component not indexed". Test with three known components before go-live. | Carbon MCP maintainers, with the IBM Products tech lead |
-| Where does the authoritative component list come from (package exports, Storybook, docs site), and who updates the prompt when it changes? | IBM Products tech lead |
-| Does a 10 PR limit fit the monorepo's volume? If more than 10 matching PRs open per day, the oldest never get reviewed. Check two weeks of PR history. | IBM Products engineering manager |
-| Will this deployment share an Elasticsearch cluster with the Carbon one? The schedule index `carbon-monitor-schedule` (hard-coded in `scheduleManager.js`) and the MCP state index would collide. The spend summary in `server.js` does not filter by repo. If the cluster is shared, a code change is needed and this SPEC must be revised. | Platform owner for the cluster |
-| Do Renovate PRs in this repo come from the Renovate app (type `Bot`) or from a user account? A user account would not be skipped. | IBM Products maintainers |
-| Is the 100-PR page enough, or can more than 100 open PRs be newer than 14 days? | IBM Products engineering manager |
+| Question                                                                                                                                                                                                                                                                                                                                     | Who decides                                             |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Does Carbon MCP index `@carbon/ibm-products` components well enough for Step B checks? If `code_search` returns nothing for them, the prompt rule discards those findings as "component not indexed". Test with three known components before go-live.                                                                                       | Carbon MCP maintainers, with the IBM Products tech lead |
+| Where does the authoritative component list come from (package exports, Storybook, docs site), and who updates the prompt when it changes?                                                                                                                                                                                                   | IBM Products tech lead                                  |
+| Does a 10 PR limit fit the monorepo's volume? If more than 10 matching PRs open per day, the oldest never get reviewed. Check two weeks of PR history.                                                                                                                                                                                       | IBM Products engineering manager                        |
+| Will this deployment share an Elasticsearch cluster with the Carbon one? The schedule index `carbon-monitor-schedule` (hard-coded in `scheduleManager.js`) and the MCP state index would collide. The spend summary in `server.js` does not filter by repo. If the cluster is shared, a code change is needed and this SPEC must be revised. | Platform owner for the cluster                          |
+| Do Renovate PRs in this repo come from the Renovate app (type `Bot`) or from a user account? A user account would not be skipped.                                                                                                                                                                                                            | IBM Products maintainers                                |
+| Is the 100-PR page enough, or can more than 100 open PRs be newer than 14 days?                                                                                                                                                                                                                                                              | IBM Products engineering manager                        |

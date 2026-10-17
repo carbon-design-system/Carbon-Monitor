@@ -69,13 +69,21 @@ function fakeResponse() {
 
 async function request(url) {
   const res = fakeResponse();
-  await handleRequest({ method: 'GET', url, headers: { host: 'localhost' } }, res);
-  assert(res.statusCode === 200, `expected 200, got ${res.statusCode}: ${res.body}`);
+  await handleRequest(
+    { method: 'GET', url, headers: { host: 'localhost' } },
+    res
+  );
+  assert(
+    res.statusCode === 200,
+    `expected 200, got ${res.statusCode}: ${res.body}`
+  );
   return JSON.parse(res.body);
 }
 
 function lastSearch() {
-  return calls.filter((call) => call && call.index === 'carbon-monitor-events-*').at(-1);
+  return calls
+    .filter((call) => call && call.index === 'carbon-monitor-events-*')
+    .at(-1);
 }
 
 function historyHit() {
@@ -107,23 +115,32 @@ async function main() {
     assert(query.index === 'carbon-monitor-events-*');
     assert(query.size === 10);
     assert(query.sort[0].timestamp.order === 'desc');
-    assert(filters.some((filter) => filter.term?.event_type === 'pr_review_completed'));
-    assert(filters.some((filter) => filter.range?.timestamp?.gte === 'now-90d'));
+    assert(
+      filters.some(
+        (filter) => filter.term?.event_type === 'pr_review_completed'
+      )
+    );
+    assert(
+      filters.some((filter) => filter.range?.timestamp?.gte === 'now-90d')
+    );
     assert(body.entries.length === 1);
   });
 
   await test('history maps ES fields to the existing ledger entry shape', async () => {
     searchResponse = { hits: { hits: [historyHit()] } };
     const body = await request('/api/credits/history?limit=100');
-    assert(JSON.stringify(body.entries[0]) === JSON.stringify({
-      at: '2026-09-10T14:26:51.967Z',
-      prNumber: 158,
-      repo: 'example-org/example-repo',
-      correlationId: 'test-correlation',
-      coinsSpent: 0.219426,
-      remainingAfter: 957.41365,
-      durationMs: 33293,
-    }));
+    assert(
+      JSON.stringify(body.entries[0]) ===
+        JSON.stringify({
+          at: '2026-09-10T14:26:51.967Z',
+          prNumber: 158,
+          repo: 'example-org/example-repo',
+          correlationId: 'test-correlation',
+          coinsSpent: 0.219426,
+          remainingAfter: 957.41365,
+          durationMs: 33293,
+        })
+    );
     assert(body.cumulative.length === 1);
   });
 
@@ -151,14 +168,16 @@ async function main() {
   await test('missing historical cost fields map to null', async () => {
     searchResponse = {
       hits: {
-        hits: [{
-          _source: {
-            timestamp: '2026-08-11T15:27:27.113Z',
-            pr_number: 1,
-            repo: 'owner/repo',
-            correlation_id: 'old-event',
+        hits: [
+          {
+            _source: {
+              timestamp: '2026-08-11T15:27:27.113Z',
+              pr_number: 1,
+              repo: 'owner/repo',
+              correlation_id: 'old-event',
+            },
           },
-        }],
+        ],
       },
     };
     const body = await request('/api/credits/history');
@@ -200,7 +219,9 @@ async function main() {
     delete require.cache[require.resolve('../src/api/server')];
     ({ handleRequest } = require('../src/api/server'));
     calls.length = 0;
-    searchResponse = { aggregations: { reviewCount: { value: 7 }, totalSpent: { value: 2 } } };
+    searchResponse = {
+      aggregations: { reviewCount: { value: 7 }, totalSpent: { value: 2 } },
+    };
     await request('/api/credits');
     const afterFirst = calls.length;
     await request('/api/credits');
@@ -209,11 +230,12 @@ async function main() {
   });
 
   await test('completion event source contains all cost fields', async () => {
+    // Whitespace-tolerant: the formatter owns alignment and indentation.
     const source = fs.readFileSync('src/index.js', 'utf8');
-    assert(source.includes("event_type:     'pr_review_completed'"));
-    assert(source.includes('            coinsSpent,'));
-    assert(source.includes('            remainingAfter:'));
-    assert(source.includes('            durationMs:'));
+    assert(/event_type:\s*'pr_review_completed'/.test(source));
+    assert(/\bcoinsSpent,/.test(source));
+    assert(/\bremainingAfter:/.test(source));
+    assert(/\bdurationMs:/.test(source));
   });
 
   console.log(`\nResults: ${passed} passed, ${failed} failed`);
@@ -221,5 +243,7 @@ async function main() {
 }
 
 main().finally(() => {
-  try { fs.unlinkSync(process.env.CREDIT_LEDGER_PATH); } catch (_) {}
+  try {
+    fs.unlinkSync(process.env.CREDIT_LEDGER_PATH);
+  } catch (_) {}
 });

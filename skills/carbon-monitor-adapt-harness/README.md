@@ -7,10 +7,10 @@ SPEC you can implement from. It writes one Markdown file and changes no code.
 
 Two paths, chosen at the first question:
 
-| Path | Fits when | Typical SPEC |
-|------|-----------|--------------|
-| **PR reviews for another repository** | You want this reviewer on your own repo, maybe with a different rubric or MCP server | Mostly configuration; a short implementation |
-| **A different job on the harness** | You want the schedule, cloud deployment, cost tracking, telemetry and Slack digest, but the agent should do something else against some other system | A real adaptation: the task layer is replaced, the harness stays |
+| Path                                  | Fits when                                                                                                                                            | Typical SPEC                                                     |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| **PR reviews for another repository** | You want this reviewer on your own repo, maybe with a different rubric or MCP server                                                                 | Mostly configuration; a short implementation                     |
+| **A different job on the harness**    | You want the schedule, cloud deployment, cost tracking, telemetry and Slack digest, but the agent should do something else against some other system | A real adaptation: the task layer is replaced, the harness stays |
 
 Both paths ask which agent runs the job. Bob is the default and the tested path;
 `docs/adapt-harness/agents/` describes what changes for Claude Code, Codex,
@@ -71,10 +71,10 @@ decisions change; it is the contract between you and the implementing agent.
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `SKILL.md` | The staged procedure the agent follows |
-| `reading-map.md` | What to read at each step and for each SPEC section |
-| `interview/pr-review.md` | Questions and defaults for the first path |
-| `interview/new-job.md` | Questions and defaults for the second path |
-| `templates/SPEC.md` | The SPEC skeleton |
+| File                     | Purpose                                             |
+| ------------------------ | --------------------------------------------------- |
+| `SKILL.md`               | The staged procedure the agent follows              |
+| `reading-map.md`         | What to read at each step and for each SPEC section |
+| `interview/pr-review.md` | Questions and defaults for the first path           |
+| `interview/new-job.md`   | Questions and defaults for the second path          |
+| `templates/SPEC.md`      | The SPEC skeleton                                   |

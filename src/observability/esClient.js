@@ -30,7 +30,7 @@
 
 'use strict';
 
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 const { describeCredential, readTrimmedString } = require('../config/env');
 
@@ -53,7 +53,9 @@ const breaker = {
 function tripBreaker() {
   breaker.state = 'OPEN';
   breaker.lastFailureAt = Date.now();
-  console.warn('[esClient] Circuit breaker OPEN — ES calls suspended for 150 s');
+  console.warn(
+    '[esClient] Circuit breaker OPEN — ES calls suspended for 150 s'
+  );
 }
 
 function maybeResetBreaker() {
@@ -67,8 +69,8 @@ function maybeResetBreaker() {
 }
 
 // ── Singleton client ──────────────────────────────────────────────────────────
-let _client     = null;
-let _activeUrl  = null; // tracks which URL the singleton was built with
+let _client = null;
+let _activeUrl = null; // tracks which URL the singleton was built with
 
 /**
  * Build (or return cached) an ES Client for the given URL.
@@ -79,17 +81,19 @@ function buildClient(url) {
 
   const username = readTrimmedString('ES_USERNAME') || 'elastic';
   const password = readTrimmedString('ES_PASSWORD');
-  const caCert   = readTrimmedString('ES_CA_CERT_PATH');
+  const caCert = readTrimmedString('ES_CA_CERT_PATH');
 
   // ── Startup credential diagnostics (mirrors Carbon Migrate) ──────────────
   const diagnostics = [
-    describeCredential('ES_URL',      url),
+    describeCredential('ES_URL', url),
     describeCredential('ES_USERNAME', username),
     describeCredential('ES_PASSWORD', password),
     ...(caCert ? [describeCredential('ES_CA_CERT_PATH', caCert)] : []),
   ];
-  console.log('[esClient] Credential diagnostics at startup:',
-    JSON.stringify(diagnostics, null, 2));
+  console.log(
+    '[esClient] Credential diagnostics at startup:',
+    JSON.stringify(diagnostics, null, 2)
+  );
 
   const opts = {
     node: url,
@@ -111,18 +115,28 @@ function buildClient(url) {
         console.log(
           '[esClient] CA cert loaded',
           JSON.stringify({
-            certPath:     candidate,
-            sizeBytes:    pem.length,
-            sha256Prefix: createHash('sha256').update(pem).digest('hex').slice(0, 12),
+            certPath: candidate,
+            sizeBytes: pem.length,
+            sha256Prefix: createHash('sha256')
+              .update(pem)
+              .digest('hex')
+              .slice(0, 12),
           })
         );
         break;
-      } catch (_) { /* try next candidate */ }
+      } catch (_) {
+        /* try next candidate */
+      }
     }
     if (!opts.tls) {
-      console.warn('[esClient] Could not read ES_CA_CERT_PATH from either candidate path');
+      console.warn(
+        '[esClient] Could not read ES_CA_CERT_PATH from either candidate path'
+      );
     }
-  } else if (url.startsWith('https://localhost') || url.startsWith('https://127.')) {
+  } else if (
+    url.startsWith('https://localhost') ||
+    url.startsWith('https://127.')
+  ) {
     opts.tls = { rejectUnauthorized: false };
   }
 
@@ -138,7 +152,7 @@ function getClient() {
   if (!url) return null;
 
   if (!_client || _activeUrl !== url) {
-    _client    = buildClient(url);
+    _client = buildClient(url);
     _activeUrl = url;
   }
 
@@ -164,13 +178,13 @@ function isConnectionError(err) {
   // HTTP 4xx/5xx come back as ResponseError with a statusCode.
   const name = err?.name ?? '';
   return (
-    !err?.meta?.statusCode &&           // no HTTP status → not a server response
+    !err?.meta?.statusCode && // no HTTP status → not a server response
     (name.includes('ConnectionError') ||
-     name.includes('NoLivingConnections') ||
-     name.includes('TimeoutError') ||
-     err?.code === 'ECONNREFUSED' ||
-     err?.code === 'ECONNRESET' ||
-     err?.code === 'ETIMEDOUT')
+      name.includes('NoLivingConnections') ||
+      name.includes('TimeoutError') ||
+      err?.code === 'ECONNREFUSED' ||
+      err?.code === 'ECONNRESET' ||
+      err?.code === 'ETIMEDOUT')
   );
 }
 
@@ -200,7 +214,11 @@ async function esCall(fn) {
     // 404/409/403 are expected control-flow errors — do not trip the breaker
     const status = err.meta?.statusCode;
     if (status === 404 || status === 409 || status === 403) {
-      console.warn('[esClient] ES call returned expected status', status, '— breaker not tripped');
+      console.warn(
+        '[esClient] ES call returned expected status',
+        status,
+        '— breaker not tripped'
+      );
       return null;
     }
 
@@ -209,23 +227,30 @@ async function esCall(fn) {
     // and the configured URL is HTTPS — plain-HTTP cluster may still be reachable.
     if (isConnectionError(err)) {
       const primaryUrl = readTrimmedString('ES_URL');
-      const fallback   = httpFallbackUrl(primaryUrl);
+      const fallback = httpFallbackUrl(primaryUrl);
       if (fallback && _activeUrl !== fallback) {
         console.warn(
           `[esClient] HTTPS connection failed (${err.message}) — retrying over HTTP: ${fallback}`
         );
         try {
-          _client    = buildClient(fallback);
+          _client = buildClient(fallback);
           _activeUrl = fallback;
           const result = await fn(_client);
           if (breaker.state === 'HALF_OPEN') {
             breaker.state = 'CLOSED';
-            console.log('[esClient] Circuit breaker CLOSED — ES connection restored via HTTP fallback');
+            console.log(
+              '[esClient] Circuit breaker CLOSED — ES connection restored via HTTP fallback'
+            );
           }
-          console.warn('[esClient] ⚠️  Running on plain HTTP fallback — update ES_URL to use http:// if this persists');
+          console.warn(
+            '[esClient] ⚠️  Running on plain HTTP fallback — update ES_URL to use http:// if this persists'
+          );
           return result;
         } catch (fallbackErr) {
-          console.error('[esClient] HTTP fallback also failed:', fallbackErr.message);
+          console.error(
+            '[esClient] HTTP fallback also failed:',
+            fallbackErr.message
+          );
         }
       }
     }
@@ -238,7 +263,7 @@ async function esCall(fn) {
 
 /** Exposed for tests — reset singleton and breaker */
 function _reset() {
-  _client    = null;
+  _client = null;
   _activeUrl = null;
   breaker.state = 'CLOSED';
   breaker.lastFailureAt = null;

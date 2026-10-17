@@ -18,7 +18,11 @@ console.log(`  Input tokens: ${usage.input}`);
 console.log(`  Output tokens: ${usage.output}`);
 console.log(`  Total tokens: ${usage.total}`);
 
-if (usage.input > 900 && usage.output > 180 && usage.total === usage.input + usage.output) {
+if (
+  usage.input > 900 &&
+  usage.output > 180 &&
+  usage.total === usage.input + usage.output
+) {
   console.log('  ✅ PASS\n');
 } else {
   console.log('  ❌ FAIL\n');
@@ -27,13 +31,21 @@ if (usage.input > 900 && usage.output > 180 && usage.total === usage.input + usa
 
 // Test 2: Empty inputs
 console.log('Test 2: Empty inputs');
-const emptyUsage = estimateTokenUsage({ prompt: '', diff: '', agentOutput: '' });
+const emptyUsage = estimateTokenUsage({
+  prompt: '',
+  diff: '',
+  agentOutput: '',
+});
 
 console.log(`  Input tokens: ${emptyUsage.input}`);
 console.log(`  Output tokens: ${emptyUsage.output}`);
 console.log(`  Total tokens: ${emptyUsage.total}`);
 
-if (emptyUsage.input === 0 && emptyUsage.output === 0 && emptyUsage.total === 0) {
+if (
+  emptyUsage.input === 0 &&
+  emptyUsage.output === 0 &&
+  emptyUsage.total === 0
+) {
   console.log('  ✅ PASS\n');
 } else {
   console.log('  ❌ FAIL\n');
@@ -48,7 +60,11 @@ console.log(`  Input tokens: ${missingUsage.input}`);
 console.log(`  Output tokens: ${missingUsage.output}`);
 console.log(`  Total tokens: ${missingUsage.total}`);
 
-if (missingUsage.input === 0 && missingUsage.output === 0 && missingUsage.total === 0) {
+if (
+  missingUsage.input === 0 &&
+  missingUsage.output === 0 &&
+  missingUsage.total === 0
+) {
   console.log('  ✅ PASS\n');
 } else {
   console.log('  ❌ FAIL\n');
@@ -57,10 +73,10 @@ if (missingUsage.input === 0 && missingUsage.output === 0 && missingUsage.total 
 
 // Test 4: Rounding up
 console.log('Test 4: Rounding up token counts');
-const roundUsage = estimateTokenUsage({ 
+const roundUsage = estimateTokenUsage({
   prompt: '1234567890', // 10 chars = 2.5 tokens, should round up to 3
-  diff: '', 
-  agentOutput: '' 
+  diff: '',
+  agentOutput: '',
 });
 
 console.log(`  Input tokens: ${roundUsage.input}`);

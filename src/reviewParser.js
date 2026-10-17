@@ -31,13 +31,13 @@ function looksCarbonSpecific(finding) {
     /carbon prop/,
     /carbon api/,
     /ibm-products/,
-    /\$[a-z]+-\d+/,           // Carbon tokens like $spacing-05, $layer-01
-    /cds--[a-z]/,              // Carbon CSS class prefixes in finding text
-    /bx--[a-z]/,               // Legacy Carbon CSS class prefixes
-    /\bcarbon'?s?\s+\w+/,      // "Carbon DataTable", "Carbon's Button", etc.
+    /\$[a-z]+-\d+/, // Carbon tokens like $spacing-05, $layer-01
+    /cds--[a-z]/, // Carbon CSS class prefixes in finding text
+    /bx--[a-z]/, // Legacy Carbon CSS class prefixes
+    /\bcarbon'?s?\s+\w+/, // "Carbon DataTable", "Carbon's Button", etc.
   ];
 
-  if (strongPatterns.some(p => p.test(titleAndBody))) {
+  if (strongPatterns.some((p) => p.test(titleAndBody))) {
     return true;
   }
 
@@ -88,8 +88,8 @@ function looksCarbonSpecific(finding) {
     /carbon.*instead/,
   ];
 
-  const mentionsComponent = componentNames.some(p => p.test(titleAndBody));
-  const makesApiClaim = apiClaimKeywords.some(p => p.test(titleAndBody));
+  const mentionsComponent = componentNames.some((p) => p.test(titleAndBody));
+  const makesApiClaim = apiClaimKeywords.some((p) => p.test(titleAndBody));
 
   return mentionsComponent && makesApiClaim;
 }
@@ -107,14 +107,14 @@ function extractCarbonBuilderSkillReads(agentOutput = '') {
     /\[using tool read_file:\s*([^\]]*\.bob\/skills\/carbon-builder\/[^\]]*)\]/gi,
     /read_file[^\n]*path["'=:\s]+([^\s"'\],]*\.bob\/skills\/carbon-builder\/[^\s"'\],]*)/gi,
     /Contents of file\s+([^:\n]*\.bob\/skills\/carbon-builder\/[^:\n]*):/gi,
-    /relative to:\s*(\.bob\/skills\/carbon-builder\/[^\s\n]*)/gi
+    /relative to:\s*(\.bob\/skills\/carbon-builder\/[^\s\n]*)/gi,
   ];
 
   // v2 patterns — use_skill is a first-class tool; no read_file call appears.
   // Match the post-call result block: "Tool: use_skill" followed by
   // "skill_name: carbon-builder" (with any intervening whitespace/padding).
   const presencePatterns = [
-    /Tool:\s*use_skill[\s\S]*?skill_name:\s*carbon-builder/i
+    /Tool:\s*use_skill[\s\S]*?skill_name:\s*carbon-builder/i,
   ];
 
   const skillFilesRead = [];
@@ -132,7 +132,10 @@ function extractCarbonBuilderSkillReads(agentOutput = '') {
   }
 
   for (const pattern of presencePatterns) {
-    if (pattern.test(agentOutput) && !seenSkillFiles.has('use_skill:carbon-builder')) {
+    if (
+      pattern.test(agentOutput) &&
+      !seenSkillFiles.has('use_skill:carbon-builder')
+    ) {
       seenSkillFiles.add('use_skill:carbon-builder');
       skillFilesRead.push('use_skill:carbon-builder');
     }
@@ -154,8 +157,8 @@ function filterUnverifiedCarbonFindings(findings, transcriptMetadata = {}) {
         carbonSpecific: 0,
         carbonBuilderVerified: 0,
         carbonBuilderRejected: 0,
-        skillFilesRead: transcriptMetadata.skillFilesRead || []
-      }
+        skillFilesRead: transcriptMetadata.skillFilesRead || [],
+      },
     };
   }
 
@@ -174,8 +177,10 @@ function filterUnverifiedCarbonFindings(findings, transcriptMetadata = {}) {
       return true;
     }
 
-    const isCarbonBuilderFinding = finding.verificationSource === 'carbon-builder';
-    const isMcpVerified = finding.carbonVerified === true &&
+    const isCarbonBuilderFinding =
+      finding.verificationSource === 'carbon-builder';
+    const isMcpVerified =
+      finding.carbonVerified === true &&
       (isCarbonBuilderFinding || finding.verificationSource === 'carbon-mcp');
 
     if (!isMcpVerified && !looksCarbonSpecific(finding)) {
@@ -187,8 +192,12 @@ function filterUnverifiedCarbonFindings(findings, transcriptMetadata = {}) {
     if (isCarbonBuilderFinding && !hasCarbonBuilderSkillReads) {
       filteredCount++;
       carbonBuilderRejectedCount++;
-      console.log(`❌ FILTERED carbon-builder finding without skill file reads: "${finding.title}"`);
-      console.log('   Reason: verificationSource=carbon-builder but no .bob/skills/carbon-builder/ read_file calls were detected in the transcript');
+      console.log(
+        `❌ FILTERED carbon-builder finding without skill file reads: "${finding.title}"`
+      );
+      console.log(
+        '   Reason: verificationSource=carbon-builder but no .bob/skills/carbon-builder/ read_file calls were detected in the transcript'
+      );
       return false;
     }
 
@@ -197,13 +206,20 @@ function filterUnverifiedCarbonFindings(findings, transcriptMetadata = {}) {
     // hallucinated verification and the finding is filtered out.
     if (isMcpVerified) {
       const evidence = (finding.mcpEvidence || '').trim();
-      const isVague = !evidence ||
-        /^(verified|confirmed|carbon mcp (confirm|verif)|mcp tools? (confirm|verif)|checked with)/i.test(evidence);
+      const isVague =
+        !evidence ||
+        /^(verified|confirmed|carbon mcp (confirm|verif)|mcp tools? (confirm|verif)|checked with)/i.test(
+          evidence
+        );
 
       if (isVague) {
         filteredCount++;
-        console.log(`❌ FILTERED hallucinated verification for: "${finding.title}"`);
-        console.log(`   mcpEvidence is absent or non-specific — omitting finding`);
+        console.log(
+          `❌ FILTERED hallucinated verification for: "${finding.title}"`
+        );
+        console.log(
+          `   mcpEvidence is absent or non-specific — omitting finding`
+        );
         return false;
       }
 
@@ -217,7 +233,9 @@ function filterUnverifiedCarbonFindings(findings, transcriptMetadata = {}) {
     // REJECT: Unverified Carbon claims are not allowed — omit them.
     filteredCount++;
     console.log(`❌ FILTERED unverified Carbon finding: "${finding.title}"`);
-    console.log(`   Reason: carbonVerified=${finding.carbonVerified}, verificationSource=${finding.verificationSource}`);
+    console.log(
+      `   Reason: carbonVerified=${finding.carbonVerified}, verificationSource=${finding.verificationSource}`
+    );
     return false;
   });
 
@@ -229,14 +247,20 @@ function filterUnverifiedCarbonFindings(findings, transcriptMetadata = {}) {
   // does NOT split "verified" into skill-vs-MCP. Whether the skill was engaged is
   // reported once at the run level (the "🔬 loaded and used" line above).
   if (carbonSpecificCount > 0) {
-    console.log(`\n📊 Carbon verification (claims checked against Carbon MCP, the evidence source):`);
+    console.log(
+      `\n📊 Carbon verification (claims checked against Carbon MCP, the evidence source):`
+    );
     console.log(`   Findings in this review: ${findings.length}`);
     // One breakdown line — claims = kept + dropped — rather than separate "claims"
     // and "kept" lines that read as identical whenever nothing is dropped.
-    console.log(`   Carbon-specific claims: ${carbonSpecificCount} — ${carbonVerifiedCount} verified & kept, ${filteredCount} dropped`);
+    console.log(
+      `   Carbon-specific claims: ${carbonSpecificCount} — ${carbonVerifiedCount} verified & kept, ${filteredCount} dropped`
+    );
 
     if (filteredCount > 0) {
-      console.log(`   ${filteredCount} dropped for missing or unconvincing evidence — to fix, verify Carbon claims via Carbon MCP and quote the tool response as evidence.`);
+      console.log(
+        `   ${filteredCount} dropped for missing or unconvincing evidence — to fix, verify Carbon claims via Carbon MCP and quote the tool response as evidence.`
+      );
     }
   }
 
@@ -249,8 +273,8 @@ function filterUnverifiedCarbonFindings(findings, transcriptMetadata = {}) {
       carbonBuilderVerified: carbonBuilderVerifiedCount,
       carbonBuilderRejected: carbonBuilderRejectedCount,
       filtered: filteredCount,
-      skillFilesRead
-    }
+      skillFilesRead,
+    },
   };
 }
 
@@ -268,48 +292,53 @@ function repairTruncatedJSON(jsonStr) {
   } catch (e) {
     // JSON is invalid, attempt repair
     console.log('🔧 Attempting to repair truncated JSON...');
-    
+
     // Strategy: Find the last complete finding and truncate there
     // A complete finding ends with either "},\n" or "}\n]"
-    
+
     // Look for the last occurrence of a complete finding pattern
     // Pattern 1: },\n  { (another finding follows)
     // Pattern 2: }\n] (last finding in array)
     // Pattern 3: }, (simple comma separator)
-    
+
     let repaired = jsonStr;
     let truncateAt = -1;
-    
+
     // Find last complete finding by looking for "}," pattern
     // We need to ensure we're not inside a string when we find this
     let inString = false;
     let escapeNext = false;
     let lastValidComma = -1;
-    
+
     for (let i = 0; i < repaired.length; i++) {
       const char = repaired[i];
-      
+
       if (escapeNext) {
         escapeNext = false;
         continue;
       }
-      
+
       if (char === '\\') {
         escapeNext = true;
         continue;
       }
-      
+
       if (char === '"') {
         inString = !inString;
         continue;
       }
-      
+
       // Look for "}," pattern outside of strings
-      if (!inString && char === '}' && i + 1 < repaired.length && repaired[i + 1] === ',') {
+      if (
+        !inString &&
+        char === '}' &&
+        i + 1 < repaired.length &&
+        repaired[i + 1] === ','
+      ) {
         lastValidComma = i + 1; // Position after the comma
       }
     }
-    
+
     // If we found a complete finding, truncate there
     if (lastValidComma !== -1) {
       repaired = repaired.substring(0, lastValidComma);
@@ -327,31 +356,31 @@ function repairTruncatedJSON(jsonStr) {
         }
       }
     }
-    
+
     // Now count what we need to close
     let braceCount = 0;
     let bracketCount = 0;
     inString = false;
     escapeNext = false;
-    
+
     for (let i = 0; i < repaired.length; i++) {
       const char = repaired[i];
-      
+
       if (escapeNext) {
         escapeNext = false;
         continue;
       }
-      
+
       if (char === '\\') {
         escapeNext = true;
         continue;
       }
-      
+
       if (char === '"') {
         inString = !inString;
         continue;
       }
-      
+
       if (!inString) {
         if (char === '{') braceCount++;
         if (char === '}') braceCount--;
@@ -359,19 +388,19 @@ function repairTruncatedJSON(jsonStr) {
         if (char === ']') bracketCount--;
       }
     }
-    
+
     // Close any open brackets first (for arrays)
     while (bracketCount > 0) {
       repaired += ']';
       bracketCount--;
     }
-    
+
     // Close any open braces (for objects)
     while (braceCount > 0) {
       repaired += '}';
       braceCount--;
     }
-    
+
     // Try to parse the repaired JSON
     try {
       JSON.parse(repaired);
@@ -489,8 +518,10 @@ function parseReviewOutput(agentOutput) {
     //   - backtick-wrap: `file.ts:66-75 — description — Category N — pending`
     //   - backtick file: `file.ts — description — Category N — pending`
     //   - SKIP:          SKIP file.ts — fixture
-    const preJson = jsonStart !== -1 ? agentOutput.slice(0, jsonStart) : agentOutput;
-    const hasCatalogue = /^`?(-\s+)?(SKIP |NO-FINDINGS |\[.+?\]\s*—|\S+\.\S*\s*—)/m.test(preJson);
+    const preJson =
+      jsonStart !== -1 ? agentOutput.slice(0, jsonStart) : agentOutput;
+    const hasCatalogue =
+      /^`?(-\s+)?(SKIP |NO-FINDINGS |\[.+?\]\s*—|\S+\.\S*\s*—)/m.test(preJson);
 
     // Detect whether Step 2 resolutions were written visibly.
     // hasPendingItems: true when any catalogue line ends with "— Category N — pending"
@@ -509,10 +540,12 @@ function parseReviewOutput(agentOutput) {
     const lastCatalogueEntry = lastCatalogueMatches
       ? lastCatalogueMatches[lastCatalogueMatches.length - 1]
       : null;
-    const lastCatalogueEnd = lastCatalogueEntry !== null
-      ? preJson.lastIndexOf(lastCatalogueEntry) + lastCatalogueEntry.length
-      : -1;
-    const step2Window = lastCatalogueEnd !== -1 ? preJson.slice(lastCatalogueEnd) : '';
+    const lastCatalogueEnd =
+      lastCatalogueEntry !== null
+        ? preJson.lastIndexOf(lastCatalogueEntry) + lastCatalogueEntry.length
+        : -1;
+    const step2Window =
+      lastCatalogueEnd !== -1 ? preJson.slice(lastCatalogueEnd) : '';
 
     // hasResolutions: true when at least one visible resolution line appears after
     // the last catalogue entry, or when there were no pending items to resolve.
@@ -523,7 +556,7 @@ function parseReviewOutput(agentOutput) {
     // hasStep2: false signals a collapsed-thinking run where pending items were
     // never visibly resolved — treat as unreliable, same as hasCatalogue=false.
     const hasStep2 = !hasPendingItems || hasResolutions;
-    
+
     if (jsonStart === -1) {
       // Check if Bob called attempt_completion with a prose summary instead of
       // writing the JSON block. This happens when the agent finds no issues and
@@ -536,10 +569,14 @@ function parseReviewOutput(agentOutput) {
       // whitespace and any stray boundary characters safely.
       const completionMatch =
         agentOutput.match(/\[attempt_completion\]\s*Result:\s*([\s\S]+)/) ||
-        agentOutput.match(/\[using tool attempt_completion:.*?\]\s*---output---\s*([\s\S]+?)\s*---output---/);
+        agentOutput.match(
+          /\[using tool attempt_completion:.*?\]\s*---output---\s*([\s\S]+?)\s*---output---/
+        );
       if (completionMatch) {
         const prose = completionMatch[1].trim();
-        console.warn('⚠️  No BEGIN_REVIEW_JSON marker — agent used attempt_completion. Synthesising empty-findings review.');
+        console.warn(
+          '⚠️  No BEGIN_REVIEW_JSON marker — agent used attempt_completion. Synthesising empty-findings review.'
+        );
         return {
           summaryMarkdown: prose,
           findings: [],
@@ -551,14 +588,15 @@ function parseReviewOutput(agentOutput) {
             carbonBuilderVerified: 0,
             carbonBuilderRejected: 0,
             filtered: 0,
-            skillFilesRead
+            skillFilesRead,
           },
           // New fields — safe defaults so callers never dereference undefined
           hasCatalogue: false,
           recommendation: 'looks-good',
           recommendationRationale: 'Agent produced no structured findings.',
-          catalogueWarning: 'Agent used attempt_completion — no structured catalogue was produced.',
-          findingsTable: []
+          catalogueWarning:
+            'Agent used attempt_completion — no structured catalogue was produced.',
+          findingsTable: [],
         };
       }
 
@@ -566,11 +604,11 @@ function parseReviewOutput(agentOutput) {
       console.error('Agent output preview:', agentOutput.substring(0, 500));
       return null;
     }
-    
+
     // Extract JSON - try to find END marker, but if not found, take everything
     const afterMarker = jsonStart + 'BEGIN_REVIEW_JSON'.length;
     const jsonEnd = agentOutput.indexOf('END_REVIEW_JSON', afterMarker);
-    
+
     let jsonStr;
     if (jsonEnd !== -1) {
       // Found END marker - extract between markers
@@ -578,19 +616,29 @@ function parseReviewOutput(agentOutput) {
     } else {
       // No END marker - take everything after BEGIN marker and try to parse
       jsonStr = agentOutput.substring(afterMarker).trim();
-      console.warn('⚠️  No END_REVIEW_JSON marker, attempting to parse incomplete JSON');
-      
+      console.warn(
+        '⚠️  No END_REVIEW_JSON marker, attempting to parse incomplete JSON'
+      );
+
       // Try to repair truncated JSON
       jsonStr = repairTruncatedJSON(jsonStr);
     }
-    
+
     // Strip leading '+' diff prefixes — these appear when the agent writes the
     // JSON to a file via write_to_file and the tool echoes a unified diff to
     // stdout. Every line in the diff output is prefixed with '+', which makes
     // JSON.parse fail. Strip the prefix when every non-empty line starts with '+'.
-    const nonEmptyLines = jsonStr.split('\n').filter(l => l.trim().length > 0);
-    if (nonEmptyLines.length > 0 && nonEmptyLines.every(l => l.startsWith('+'))) {
-      jsonStr = jsonStr.split('\n').map(l => l.startsWith('+') ? l.slice(1) : l).join('\n');
+    const nonEmptyLines = jsonStr
+      .split('\n')
+      .filter((l) => l.trim().length > 0);
+    if (
+      nonEmptyLines.length > 0 &&
+      nonEmptyLines.every((l) => l.startsWith('+'))
+    ) {
+      jsonStr = jsonStr
+        .split('\n')
+        .map((l) => (l.startsWith('+') ? l.slice(1) : l))
+        .join('\n');
       console.warn('⚠️  Stripped write_to_file diff prefixes from JSON output');
     }
 
@@ -600,9 +648,12 @@ function parseReviewOutput(agentOutput) {
     // Step 2 — walk char-by-char: any bare \n that remains inside a JSON string
     //           is a line-wrap artifact; replace it with a space so the value
     //           reads as a single unbroken string (matching v1 behaviour).
-    if (jsonStr.split('\n').some(l => l !== l.trimEnd())) {
+    if (jsonStr.split('\n').some((l) => l !== l.trimEnd())) {
       console.warn('⚠️  Detected v2 line-padding in JSON output — normalising');
-      const trimmedLines = jsonStr.split('\n').map(l => l.trimEnd()).join('\n');
+      const trimmedLines = jsonStr
+        .split('\n')
+        .map((l) => l.trimEnd())
+        .join('\n');
       let fixed = '';
       let inStr = false;
       let i = 0;
@@ -642,7 +693,9 @@ function parseReviewOutput(agentOutput) {
       // same line. If it doesn't (i.e. the closing " is missing or there are bare
       // interior quotes), replace all bare " inside the value with ' to sanitise it.
       // Accumulate continuation lines until a properly-closing line is found.
-      try { JSON.parse(jsonStr); } catch (_) {
+      try {
+        JSON.parse(jsonStr);
+      } catch (_) {
         const lines = jsonStr.split('\n');
         const rebuilt = [];
         let i2 = 0;
@@ -667,9 +720,15 @@ function parseReviewOutput(agentOutput) {
             const rawValue = assembled.slice(keyPart.length);
             // rawValue should be: "...content...", or "...content..."
             // Try parsing it as a standalone JSON string
-            const trailingStrip = rawValue.trimEnd().replace(/,$/, '').trimEnd();
+            const trailingStrip = rawValue
+              .trimEnd()
+              .replace(/,$/, '')
+              .trimEnd();
             let isClean = false;
-            try { JSON.parse(trailingStrip); isClean = true; } catch (_2) {}
+            try {
+              JSON.parse(trailingStrip);
+              isClean = true;
+            } catch (_2) {}
 
             if (!isClean) {
               // The value has unescaped interior quotes. Reconstruct it by:
@@ -681,7 +740,9 @@ function parseReviewOutput(agentOutput) {
               const sanitised = inner.replace(/\\"/g, "'").replace(/"/g, "'");
               const trailingComma = rawValue.trimEnd().endsWith(',') ? ',' : '';
               rebuilt.push(keyPart + '"' + sanitised + '"' + trailingComma);
-              console.warn(`⚠️  Sanitised unescaped quotes in field (lines ${i2}–${j - 1})`);
+              console.warn(
+                `⚠️  Sanitised unescaped quotes in field (lines ${i2}–${j - 1})`
+              );
               i2 = j;
               continue;
             }
@@ -698,16 +759,16 @@ function parseReviewOutput(agentOutput) {
     // Look for the first '{' and last '}'
     const firstBrace = jsonStr.indexOf('{');
     const lastBrace = jsonStr.lastIndexOf('}');
-    
+
     if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) {
       console.error('❌ No valid JSON object found in extracted content');
       console.error('Extracted content preview:', jsonStr.substring(0, 200));
       return null;
     }
-    
+
     // Extract only the JSON object
     jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
-    
+
     // Record the exact string handed to JSON.parse so the catch block's
     // position-based diagnostic points at the real JSON, not the raw transcript.
     jsonForDiagnostics = jsonStr;
@@ -726,7 +787,9 @@ function parseReviewOutput(agentOutput) {
         review = JSON.parse(escapeRepaired);
         jsonStr = escapeRepaired;
         jsonForDiagnostics = escapeRepaired;
-        console.warn('⚠️  Escaped invalid backslash sequence(s) in JSON output');
+        console.warn(
+          '⚠️  Escaped invalid backslash sequence(s) in JSON output'
+        );
       } catch (_) {
         // Last-resort fallback — jsonrepair: robust general syntactic repair
         // (unescaped quotes, trailing commas, bad escapes, missing quotes). Reached
@@ -760,19 +823,29 @@ function parseReviewOutput(agentOutput) {
     // 1. Synthesise summaryMarkdown when absent
     if (!review.summaryMarkdown && Array.isArray(review.findings)) {
       const count = review.findings.length;
-      review.summaryMarkdown = count > 0
-        ? `PR review produced ${count} finding(s). summaryMarkdown was absent from agent output — normalised by parser.`
-        : 'No findings. summaryMarkdown was absent from agent output — normalised by parser.';
-      console.warn('⚠️  summaryMarkdown absent — synthesised from finding count');
+      review.summaryMarkdown =
+        count > 0
+          ? `PR review produced ${count} finding(s). summaryMarkdown was absent from agent output — normalised by parser.`
+          : 'No findings. summaryMarkdown was absent from agent output — normalised by parser.';
+      console.warn(
+        '⚠️  summaryMarkdown absent — synthesised from finding count'
+      );
     }
 
     // 2. Normalise per-finding fields
-    const SEVERITY_MAP = { error: 'blocking', warning: 'major', info: 'minor', hint: 'nit' };
+    const SEVERITY_MAP = {
+      error: 'blocking',
+      warning: 'major',
+      info: 'minor',
+      hint: 'nit',
+    };
     if (Array.isArray(review.findings)) {
       for (const f of review.findings) {
         // severity: "error" → "blocking", "warning" → "major", etc.
         if (f.severity && SEVERITY_MAP[f.severity]) {
-          console.warn(`⚠️  Normalised severity "${f.severity}" → "${SEVERITY_MAP[f.severity]}"`);
+          console.warn(
+            `⚠️  Normalised severity "${f.severity}" → "${SEVERITY_MAP[f.severity]}"`
+          );
           f.severity = SEVERITY_MAP[f.severity];
         }
         // title: prefer "title", fall back to "message"
@@ -781,11 +854,14 @@ function parseReviewOutput(agentOutput) {
         }
         // body: prefer "body", fall back to "description", then "suggestion"
         if (!f.body) {
-          f.body = [f.description, f.suggestion].filter(Boolean).join(' ') || '';
+          f.body =
+            [f.description, f.suggestion].filter(Boolean).join(' ') || '';
         }
         // carbonVerified: default false when absent
         if (typeof f.carbonVerified !== 'boolean') {
-          f.carbonVerified = f.verificationSource === 'carbon-mcp' || f.verificationSource === 'carbon-builder';
+          f.carbonVerified =
+            f.verificationSource === 'carbon-mcp' ||
+            f.verificationSource === 'carbon-builder';
         }
       }
     }
@@ -796,29 +872,32 @@ function parseReviewOutput(agentOutput) {
       console.error('❌ Invalid review: missing or invalid summaryMarkdown');
       return null;
     }
-    
+
     if (!Array.isArray(review.findings)) {
       console.error('❌ Invalid review: findings must be an array');
       return null;
     }
-    
+
     // Validate each finding
     for (const finding of review.findings) {
-      if (!finding.severity || !['blocking', 'major', 'minor', 'nit'].includes(finding.severity)) {
+      if (
+        !finding.severity ||
+        !['blocking', 'major', 'minor', 'nit'].includes(finding.severity)
+      ) {
         console.error('❌ Invalid finding: invalid severity', finding);
         return null;
       }
-      
+
       if (!finding.file || typeof finding.file !== 'string') {
         console.error('❌ Invalid finding: missing or invalid file', finding);
         return null;
       }
-      
+
       if (!finding.title || typeof finding.title !== 'string') {
         console.error('❌ Invalid finding: missing or invalid title', finding);
         return null;
       }
-      
+
       if (!finding.body || typeof finding.body !== 'string') {
         console.error('❌ Invalid finding: missing or invalid body', finding);
         return null;
@@ -826,14 +905,18 @@ function parseReviewOutput(agentOutput) {
 
       // Soft warning: non-nit findings with very short bodies likely lack an actionable suggestion
       if (finding.body.length < 40 && finding.severity !== 'nit') {
-        console.warn(`⚠️  Finding "${finding.title}" has a short body (${finding.body.length} chars) — may be missing an actionable suggestion`);
+        console.warn(
+          `⚠️  Finding "${finding.title}" has a short body (${finding.body.length} chars) — may be missing an actionable suggestion`
+        );
       }
     }
-    
+
     // Filter unverified Carbon findings with strict enforcement
-    const filterResult = filterUnverifiedCarbonFindings(review.findings, { skillFilesRead });
+    const filterResult = filterUnverifiedCarbonFindings(review.findings, {
+      skillFilesRead,
+    });
     review.findings = filterResult.filtered;
-    
+
     // Store verification stats for reporting
     review.verificationStats = filterResult.stats;
 
@@ -855,54 +938,62 @@ function parseReviewOutput(agentOutput) {
     //   2. Pending items exist but no visible resolutions (Step 2 collapsed into thinking)
     //   3. Clean run — no warning
     review.catalogueWarning = !hasCatalogue
-      ? 'No file catalogue was found in this review\'s output. The agent may have skipped Step 1 analysis. Zero findings here cannot be confirmed as a clean review — re-running is recommended.'
+      ? "No file catalogue was found in this review's output. The agent may have skipped Step 1 analysis. Zero findings here cannot be confirmed as a clean review — re-running is recommended."
       : !hasStep2
         ? 'Pending catalogue items were detected but no Step 2 resolution lines were visible in the agent output — resolutions may have been collapsed into thinking blocks. Findings here may be incomplete — re-running is recommended.'
         : null;
 
     // Build findingsTable — typed array of objects, never Markdown strings.
     // formatSummaryComment renders this as a Markdown table; agent never touches pipes.
-    review.findingsTable = review.findings.map(f => ({
-      area: (f.verificationSource === 'carbon-mcp' || f.verificationSource === 'carbon-builder') ? 'Carbon API' : 'General',
-      category: (f.verificationSource === 'carbon-mcp' || f.verificationSource === 'carbon-builder') ? 'Cat 1' : 'Cat 2',
+    review.findingsTable = review.findings.map((f) => ({
+      area:
+        f.verificationSource === 'carbon-mcp' ||
+        f.verificationSource === 'carbon-builder'
+          ? 'Carbon API'
+          : 'General',
+      category:
+        f.verificationSource === 'carbon-mcp' ||
+        f.verificationSource === 'carbon-builder'
+          ? 'Cat 1'
+          : 'Cat 2',
       severity: f.severity,
       title: f.title,
-      file: f.file
+      file: f.file,
     }));
 
     return review;
-    
   } catch (error) {
     console.error('❌ Error parsing review output:', error.message);
-    
+
     // Show more context for debugging
     if (error instanceof SyntaxError) {
       console.error('\n📋 Debugging Information:');
       console.error('Error type: JSON Syntax Error');
-      
+
       // Try to show the problematic area. A JSON SyntaxError's position is a byte
       // offset into the string handed to JSON.parse (the extracted JSON), not the
       // raw transcript — slice that so the context points at the real error site.
       const match = error.message.match(/position (\d+)/);
       if (match) {
         const position = parseInt(match[1]);
-        const source = jsonForDiagnostics != null ? jsonForDiagnostics : agentOutput;
+        const source =
+          jsonForDiagnostics != null ? jsonForDiagnostics : agentOutput;
         const start = Math.max(0, position - 50);
         const end = Math.min(source.length, position + 50);
         console.error(`Context around error position ${position}:`);
         console.error(source.substring(start, end));
       }
-      
+
       // Show first 500 chars of agent output
       console.error('\nAgent output preview (first 500 chars):');
       console.error(agentOutput.substring(0, 500));
-      
+
       // Check for markers
       const hasBegin = agentOutput.includes('BEGIN_REVIEW_JSON');
       const hasEnd = agentOutput.includes('END_REVIEW_JSON');
       console.error(`\nMarkers found: BEGIN=${hasBegin}, END=${hasEnd}`);
     }
-    
+
     return null;
   }
 }
@@ -926,7 +1017,10 @@ function parseReviewOutput(agentOutput) {
  * @param {Object}  opts.verificationStats - { carbonSpecific, carbonVerified, ... }
  * @returns {{ recommendation: string, recommendationRationale: string }}
  */
-function computeRecommendation(findings, { hasCatalogue, hasStep2 = true, verificationStats = {} }) {
+function computeRecommendation(
+  findings,
+  { hasCatalogue, hasStep2 = true, verificationStats = {} }
+) {
   const counts = countBySeverity(findings);
 
   // Rule 1 — no catalogue: review reliability is unknown
@@ -934,7 +1028,7 @@ function computeRecommendation(findings, { hasCatalogue, hasStep2 = true, verifi
     return {
       recommendation: 'suggested-improvements',
       recommendationRationale:
-        'Review reliability is uncertain — no Step 1 file catalogue was detected in the agent output.'
+        'Review reliability is uncertain — no Step 1 file catalogue was detected in the agent output.',
     };
   }
 
@@ -943,7 +1037,7 @@ function computeRecommendation(findings, { hasCatalogue, hasStep2 = true, verifi
     return {
       recommendation: 'suggested-improvements',
       recommendationRationale:
-        'Review reliability is uncertain — pending catalogue items were not visibly resolved. Step 2 may have been collapsed into thinking blocks.'
+        'Review reliability is uncertain — pending catalogue items were not visibly resolved. Step 2 may have been collapsed into thinking blocks.',
     };
   }
 
@@ -961,17 +1055,16 @@ function computeRecommendation(findings, { hasCatalogue, hasStep2 = true, verifi
     return {
       recommendation: 'suggested-improvements',
       recommendationRationale:
-        'Carbon-specific findings may be incomplete — Carbon MCP returned no verified results during this run.'
+        'Carbon-specific findings may be incomplete — Carbon MCP returned no verified results during this run.',
     };
   }
 
   // Rule 3 — any blocking finding
   if (counts.blocking >= 1) {
-    const ex = findings.find(f => f.severity === 'blocking');
+    const ex = findings.find((f) => f.severity === 'blocking');
     return {
       recommendation: 'consider-revising',
-      recommendationRationale:
-        `${counts.blocking} blocking finding${counts.blocking > 1 ? 's' : ''}: "${ex ? ex.title : 'see findings below'}"`
+      recommendationRationale: `${counts.blocking} blocking finding${counts.blocking > 1 ? 's' : ''}: "${ex ? ex.title : 'see findings below'}"`,
     };
   }
 
@@ -979,8 +1072,7 @@ function computeRecommendation(findings, { hasCatalogue, hasStep2 = true, verifi
   if (counts.major >= 2) {
     return {
       recommendation: 'consider-revising',
-      recommendationRationale:
-        `${counts.major} major findings that should be addressed before merge.`
+      recommendationRationale: `${counts.major} major findings that should be addressed before merge.`,
     };
   }
 
@@ -992,18 +1084,18 @@ function computeRecommendation(findings, { hasCatalogue, hasStep2 = true, verifi
     if (counts.minor) parts.push(`${counts.minor} minor`);
     return {
       recommendation: 'suggested-improvements',
-      recommendationRationale:
-        `${total} finding${total > 1 ? 's' : ''} worth considering: ${parts.join(', ')}.`
+      recommendationRationale: `${total} finding${total > 1 ? 's' : ''} worth considering: ${parts.join(', ')}.`,
     };
   }
 
   // Rule 6 — nits only or no findings
-  const nitNote = counts.nit > 0
-    ? `${counts.nit} optional nit${counts.nit > 1 ? 's' : ''} noted.`
-    : 'No issues found.';
+  const nitNote =
+    counts.nit > 0
+      ? `${counts.nit} optional nit${counts.nit > 1 ? 's' : ''} noted.`
+      : 'No issues found.';
   return {
     recommendation: 'looks-good',
-    recommendationRationale: nitNote
+    recommendationRationale: nitNote,
   };
 }
 
@@ -1018,16 +1110,16 @@ function countBySeverity(findings) {
     blocking: 0,
     major: 0,
     minor: 0,
-    nit: 0
+    nit: 0,
   };
-  
-  findings.forEach(finding => {
+
+  findings.forEach((finding) => {
     const severity = finding.severity || 'minor';
     if (counts[severity] !== undefined) {
       counts[severity]++;
     }
   });
-  
+
   return counts;
 }
 
@@ -1038,5 +1130,5 @@ module.exports = {
   escapeInvalidJsonEscapes,
   looksCarbonSpecific,
   countBySeverity,
-  computeRecommendation
+  computeRecommendation,
 };

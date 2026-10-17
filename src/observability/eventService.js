@@ -35,14 +35,11 @@ const ERROR_EVENTS = new Set([
   'agent_timeout',
   'parse_failed',
 ]);
-const WARN_EVENTS = new Set([
-  'skill_unavailable',
-  'inline_post_failed',
-]);
+const WARN_EVENTS = new Set(['skill_unavailable', 'inline_post_failed']);
 
 function resolveLevel(event_type) {
   if (ERROR_EVENTS.has(event_type)) return 'error';
-  if (WARN_EVENTS.has(event_type))  return 'warn';
+  if (WARN_EVENTS.has(event_type)) return 'warn';
   return 'info';
 }
 
@@ -50,7 +47,7 @@ function resolveLevel(event_type) {
 function currentIndex() {
   const now = new Date();
   const yyyy = now.getUTCFullYear();
-  const mm   = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
   return `carbon-monitor-events-${yyyy}.${mm}`;
 }
 
@@ -83,18 +80,18 @@ function scrubPayload(payload) {
 async function emitEvent({
   event_type,
   correlation_id,
-  repo       = '',
-  pr_number  = null,
-  agent      = '',
+  repo = '',
+  pr_number = null,
+  agent = '',
   commit_sha = '',
-  payload    = {},
+  payload = {},
 }) {
-  const level     = resolveLevel(event_type);
+  const level = resolveLevel(event_type);
   const timestamp = new Date().toISOString();
-  const event_id  = randomUUID(); // unique per document — enables deduplication in Kibana
+  const event_id = randomUUID(); // unique per document — enables deduplication in Kibana
 
   const doc = {
-    doc_type:       'carbon_monitor_event',
+    doc_type: 'carbon_monitor_event',
     event_id,
     event_type,
     level,
@@ -104,7 +101,7 @@ async function emitEvent({
     pr_number,
     agent,
     commit_sha,
-    payload,  // full payload goes to console
+    payload, // full payload goes to console
   };
 
   // Console: one compact line per event. The full document (including raw
@@ -112,26 +109,32 @@ async function emitEvent({
   // watching live logs. Key fields only — nothing that needs a JSON parser.
   const label = `[metrics:${event_type}]`;
   const parts = [`correlationId=${correlation_id}`];
-  if (repo)      parts.push(`repo=${repo}`);
+  if (repo) parts.push(`repo=${repo}`);
   if (pr_number) parts.push(`pr=${pr_number}`);
-  if (agent)     parts.push(`agent=${agent}`);
+  if (agent) parts.push(`agent=${agent}`);
   // Surface the most useful payload fields when present.
-  if (payload.recommendation) parts.push(`recommendation=${payload.recommendation}`);
-  if (payload.findings_total  != null) parts.push(`findings=${payload.findings_total}`);
-  if (payload.token_total     != null) parts.push(`tokens=${payload.token_total.toLocaleString()}`);
-  if (payload.duration_ms     != null) parts.push(`duration=${Math.round(payload.duration_ms / 1000)}s`);
-  if (payload.prs_reviewed    != null) parts.push(`prsReviewed=${payload.prs_reviewed}`);
-  if (payload.error)                   parts.push(`error=${payload.error.split('\n')[0].substring(0, 120)}`);
+  if (payload.recommendation)
+    parts.push(`recommendation=${payload.recommendation}`);
+  if (payload.findings_total != null)
+    parts.push(`findings=${payload.findings_total}`);
+  if (payload.token_total != null)
+    parts.push(`tokens=${payload.token_total.toLocaleString()}`);
+  if (payload.duration_ms != null)
+    parts.push(`duration=${Math.round(payload.duration_ms / 1000)}s`);
+  if (payload.prs_reviewed != null)
+    parts.push(`prsReviewed=${payload.prs_reviewed}`);
+  if (payload.error)
+    parts.push(`error=${payload.error.split('\n')[0].substring(0, 120)}`);
   const summary = parts.join(' ');
-  if      (level === 'error') console.error(`${label} ${summary}`);
-  else if (level === 'warn')  console.warn(`${label} ${summary}`);
-  else                        console.log(`${label} ${summary}`);
+  if (level === 'error') console.error(`${label} ${summary}`);
+  else if (level === 'warn') console.warn(`${label} ${summary}`);
+  else console.log(`${label} ${summary}`);
 
   // ES receives a scrubbed copy — no raw stack traces or internal paths
   const esDoc = { ...doc, payload: scrubPayload(payload) };
 
-  await esCall(
-    (client) => client.index({ index: currentIndex(), document: esDoc }),
+  await esCall((client) =>
+    client.index({ index: currentIndex(), document: esDoc })
   );
 }
 

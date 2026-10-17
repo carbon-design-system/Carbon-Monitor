@@ -6,7 +6,11 @@
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
-const { MAX_DIFF_CHARS, CHARS_PER_TOKEN, ISSUE_CONTEXT_TOKENS } = require('./constants');
+const {
+  MAX_DIFF_CHARS,
+  CHARS_PER_TOKEN,
+  ISSUE_CONTEXT_TOKENS,
+} = require('./constants');
 const { buildReviewPrompt } = require('./reviewPrompt');
 
 /**
@@ -46,9 +50,9 @@ function getWorkspaceRoot() {
 function getCurrentBobSettingsPath() {
   const possiblePaths = [
     path.join(process.cwd(), '.bob', 'settings.json'),
-    path.join(os.homedir(), '.bob', 'settings.json')
+    path.join(os.homedir(), '.bob', 'settings.json'),
   ];
-  
+
   for (const configPath of possiblePaths) {
     try {
       if (require('fs').existsSync(configPath)) {
@@ -58,7 +62,7 @@ function getCurrentBobSettingsPath() {
       // Continue to next path
     }
   }
-  
+
   return null;
 }
 
@@ -71,11 +75,11 @@ async function createDefaultBobSettings(tempDir) {
     mcpServers: {
       'carbon-mcp-server': {
         command: 'npx',
-        args: ['-y', 'carbon-mcp']
-      }
-    }
+        args: ['-y', 'carbon-mcp'],
+      },
+    },
   };
-  
+
   await fs.writeFile(
     path.join(tempDir, '.bob', 'settings.json'),
     JSON.stringify(bobSettings, null, 2)
@@ -90,11 +94,11 @@ async function createDefaultBobSettings(tempDir) {
 async function copyDirectory(src, dest) {
   await fs.mkdir(dest, { recursive: true });
   const entries = await fs.readdir(src, { withFileTypes: true });
-  
+
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
-    
+
     if (entry.isDirectory()) {
       await copyDirectory(srcPath, destPath);
     } else {
@@ -129,11 +133,7 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
     // 0600, not the 0644 a bare writeFile would produce: this is the only file
     // in the bundle that carries a live credential, and it must not be the most
     // readable one. The bundle directory is already 0700 from mkdtemp.
-    await fs.writeFile(
-      path.join(tempDir, '.env'),
-      envContent,
-      { mode: 0o600 }
-    );
+    await fs.writeFile(path.join(tempDir, '.env'), envContent, { mode: 0o600 });
 
     // 2. Create .bob directory for rules (carbon-mcp is configured globally via streamable HTTP)
     const bobDir = path.join(tempDir, '.bob');
@@ -154,7 +154,7 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
     // 5. Write diff (with truncation if needed)
     let diffToWrite = diff;
     let diffTruncated = false;
-    
+
     if (diff.length > MAX_DIFF_CHARS) {
       diffTruncated = true;
       diffToWrite = diff.substring(0, MAX_DIFF_CHARS);
@@ -162,11 +162,8 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
       diffToWrite += `Original size: ${diff.length} chars, truncated to: ~${Math.round(MAX_DIFF_CHARS / CHARS_PER_TOKEN / 1000)}k tokens (${MAX_DIFF_CHARS} chars)\n`;
       diffToWrite += `View full diff at: https://github.com/${owner}/${repo}/pull/${pr.number}/files\n`;
     }
-    
-    await fs.writeFile(
-      path.join(tempDir, 'diff.patch'),
-      diffToWrite
-    );
+
+    await fs.writeFile(path.join(tempDir, 'diff.patch'), diffToWrite);
 
     // 6. Fetch linked issue context if a GitHub client is available
     let issueContextSection = '';
@@ -174,7 +171,7 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
       const issueContext = await client.fetchLinkedIssueContext({
         owner,
         repo,
-        prBody: pr.body
+        prBody: pr.body,
       });
 
       if (issueContext.found) {
@@ -194,7 +191,9 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
           // If lastIndexOf returns -1 (no newlines — wall-of-text body), fall back
           // to the hard char cut. Guard > 0 also handles a degenerate \n-at-start case.
           const snapPos = lastNewline > 0 ? lastNewline : maxIssueChars;
-          issueContent = issueContent.substring(0, snapPos) + '\n\n[... issue context truncated ...]';
+          issueContent =
+            issueContent.substring(0, snapPos) +
+            '\n\n[... issue context truncated ...]';
         }
 
         issueContextSection = `\n## Linked Issue Context\n\n${issueContent}\n`;
@@ -219,7 +218,7 @@ ${pr.body || 'No description provided'}
 ${issueContextSection}
 ## Changed Files
 
-${files.map(f => `- \`${f.filename}\` (+${f.additions}/-${f.deletions})`).join('\n')}
+${files.map((f) => `- \`${f.filename}\` (+${f.additions}/-${f.deletions})`).join('\n')}
 
 ## Diff
 
@@ -234,10 +233,7 @@ ${diffToWrite}
     // reported numbers back to new-file line numbers via the secondary lookup.
     const mdDiffStartLine = prSummary.split('\n').indexOf('```diff') + 1;
 
-    await fs.writeFile(
-      path.join(tempDir, 'PR_REVIEW_REQUEST.md'),
-      prSummary
-    );
+    await fs.writeFile(path.join(tempDir, 'PR_REVIEW_REQUEST.md'), prSummary);
 
     // 6. Write agent rules (for all agent types)
     const rules = `# Carbon PR Review Agent Rules
@@ -272,22 +268,28 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
     // Write agent rules for Bob
     const bobRulesDir = path.join(tempDir, '.bob', 'rules');
     await fs.mkdir(bobRulesDir, { recursive: true });
-    await fs.writeFile(
-      path.join(bobRulesDir, '01-output.md'),
-      rules
-    );
+    await fs.writeFile(path.join(bobRulesDir, '01-output.md'), rules);
 
     // Copy the carbon-builder skill into the bundle workspace.
     // Bob resolves skills from the CWD's .bob/skills/ directory; without this
     // copy the local .bob/ shadows ~/.bob/skills/ and the skill is never found.
     // This does NOT force activation — it only makes the skill discoverable.
-    const skillSrc = path.join(__dirname, '..', '.bob', 'skills', 'carbon-builder');
+    const skillSrc = path.join(
+      __dirname,
+      '..',
+      '.bob',
+      'skills',
+      'carbon-builder'
+    );
     const skillDest = path.join(bobDir, 'skills', 'carbon-builder');
     try {
       await copyDirectory(skillSrc, skillDest);
     } catch (skillErr) {
       // Non-fatal — review continues; skill simply won't be available
-      console.warn('⚠️  Could not copy carbon-builder skill into bundle:', skillErr.message);
+      console.warn(
+        '⚠️  Could not copy carbon-builder skill into bundle:',
+        skillErr.message
+      );
     }
 
     // Note: carbon-mcp is configured globally via streamable HTTP in ~/.bob/settings.json
@@ -307,9 +309,8 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
         } catch (error) {
           console.error('Error cleaning up bundle:', error.message);
         }
-      }
+      },
     };
-
   } catch (error) {
     // Cleanup on error
     try {

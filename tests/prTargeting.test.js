@@ -40,7 +40,9 @@ function assert(condition, message) {
 
 function assertEqual(actual, expected, label) {
   if (actual !== expected) {
-    throw new Error(`${label || 'assertEqual'}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    throw new Error(
+      `${label || 'assertEqual'}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`
+    );
   }
 }
 
@@ -66,12 +68,12 @@ function makeFakeOctokit({ pr, throwStatus } = {}) {
               created_at: new Date().toISOString(),
               head: { sha: 'abc123' },
               body: 'Closes #1',
-              labels: []
-            }
+              labels: [],
+            },
           };
-        }
-      }
-    }
+        },
+      },
+    },
   };
 }
 
@@ -79,25 +81,22 @@ function makeFakeOctokit({ pr, throwStatus } = {}) {
 
 function runIndex(argv, env = {}) {
   try {
-    execSync(
-      `node src/index.js ${argv}`,
-      {
-        cwd: path.join(__dirname, '..'),
-        env: {
-          ...process.env,
-          GITHUB_AI_AGENT_TOKEN: '',   // ensure no real run starts
-          ...env
-        },
-        timeout: 5000,
-        stdio: ['ignore', 'pipe', 'pipe']
-      }
-    );
+    execSync(`node src/index.js ${argv}`, {
+      cwd: path.join(__dirname, '..'),
+      env: {
+        ...process.env,
+        GITHUB_AI_AGENT_TOKEN: '', // ensure no real run starts
+        ...env,
+      },
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     return { exitCode: 0, stderr: '' };
   } catch (err) {
     return {
       exitCode: err.status,
       stderr: (err.stderr || Buffer.alloc(0)).toString(),
-      stdout: (err.stdout || Buffer.alloc(0)).toString()
+      stdout: (err.stdout || Buffer.alloc(0)).toString(),
     };
   }
 }
@@ -119,17 +118,24 @@ async function runTests() {
         created_at: '2020-01-01T00:00:00Z', // old PR — would be filtered in auto mode
         head: { sha: 'deadbeef' },
         body: null,
-        labels: [{ name: 'AIReviewed' }]    // already labelled — would be filtered in auto mode
-      }
+        labels: [{ name: 'AIReviewed' }], // already labelled — would be filtered in auto mode
+      },
     });
     const client = createGitHubClient(octokit);
-    const pr = await client.fetchSinglePR({ owner: 'carbon-design-system', repo: 'carbon', pullNumber: 9999 });
+    const pr = await client.fetchSinglePR({
+      owner: 'carbon-design-system',
+      repo: 'carbon',
+      pullNumber: 9999,
+    });
 
     assertEqual(pr.number, 9999, 'pr.number');
     assertEqual(pr.title, 'My specific PR', 'pr.title');
     assertEqual(pr.state, 'open', 'pr.state');
     // Confirm the already-labelled PR was NOT filtered out
-    assert(pr.labels.some(l => l.name === 'AIReviewed'), 'AIReviewed label preserved — no filtering');
+    assert(
+      pr.labels.some((l) => l.name === 'AIReviewed'),
+      'AIReviewed label preserved — no filtering'
+    );
   });
 
   // ── 2. fetchSinglePR propagates 404 ────────────────────────────────────
@@ -138,10 +144,17 @@ async function runTests() {
     const client = createGitHubClient(octokit);
     let threw = false;
     try {
-      await client.fetchSinglePR({ owner: 'carbon-design-system', repo: 'carbon', pullNumber: 99999 });
+      await client.fetchSinglePR({
+        owner: 'carbon-design-system',
+        repo: 'carbon',
+        pullNumber: 99999,
+      });
     } catch (err) {
       threw = true;
-      assert(err.message.includes('Not Found'), `Expected "Not Found" in error, got: ${err.message}`);
+      assert(
+        err.message.includes('Not Found'),
+        `Expected "Not Found" in error, got: ${err.message}`
+      );
     }
     assert(threw, 'Expected fetchSinglePR to throw on 404');
   });
@@ -153,16 +166,20 @@ async function runTests() {
         number: 777,
         title: 'Draft PR',
         state: 'open',
-        draft: true,   // would be filtered in auto mode
+        draft: true, // would be filtered in auto mode
         user: { login: 'author', type: 'User' },
         created_at: new Date().toISOString(),
         head: { sha: 'aaa111' },
         body: null,
-        labels: []
-      }
+        labels: [],
+      },
     });
     const client = createGitHubClient(octokit);
-    const pr = await client.fetchSinglePR({ owner: 'carbon-design-system', repo: 'carbon', pullNumber: 777 });
+    const pr = await client.fetchSinglePR({
+      owner: 'carbon-design-system',
+      repo: 'carbon',
+      pullNumber: 777,
+    });
     assertEqual(pr.draft, true, 'draft flag');
     assertEqual(pr.number, 777, 'pr.number');
   });
@@ -173,17 +190,21 @@ async function runTests() {
       pr: {
         number: 888,
         title: 'Closed PR',
-        state: 'closed',   // would never appear in auto mode
+        state: 'closed', // would never appear in auto mode
         draft: false,
         user: { login: 'author', type: 'User' },
         created_at: new Date().toISOString(),
         head: { sha: 'bbb222' },
         body: null,
-        labels: []
-      }
+        labels: [],
+      },
     });
     const client = createGitHubClient(octokit);
-    const pr = await client.fetchSinglePR({ owner: 'carbon-design-system', repo: 'carbon', pullNumber: 888 });
+    const pr = await client.fetchSinglePR({
+      owner: 'carbon-design-system',
+      repo: 'carbon',
+      pullNumber: 888,
+    });
     assertEqual(pr.state, 'closed', 'pr.state');
   });
 
@@ -192,8 +213,14 @@ async function runTests() {
     const result = runIndex('--pr abc');
     assertEqual(result.exitCode, 1, 'exit code');
     const output = result.stderr + (result.stdout || '');
-    assert(output.includes('Invalid PR number'), `Expected "Invalid PR number" in output, got: ${output}`);
-    assert(output.includes('abc'), `Expected the bad value "abc" echoed back, got: ${output}`);
+    assert(
+      output.includes('Invalid PR number'),
+      `Expected "Invalid PR number" in output, got: ${output}`
+    );
+    assert(
+      output.includes('abc'),
+      `Expected the bad value "abc" echoed back, got: ${output}`
+    );
   });
 
   // ── 6. --pr flag: zero exits with code 1 ────────────────────────────────
@@ -214,7 +241,8 @@ async function runTests() {
     assertEqual(result.exitCode, 1, 'exit code');
     const output = result.stderr + (result.stdout || '');
     assert(
-      output.includes('--pr flag requires a PR number') || output.includes('Invalid PR number'),
+      output.includes('--pr flag requires a PR number') ||
+        output.includes('Invalid PR number'),
       `Expected a PR number error in output, got: ${output}`
     );
   });
@@ -224,7 +252,10 @@ async function runTests() {
     const result = runIndex('', { GITHUB_AI_AGENT_PR_NUMBER: 'abc' });
     assertEqual(result.exitCode, 1, 'exit code');
     const output = result.stderr + (result.stdout || '');
-    assert(output.includes('Invalid PR number'), `Expected "Invalid PR number" in output, got: ${output}`);
+    assert(
+      output.includes('Invalid PR number'),
+      `Expected "Invalid PR number" in output, got: ${output}`
+    );
   });
 
   // ── 10. Env var: blank value is treated as unset (auto mode) ────────────
@@ -233,8 +264,11 @@ async function runTests() {
     // We just need to confirm it does NOT exit with code 1 due to PR number validation.
     const result = runIndex('', { GITHUB_AI_AGENT_PR_NUMBER: '' });
     // Should NOT be a validation exit — may be 0 (early return) or non-1 error
-    assert(result.exitCode !== 1 || !((result.stderr + (result.stdout || '')).includes('Invalid PR number')),
-      'Blank env var should not trigger PR number validation error');
+    assert(
+      result.exitCode !== 1 ||
+        !(result.stderr + (result.stdout || '')).includes('Invalid PR number'),
+      'Blank env var should not trigger PR number validation error'
+    );
   });
 
   // ── 11. CLI flag takes precedence over env var ───────────────────────────
@@ -244,8 +278,14 @@ async function runTests() {
     const result = runIndex('--pr abc', { GITHUB_AI_AGENT_PR_NUMBER: '99999' });
     assertEqual(result.exitCode, 1, 'exit code');
     const output = result.stderr + (result.stdout || '');
-    assert(output.includes('"abc"'), `Expected CLI value "abc" in error, got: ${output}`);
-    assert(!output.includes('99999'), `Should NOT show env var value 99999, got: ${output}`);
+    assert(
+      output.includes('"abc"'),
+      `Expected CLI value "abc" in error, got: ${output}`
+    );
+    assert(
+      !output.includes('99999'),
+      `Should NOT show env var value 99999, got: ${output}`
+    );
   });
 
   // ── 12. fetchSinglePR passes correct pull_number to octokit ─────────────
@@ -266,12 +306,12 @@ async function runTests() {
                 created_at: new Date().toISOString(),
                 head: { sha: 'fff' },
                 body: null,
-                labels: []
-              }
+                labels: [],
+              },
             };
-          }
-        }
-      }
+          },
+        },
+      },
     };
     const client = createGitHubClient(octokit);
     await client.fetchSinglePR({ owner: 'o', repo: 'r', pullNumber: 42 });
@@ -286,7 +326,7 @@ async function runTests() {
   }
 }
 
-runTests().catch(err => {
+runTests().catch((err) => {
   console.error('Fatal error in test runner:', err);
   process.exit(1);
 });

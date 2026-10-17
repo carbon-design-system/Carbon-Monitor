@@ -191,7 +191,8 @@ function getBaseUrl(req) {
  */
 async function handleMcpConnect(req, res) {
   const redirectUri = `${getBaseUrl(req)}/api/mcp/callback`;
-  const { authorizationUrl, state } = await mcpConnection.beginAuthorization(redirectUri);
+  const { authorizationUrl, state } =
+    await mcpConnection.beginAuthorization(redirectUri);
   sendJSON(res, 200, { success: true, authorizationUrl, state, redirectUri });
 }
 
@@ -261,7 +262,10 @@ async function handleMcpRefresh(req, res) {
   const { token, sessionId } = data;
 
   if (token || sessionId) {
-    const result = await mcpConnection.setManualCredentials({ token, sessionId });
+    const result = await mcpConnection.setManualCredentials({
+      token,
+      sessionId,
+    });
     return sendJSON(res, 200, {
       success: true,
       message: 'Carbon MCP credentials updated',
@@ -284,13 +288,21 @@ async function handleMcpRefresh(req, res) {
 /** GET /api/mcp/status — connection detail without any secret material. */
 async function handleMcpStatus(req, res) {
   const status = await mcpConnection.getStatus();
-  sendJSON(res, 200, { success: true, ...status, timestamp: new Date().toISOString() });
+  sendJSON(res, 200, {
+    success: true,
+    ...status,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 /** POST /api/mcp/test — live probe; also repairs a session-backed connection. */
 async function handleMcpTest(req, res) {
   const result = await mcpConnection.probe();
-  sendJSON(res, 200, { success: true, ...result, timestamp: new Date().toISOString() });
+  sendJSON(res, 200, {
+    success: true,
+    ...result,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 /**
@@ -302,7 +314,11 @@ async function handleMcpTest(req, res) {
  */
 async function handleMcpDisconnect(req, res) {
   const result = await mcpConnection.disconnect();
-  sendJSON(res, 200, { success: true, ...result, timestamp: new Date().toISOString() });
+  sendJSON(res, 200, {
+    success: true,
+    ...result,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 // ── Status and configuration ────────────────────────────────────────────────
@@ -350,8 +366,10 @@ function handleConfig(req, res) {
       maxPRs: parseInt(process.env.GITHUB_AI_AGENT_MAX_PRS || '10', 10),
       daysBack: parseInt(process.env.GITHUB_AI_AGENT_DAYS_BACK || '21', 10),
       targetPR: process.env.GITHUB_AI_AGENT_PR_NUMBER || null,
-      postInlineComments: process.env.GITHUB_AI_AGENT_POST_INLINE_COMMENTS !== 'false',
-      postSummaryComment: process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false',
+      postInlineComments:
+        process.env.GITHUB_AI_AGENT_POST_INLINE_COMMENTS !== 'false',
+      postSummaryComment:
+        process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false',
       carbonMcpUrl: mcpConnection.MCP_URL,
       // Presence only — credentials are never returned by this API. The host is
       // enough to tell an operator which cluster is wired up; the full URL can
@@ -391,7 +409,8 @@ function numberOrNull(value) {
 
 function mapCreditEvent(hit) {
   const source = hit && hit._source ? hit._source : {};
-  const payload = source.payload && typeof source.payload === 'object' ? source.payload : {};
+  const payload =
+    source.payload && typeof source.payload === 'object' ? source.payload : {};
   return {
     at: source.timestamp || null,
     prNumber: source.pr_number ?? null,
@@ -406,7 +425,9 @@ function mapCreditEvent(hit) {
 async function readCreditsHistoryFromEs(limit) {
   const result = await esCall((client) =>
     client.search({
-      ...creditSearchQuery(Math.min(limit, 100), [{ timestamp: { order: 'desc' } }]),
+      ...creditSearchQuery(Math.min(limit, 100), [
+        { timestamp: { order: 'desc' } },
+      ]),
       _source: [
         'timestamp',
         'pr_number',
@@ -419,7 +440,9 @@ async function readCreditsHistoryFromEs(limit) {
     })
   );
   if (result === null) return null;
-  return (result.hits && result.hits.hits ? result.hits.hits : []).map(mapCreditEvent);
+  return (result.hits && result.hits.hits ? result.hits.hits : []).map(
+    mapCreditEvent
+  );
 }
 
 function toIsoFromAggregation(value) {
@@ -429,7 +452,9 @@ function toIsoFromAggregation(value) {
 }
 
 function aggregationNumber(aggregation) {
-  return aggregation && typeof aggregation.value === 'number' && Number.isFinite(aggregation.value)
+  return aggregation &&
+    typeof aggregation.value === 'number' &&
+    Number.isFinite(aggregation.value)
     ? aggregation.value
     : 0;
 }
@@ -449,11 +474,16 @@ function mapCreditSummary(result) {
   return {
     totalSpent: roundCredits(totalSpent),
     reviewCount: aggregationNumber(aggregations.reviewCount),
-    averagePerReview: costedCount > 0 ? roundCredits(totalSpent / costedCount) : null,
+    averagePerReview:
+      costedCount > 0 ? roundCredits(totalSpent / costedCount) : null,
     last24hSpent: roundCredits(aggregationNumber(last24h)),
     last7dSpent: roundCredits(aggregationNumber(last7d)),
-    firstRecordedAt: toIsoFromAggregation(aggregations.firstRecordedAt && aggregations.firstRecordedAt.value),
-    lastRecordedAt: toIsoFromAggregation(aggregations.lastRecordedAt && aggregations.lastRecordedAt.value),
+    firstRecordedAt: toIsoFromAggregation(
+      aggregations.firstRecordedAt && aggregations.firstRecordedAt.value
+    ),
+    lastRecordedAt: toIsoFromAggregation(
+      aggregations.lastRecordedAt && aggregations.lastRecordedAt.value
+    ),
   };
 }
 
@@ -487,7 +517,10 @@ async function readCreditsSummaryFromEs() {
 
 async function getCreditsSummary() {
   const now = Date.now();
-  if (creditSummaryCache && now - creditSummaryCache.at < CREDIT_SUMMARY_TTL_MS) {
+  if (
+    creditSummaryCache &&
+    now - creditSummaryCache.at < CREDIT_SUMMARY_TTL_MS
+  ) {
     return creditSummaryCache.value;
   }
   if (!creditSummaryInFlight) {
@@ -540,7 +573,8 @@ async function handleCredits(req, res) {
   // agree whenever they otherwise would not.
   if (summary.lastRecordedAt && balance.fetchedAt) {
     const ledgerNewer =
-      new Date(summary.lastRecordedAt).getTime() > new Date(balance.fetchedAt).getTime();
+      new Date(summary.lastRecordedAt).getTime() >
+      new Date(balance.fetchedAt).getTime();
     if (ledgerNewer) {
       balance = await bobCredits.getBalance({ force: true });
       summary = await getCreditsSummary();
@@ -576,8 +610,11 @@ async function handleCreditsHistory(req, res) {
       ? Math.min(Math.floor(requested), 100)
       : 100;
 
-  const esEntries = process.env.ES_URL ? await readCreditsHistoryFromEs(limit) : null;
-  const entries = esEntries === null ? await creditLedger.readRecent(limit) : esEntries;
+  const esEntries = process.env.ES_URL
+    ? await readCreditsHistoryFromEs(limit)
+    : null;
+  const entries =
+    esEntries === null ? await creditLedger.readRecent(limit) : esEntries;
 
   sendJSON(res, 200, {
     success: true,
@@ -629,7 +666,11 @@ async function handleReviewTrigger(req, res) {
   // throws, which would turn a malformed request into a 500 — and an array body
   // would be read as "no list" and silently start an auto review instead.
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-    return sendError(res, 400, 'Request body must be a JSON object, e.g. {"prNumbers": [22971]}');
+    return sendError(
+      res,
+      400,
+      'Request body must be a JSON object, e.g. {"prNumbers": [22971]}'
+    );
   }
 
   // Validated by the very function reviewPRs uses, which returns an error string
@@ -729,7 +770,9 @@ function handleReviewLogs(req, res) {
   // defaulted to more than a poll interval's worth of output.
   const requested = Number(url.searchParams.get('limit'));
   const limit =
-    Number.isFinite(requested) && requested > 0 ? Math.min(requested, 1000) : 500;
+    Number.isFinite(requested) && requested > 0
+      ? Math.min(requested, 1000)
+      : 500;
 
   sendJSON(res, 200, {
     success: true,
@@ -770,7 +813,11 @@ function handleReviewLogsClear(req, res) {
  * `mode` and `prNumbers` so the console can show what is being reviewed.
  */
 function handleReviewStatus(req, res) {
-  sendJSON(res, 200, { success: true, ...reviewState, timestamp: new Date().toISOString() });
+  sendJSON(res, 200, {
+    success: true,
+    ...reviewState,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 // ── Schedule ─────────────────────────────────────────────────────────────────
@@ -780,7 +827,11 @@ function handleReviewStatus(req, res) {
  */
 async function handleScheduleGet(req, res) {
   const schedule = await scheduleManager.getSchedule();
-  sendJSON(res, 200, { success: true, schedule, timestamp: new Date().toISOString() });
+  sendJSON(res, 200, {
+    success: true,
+    schedule,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 /**
@@ -841,7 +892,9 @@ async function serveClient(req, res, pathname) {
   const requested = pathname === '/' ? '/index.html' : pathname;
   const candidate = path.join(CLIENT_DIR, path.normalize(requested));
   const filePath =
-    candidate.startsWith(CLIENT_DIR + path.sep) && fs.existsSync(candidate) && fs.statSync(candidate).isFile()
+    candidate.startsWith(CLIENT_DIR + path.sep) &&
+    fs.existsSync(candidate) &&
+    fs.statSync(candidate).isFile()
       ? candidate
       : path.join(CLIENT_DIR, 'index.html');
 
@@ -896,16 +949,16 @@ const ROUTES = {
  * LOG_LEVEL=info, which keeps the filter active in production.
  */
 const SILENT_GET_ROUTES = new Set([
-  '/api/health',          // CE health probe every 30 s + console on mount
-  '/api/status',          // console status panel, every 30 s
-  '/api/mcp/status',      // same 30 s batch
-  '/api/review/status',   // same 30 s batch
-  '/api/review/logs',     // log tail every 2 s while a review is running
-  '/api/credits',         // same 30 s batch
+  '/api/health', // CE health probe every 30 s + console on mount
+  '/api/status', // console status panel, every 30 s
+  '/api/mcp/status', // same 30 s batch
+  '/api/review/status', // same 30 s batch
+  '/api/review/logs', // log tail every 2 s while a review is running
+  '/api/credits', // same 30 s batch
   '/api/credits/history', // same 30 s batch
-  '/api/auth/status',     // App.jsx on mount + after every 401
-  '/api/config',          // Console.jsx once on mount
-  '/api/schedule',        // polled every 30 s alongside status, config, credits
+  '/api/auth/status', // App.jsx on mount + after every 401
+  '/api/config', // Console.jsx once on mount
+  '/api/schedule', // polled every 30 s alongside status, config, credits
 ]);
 
 async function handleRequest(req, res) {
@@ -939,7 +992,8 @@ async function handleRequest(req, res) {
 
   // Unauthenticated by design: liveness probing, the OAuth redirect target, and
   // the sign-in endpoints themselves (which are the way to become authenticated).
-  if (pathname === '/api/health' && method === 'GET') return handleHealth(req, res);
+  if (pathname === '/api/health' && method === 'GET')
+    return handleHealth(req, res);
   if (pathname === '/api/mcp/callback' && method === 'GET') {
     return handleMcpCallback(req, res, url);
   }
@@ -967,7 +1021,11 @@ async function handleRequest(req, res) {
     // become an unhandled rejection that kills the whole single instance.
     try {
       if (!isAuthorized(req)) {
-        return sendError(res, 401, 'Unauthorized: sign in or supply a valid API token');
+        return sendError(
+          res,
+          401,
+          'Unauthorized: sign in or supply a valid API token'
+        );
       }
 
       const handler = ROUTES[`${method} ${pathname}`];
@@ -1037,7 +1095,9 @@ function startServer() {
     console.log('🚀 Carbon Monitor');
     console.log(`${'='.repeat(64)}`);
     console.log(`📡 Listening on:   http://localhost:${PORT}`);
-    console.log(`🖥  Console:        ${clientBuilt ? 'served at /' : 'not built (npm run build:client)'}`);
+    console.log(
+      `🖥  Console:        ${clientBuilt ? 'served at /' : 'not built (npm run build:client)'}`
+    );
     // Stated unambiguously at every start. An open console is the default and a
     // deliberate choice, but it should never be a surprise to whoever is looking
     // at the logs.
@@ -1049,11 +1109,14 @@ function startServer() {
       }`
     );
     if (sessionAuth.AUTH_REQUIRED) {
-      console.log(`🔑 Bearer API:     ${ENABLE_AUTH ? 'enabled (API_SECRET)' : 'disabled'}`);
+      console.log(
+        `🔑 Bearer API:     ${ENABLE_AUTH ? 'enabled (API_SECRET)' : 'disabled'}`
+      );
     }
     console.log(`🔗 Carbon MCP:     ${mcpConnection.MCP_URL}`);
     console.log(`🕐 Schedule:       ${scheduleManager.getSchedulePath()}`);
-    if (process.env.BASE_URL) console.log(`🌐 Base URL:       ${process.env.BASE_URL}`);
+    if (process.env.BASE_URL)
+      console.log(`🌐 Base URL:       ${process.env.BASE_URL}`);
     console.log(`${'='.repeat(64)}\n`);
   });
 

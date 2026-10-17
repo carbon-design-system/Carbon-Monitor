@@ -102,7 +102,10 @@ const auth = loadAuth(CREDS);
 
 test('accepts correct credentials and issues a cookie', () => {
   const res = fakeRes();
-  const result = auth.login(res, { username: 'operator', password: 'correct-horse-battery' });
+  const result = auth.login(res, {
+    username: 'operator',
+    password: 'correct-horse-battery',
+  });
   assert(result.ok === true, 'login should succeed');
   assert(result.status === 200, `expected 200, got ${result.status}`);
   assert(res.headers['Set-Cookie'], 'a Set-Cookie header should be present');
@@ -117,7 +120,10 @@ test('rejects a wrong password', () => {
 });
 
 test('a failed sign-in returns a generic message and the access-request contact', () => {
-  const result = auth.login(fakeRes(), { username: 'operator', password: 'wrong' });
+  const result = auth.login(fakeRes(), {
+    username: 'operator',
+    password: 'wrong',
+  });
   assert(
     result.body.contact === 'ops@example.com',
     `expected the Carbon MCP contact address, got ${result.body.contact}`
@@ -131,12 +137,18 @@ test('a failed sign-in returns a generic message and the access-request contact'
 });
 
 test('rejects a wrong username', () => {
-  const result = auth.login(fakeRes(), { username: 'intruder', password: 'correct-horse-battery' });
+  const result = auth.login(fakeRes(), {
+    username: 'intruder',
+    password: 'correct-horse-battery',
+  });
   assert(result.status === 401, `expected 401, got ${result.status}`);
 });
 
 test('rejects a username that is a prefix of the real one', () => {
-  const result = auth.login(fakeRes(), { username: 'oper', password: 'correct-horse-battery' });
+  const result = auth.login(fakeRes(), {
+    username: 'oper',
+    password: 'correct-horse-battery',
+  });
   assert(result.status === 401, `expected 401, got ${result.status}`);
 });
 
@@ -146,9 +158,15 @@ test('fails closed when credentials are not configured on the server', () => {
   delete process.env.CONSOLE_USERNAME;
   delete process.env.CONSOLE_PASSWORD;
   try {
-    const result = auth.login(fakeRes(), { username: 'operator', password: 'anything' });
+    const result = auth.login(fakeRes(), {
+      username: 'operator',
+      password: 'anything',
+    });
     assert(result.status === 503, `expected 503, got ${result.status}`);
-    assert(result.ok === false, 'login must not succeed without configured credentials');
+    assert(
+      result.ok === false,
+      'login must not succeed without configured credentials'
+    );
   } finally {
     process.env.CONSOLE_USERNAME = savedUser;
     process.env.CONSOLE_PASSWORD = savedPass;
@@ -172,7 +190,10 @@ test('rejects a tampered token', () => {
   const flipped = decoded.slice(0, -1) + (decoded.endsWith('a') ? 'b' : 'a');
   const tampered = Buffer.from(flipped).toString('base64url');
 
-  assert(auth.verifyToken(tampered) === false, 'a tampered token must be rejected');
+  assert(
+    auth.verifyToken(tampered) === false,
+    'a tampered token must be rejected'
+  );
 });
 
 test('rejects a token signed with a different key', () => {
@@ -186,7 +207,10 @@ test('rejects a token signed with a different key', () => {
   const saved = process.env.SESSION_SIGNING_KEY;
   process.env.SESSION_SIGNING_KEY = 'a-completely-different-key';
   try {
-    assert(auth.verifyToken(token) === false, 'a foreign-signed token must be rejected');
+    assert(
+      auth.verifyToken(token) === false,
+      'a foreign-signed token must be rejected'
+    );
   } finally {
     process.env.SESSION_SIGNING_KEY = saved;
   }
@@ -214,15 +238,29 @@ test('rejects an expired token', () => {
 });
 
 test('rejects malformed input without throwing', () => {
-  for (const bad of [null, undefined, '', 'not-a-token', 'a:b', '!!!!', 'a:b:c:d']) {
-    assert(auth.verifyToken(bad) === false, `expected rejection for ${JSON.stringify(bad)}`);
+  for (const bad of [
+    null,
+    undefined,
+    '',
+    'not-a-token',
+    'a:b',
+    '!!!!',
+    'a:b:c:d',
+  ]) {
+    assert(
+      auth.verifyToken(bad) === false,
+      `expected rejection for ${JSON.stringify(bad)}`
+    );
   }
 });
 
 test('hasValidSession bypasses the check when auth is not enforced', () => {
   const open = loadAuth({ ...CREDS, AUTH_REQUIRED: 'false' });
   assert(open.AUTH_REQUIRED === false, 'auth should not be enforced');
-  assert(open.hasValidSession(fakeReq()) === true, 'a cookieless request should pass');
+  assert(
+    open.hasValidSession(fakeReq()) === true,
+    'a cookieless request should pass'
+  );
 });
 
 // ── Feature-flag semantics ────────────────────────────────────────────────
@@ -230,7 +268,10 @@ test('hasValidSession bypasses the check when auth is not enforced', () => {
 // not fail loudly — it silently exposes (or silently locks out) a deployment.
 
 test('sign-in is OFF when AUTH_REQUIRED is unset — the default deployment', () => {
-  const mod = loadAuth({ CONSOLE_USERNAME: 'operator', CONSOLE_PASSWORD: 'x' }, ['AUTH_REQUIRED']);
+  const mod = loadAuth(
+    { CONSOLE_USERNAME: 'operator', CONSOLE_PASSWORD: 'x' },
+    ['AUTH_REQUIRED']
+  );
   assert(mod.AUTH_REQUIRED === false, 'the default must be an open console');
 });
 
@@ -238,10 +279,17 @@ test('sign-in stays OFF in production unless explicitly enabled', () => {
   // The flag is deliberately not keyed to NODE_ENV: a security posture must be
   // chosen, not inferred from an unrelated variable.
   const mod = loadAuth(
-    { CONSOLE_USERNAME: 'operator', CONSOLE_PASSWORD: 'x', NODE_ENV: 'production' },
+    {
+      CONSOLE_USERNAME: 'operator',
+      CONSOLE_PASSWORD: 'x',
+      NODE_ENV: 'production',
+    },
     ['AUTH_REQUIRED']
   );
-  assert(mod.AUTH_REQUIRED === false, 'NODE_ENV=production must not turn sign-in on');
+  assert(
+    mod.AUTH_REQUIRED === false,
+    'NODE_ENV=production must not turn sign-in on'
+  );
 });
 
 test('common truthy spellings all enable sign-in', () => {
@@ -249,14 +297,20 @@ test('common truthy spellings all enable sign-in', () => {
   // it leaves the console open while the operator believes it is protected.
   for (const value of ['true', 'TRUE', ' True ', '1', 'yes', 'on', 'enabled']) {
     const mod = loadAuth({ ...CREDS, AUTH_REQUIRED: value });
-    assert(mod.AUTH_REQUIRED === true, `AUTH_REQUIRED=${JSON.stringify(value)} should enable`);
+    assert(
+      mod.AUTH_REQUIRED === true,
+      `AUTH_REQUIRED=${JSON.stringify(value)} should enable`
+    );
   }
 });
 
 test('common falsy spellings all leave sign-in off', () => {
   for (const value of ['false', 'FALSE', '0', 'no', 'off', 'disabled', '']) {
     const mod = loadAuth({ ...CREDS, AUTH_REQUIRED: value });
-    assert(mod.AUTH_REQUIRED === false, `AUTH_REQUIRED=${JSON.stringify(value)} should not enable`);
+    assert(
+      mod.AUTH_REQUIRED === false,
+      `AUTH_REQUIRED=${JSON.stringify(value)} should not enable`
+    );
   }
 });
 
@@ -266,7 +320,10 @@ test('an unrecognised value leaves sign-in off and warns', () => {
   console.warn = (...args) => warnings.push(args.join(' '));
   try {
     const mod = loadAuth({ ...CREDS, AUTH_REQUIRED: 'maybe' });
-    assert(mod.AUTH_REQUIRED === false, 'an unparseable value must not enable sign-in');
+    assert(
+      mod.AUTH_REQUIRED === false,
+      'an unparseable value must not enable sign-in'
+    );
     assert(
       warnings.some((w) => w.includes('AUTH_REQUIRED')),
       'an unrecognised value must be reported, not silently ignored'
@@ -280,7 +337,10 @@ test('session cookie sets HttpOnly, SameSite and Path', () => {
   const res = fakeRes();
   auth.login(res, { username: 'operator', password: 'correct-horse-battery' });
   const cookie = res.headers['Set-Cookie'];
-  assert(cookie.includes('HttpOnly'), 'cookie must be HttpOnly so scripts cannot read it');
+  assert(
+    cookie.includes('HttpOnly'),
+    'cookie must be HttpOnly so scripts cannot read it'
+  );
   assert(cookie.includes('SameSite=Strict'), 'cookie must be SameSite=Strict');
   assert(cookie.includes('Path=/'), 'cookie must apply to the whole app');
 });
