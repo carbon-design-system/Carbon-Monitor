@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Build output — the console bundle is built by `npm run build:client`
 dist/

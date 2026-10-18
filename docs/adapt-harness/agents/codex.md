@@ -1,9 +1,12 @@
 # Worker agent: OpenAI Codex CLI
 
-**Status: not exercised here.** `src/agentRunner.js` has a `codex` case that
-was never run in production. Treat everything as a starting point: confirm each
-item against the current Codex CLI documentation, then record the confirmed
-values in SPEC section 5 and the tasks in section 12.
+**Status: not exercised here.** There is no Codex adapter. Add one by following
+"Add an agent" in `docs/HARNESS.md` section 4: one file in `src/agents/` and a
+few lines around it. This file holds what to verify first and what each adapter
+member would hold. Treat everything as a starting point: confirm each item
+against the current Codex CLI documentation, then record the confirmed values in
+SPEC section 5 and the tasks in section 12. `claude-code.md` shows a finished
+adapter to copy from.
 
 ## Verify first
 
@@ -11,12 +14,12 @@ values in SPEC section 5 and the tasks in section 12.
 - [ ] `codex exec` flags: `--full-auto` or `--sandbox` plus `--ask-for-approval never`, `-C <dir>`, `--json`, `--output-last-message <file>`
 - [ ] Config file location and the remote MCP server shape in `~/.codex/config.toml`
 - [ ] Whether the CLI reads a skills folder, and the instruction file name (`AGENTS.md`)
+- [ ] Where it keeps per-user state, and whether an environment variable moves it
 
 ## 1. Dockerfile
 
-Delete the three `ARG BOB_*` lines and the whole `---- Bob Shell ----` `RUN`
-block. In the `mkdir -p /home/app/.bob ...` block, delete the three `printf`
-lines and the `cp -R ... carbon-builder` line. Insert in place of the Bob block:
+Add a block beside the Bob and Claude Code blocks. Both stay unless the SPEC
+removes them; the image ships every CLI and `GITHUB_AI_AGENT_CLI` selects one.
 
 ```dockerfile
 # Codex CLI, pinned. Move the pin deliberately.
@@ -35,46 +38,43 @@ RUN mkdir -p /home/app/.codex \
   && chown -R app:app /home/app
 ```
 
-## 2. src/agentRunner.js
+If the binary cannot run under qemu, check the installed version and the
+binary's architecture instead of running it, as the Claude block does.
 
-`'codex'` is already in `validAgents`. Replace the `case 'codex'` block:
+## 2. The adapter, `src/agents/codex.js`
 
-```js
-case 'codex':
-  // Headless: no approvals, workspace-write sandbox, final message to a file so
-  // the agent text is read without parsing the event stream.
-  command = 'codex';
-  args = [
-    'exec',
-    '--full-auto',
-    '-C', cwd,
-    '--output-last-message', `${cwd}/agent-result.md`,
-    prompt,
-  ];
-  break;
-```
+| Member                                    | Starting point                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`, `displayName`, `cliName`, `binary`  | `codex`, `Codex`, `Codex CLI`, `codex`                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `requiredEnv`                             | `OPENAI_API_KEY`. The registry then makes it a startup warning and a red agent tile when unset                                                                                                                                                                                                                                                                                                                                                                |
+| `buildArgs({ prompt, caps, bundleDir })`  | `['exec', '--full-auto', '-C', bundleDir, '--output-last-message', bundleDir + '/agent-result.md', prompt]`. Headless: no approvals, a workspace-write sandbox, and the final message in a file                                                                                                                                                                                                                                                               |
+| `streams()`, `parseEvent`                 | Without `--json`, `streams()` returns `false` and the runner takes stdout as the review text. With `--json`, return `true` and map each event onto the normalised types in HARNESS.md section 4 (`text`, `tool_use`, `tool_result`, `result` with `stats`)                                                                                                                                                                                                    |
+| `env(base, { bundleDir })`                | Pass `OPENAI_API_KEY` and what the CLI needs; build it as an allowlist like `claude.js` so the harness's secrets stay out                                                                                                                                                                                                                                                                                                                                     |
+| `isolated`, `seedHome(bundleDir, creds)`  | `false` until a per-review home exists, which keeps the effective `REVIEW_CONCURRENCY` at 1 and logs one line saying so. Codex keeps per-user state under the real home directory. Raising it takes a per-review directory seeded as `claude.js` does, and `isolated: true`                                                                                                                                                                                   |
+| `prepareBundle`                           | See section 6                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `promptFragments`                         | Four strings in Codex's own words: no completion tool call, no file writes, the skill path, the read tool name                                                                                                                                                                                                                                                                                                                                                |
+| `evidence(toolCalls)`, `skill`            | What a skill read and a Carbon MCP call look like in Codex's events, if it has either                                                                                                                                                                                                                                                                                                                                                                         |
+| `costUnit`, `creditLabel`, `resultSource` | `usd`, a label and a `codex-result` source, if the stream reports a cost. If it reports only tokens, leave the cost unknown. The unit and label the adapter reports. Today the `usd` unit, the `spend` tile and the monthly budget variables are Claude's, so a second dollar-billed agent needs its own budget variables and a unit or agent filter (HARNESS.md section 4, "Console and alerts"). A run with no `stats.session_costs` is recorded as unknown |
+| `credits()`                               | `{ available: false, low: false, reason: 'not-metered' }` until you build a budget gate of its own. `claude.js` computes its month-to-date figure through `src/api/spend.js`, which filters by unit or source, not by agent                                                                                                                                                                                                                                   |
 
-Delete the `env.CODEX_MCP_CONFIG = ...` line near the top of `runAgent`; it is
-not a Codex variable. Where `runAgent` resolves, read `<cwd>/agent-result.md`
-as the agent text.
+## 3. Health and readiness
 
-## 3. src/api/healthChecks.js
-
-Replace `checkBob` with `checkCodex`: run `codex --version`, then require
-`OPENAI_API_KEY`. Use the `checkClaude` shape in `claude-code.md` with the
-label `Codex CLI` and `id: 'agent'`.
+Nothing to write. `healthChecks.checkAgent` runs `<binary> --version` and checks
+`requiredEnv`, using the adapter's `cliName` as the tile label, and readiness
+probes the same binary.
 
 ## 4. deploy_ce.sh and .env.example
 
-- `SECRET_KEYS` in `.env`: add `OPENAI_API_KEY`; remove `BOB_API_KEY`, `BOB_TEAM_ID`, `BOB_INSTANCE_ID`.
-- The preflight `verify_bob_source` function and its call go.
-- `--env GITHUB_AI_AGENT_CLI=bob` becomes `codex` (or the renamed variable from SPEC section 6).
-- `.env.example`: replace the Bob block with `OPENAI_API_KEY=` and a one-line comment, and add `AGENT_MONTHLY_BUDGET_USD=` for the budget in section 7. Drop the `BOB_GATEWAY_BASE_URL`, `BOB_CREDITS_*` and `BOB_CHECK_TIMEOUT_MS` entries with the Bobcoins tile.
+- The `SECRET_KEYS` default in `deploy_ce.sh`: add `OPENAI_API_KEY`. (A `SECRET_KEYS` in `.env` replaces the whole list, so it must repeat every key.) Remove `BOB_API_KEY`, `BOB_TEAM_ID` and `BOB_INSTANCE_ID` only if the SPEC drops Bob.
+- `deploy_ce.sh`: add a `die` guard for `OPENAI_API_KEY` when `GITHUB_AI_AGENT_CLI` is `codex`, as the Claude one does, and an `--env` line for each setting the adapter reads.
+- `.env.example`: add a block with `OPENAI_API_KEY=` and a one-line comment, plus any `CODEX_*` settings, with their defaults in `src/constants.js`.
 
 ## 5. MCP configuration
 
-`mcpConnection.js` writes the server entry into `~/.codex/config.toml` instead
-of `~/.bob/settings/mcp.json`:
+The adapter writes the server entry from `mcpConnection.getCredentials()`, the
+way `claude.js` does for its file. For Codex the entry belongs in
+`config.toml`, in a per-review directory if one exists, or merged into
+`~/.codex/config.toml` otherwise:
 
 ```toml
 [mcp_servers.carbon-mcp]
@@ -87,15 +87,17 @@ it has changed between releases.
 
 ## 6. Workspace instructions and skills
 
-In `src/reviewBundle.js`, write the rules as `<cwd>/AGENTS.md` instead of
-`.bob/rules/01-output.md`. If the CLI reads a skills folder, copy the skill
-there; otherwise inline the skill's instructions into `AGENTS.md`.
+In `prepareBundle`, write the rules as `<bundleDir>/AGENTS.md` and, if the CLI
+reads a skills folder, copy the skill there with `copySkill`; otherwise inline
+the skill's instructions into `AGENTS.md`.
 
 ## 7. Cost
 
-No balance API. With `--json`, the event stream ends with token usage; record
-it per run through `creditLedger.record` and show spend against a
-`AGENT_MONTHLY_BUDGET_USD` budget instead of the Bobcoins balance.
+No balance API. With `--json`, the event stream ends with token usage; map it to
+`stats` in `parseEvent` so the ledger and the comment carry exact tokens, and
+record spend only if a cost is reported. Leave the agent not metered, or build a
+budget gate with its own variables; Claude's are not shared (HARNESS.md section
+4, "Console and alerts").
 
 ## 8. Verify in the built image
 
@@ -107,4 +109,10 @@ podman run --rm -e OPENAI_API_KEY --entrypoint codex harness-test exec --full-au
 
 ## Console icon
 
-The Bobcoins panel shows the worker agent's mark: `import bobMark from '../assets/bob.svg'` in `client/src/components/BobcoinsPanel.jsx`, rendered with alt text naming Bob. Swap the import to `../assets/agents/openai.svg` and update the alt text. Marks for every mapped agent are in `client/src/assets/agents/`; each stays subject to its owner's brand guidelines.
+The spend panel shows the worker agent's mark, and today its `usd` branch is
+hard-coded to Claude's. `client/src/components/BobcoinsPanel.jsx` imports the
+marks for Bob and Claude. For Codex, import `../assets/agents/openai.svg` and add a
+branch keyed on the agent id, with alt text naming Codex. Add an entry for the
+agent's unit to `LOW_CREDIT_ACTION` in `src/slackNotifier.js`, and the agent's
+name to `HelpGuide.jsx` and `AboutAi.jsx`. Marks for every mapped agent are in
+`client/src/assets/agents/`; each stays subject to its owner's brand guidelines.

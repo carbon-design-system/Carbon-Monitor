@@ -13,6 +13,8 @@
 const { spawn } = require('child_process');
 const mcpConnection = require('./mcpConnection');
 const bobCredits = require('./bobCredits');
+const agents = require('../agents');
+const spend = require('./spend');
 
 /**
  * Status vocabulary, matching Carbon's IconIndicator `kind` values so the UI can
@@ -87,71 +89,83 @@ function run(command, args, timeoutMs = 20_000) {
 }
 
 /**
- * Check the Bob Shell CLI: present on PATH, and authenticated.
+ * Check the configured agent's CLI: present on PATH, and authenticated.
  *
  * Presence and authentication are reported separately because they fail for
  * different reasons — a missing binary is a broken image, while a missing
- * BOB_API_KEY is a missing secret. Bob defaults to interactive SSO, which cannot
+ * API key is a missing secret. Bob defaults to interactive SSO, which cannot
  * complete in a container, so an absent API key is a hard failure here even
- * though the binary itself is fine.
+ * though the binary itself is fine; Claude Code has the same need for
+ * ANTHROPIC_API_KEY.
  *
  * @returns {Promise<Object>}
  */
-async function checkBob() {
+async function checkAgent() {
+  const adapter = agents.resolve();
+  const id = 'agent';
+  const label = adapter.cliName;
+  // "Bob" / "Claude" in prose, "Bob Shell" / "Claude Code" for the product.
+  const name = adapter.id[0].toUpperCase() + adapter.id.slice(1);
+  const product = adapter.cliName.replace(/ CLI$/, '');
   // Bob is a ~20 MB bundle, so `--version` is not instant: it takes seconds on a
   // cold container and far longer under qemu emulation (measured at ~12s running
   // a linux/amd64 image on an arm64 host). A tight limit here reports a healthy
   // Bob as broken, so the ceiling is generous and overridable.
   const timeoutMs = Number(process.env.BOB_CHECK_TIMEOUT_MS || 20_000);
   const { code, stdout, stderr, failure } = await run(
-    'bob',
+    adapter.binary,
     ['--version'],
     timeoutMs
   );
 
   if (failure === 'timeout') {
     return {
-      id: 'bob',
-      label: 'Bob Shell CLI',
+      id,
+      label,
       status: WARNING,
       detail: `Did not respond within ${Math.round(timeoutMs / 1000)}s`,
       hint:
-        'Bob is installed but slow to start. Raise BOB_CHECK_TIMEOUT_MS, or give ' +
+        `${name} is installed but slow to start. Raise BOB_CHECK_TIMEOUT_MS, or give ` +
         'the container more CPU.',
     };
   }
 
   if (code !== 0) {
     return {
-      id: 'bob',
-      label: 'Bob Shell CLI',
+      id,
+      label,
       status: FAILED,
       detail: failure === 'missing' ? 'Not found on PATH' : 'Failed to run',
-      hint: stderr.trim() || 'The image did not install Bob Shell correctly.',
+      hint: stderr.trim() || `The image did not install ${product} correctly.`,
     };
   }
 
   const version = stdout.trim().split('\n')[0] || 'unknown';
-  const hasApiKey = !!process.env.BOB_API_KEY;
+  const hasApiKey = !!process.env[adapter.requiredEnv];
 
   if (!hasApiKey) {
     return {
-      id: 'bob',
-      label: 'Bob Shell CLI',
+      id,
+      label,
       status: FAILED,
       detail: `v${version} — not authenticated`,
       hint:
-        'BOB_API_KEY is not set. Bob falls back to browser SSO, which cannot ' +
-        'complete in a container, so reviews will fail.',
+        adapter.id === 'bob'
+          ? 'BOB_API_KEY is not set. Bob falls back to browser SSO, which cannot ' +
+            'complete in a container, so reviews will fail.'
+          : `${adapter.requiredEnv} is not set, so ${name} cannot authenticate and reviews will fail.`,
     };
   }
 
   return {
-    id: 'bob',
-    label: 'Bob Shell CLI',
+    id,
+    label,
     status: OK,
     detail: `v${version} — API key configured`,
-    hint: process.env.BOB_TEAM_ID ? `Team ${process.env.BOB_TEAM_ID}` : null,
+    hint:
+      adapter.id === 'bob' && process.env.BOB_TEAM_ID
+        ? `Team ${process.env.BOB_TEAM_ID}`
+        : null,
   };
 }
 
@@ -251,6 +265,9 @@ async function checkCarbonMcp() {
  */
 async function checkGitHub() {
   const token = process.env.GITHUB_AI_AGENT_TOKEN;
+  const apiBase = (
+    process.env.GITHUB_API_BASE_URL || 'https://api.github.com'
+  ).replace(/\/+$/, '');
 
   if (!token) {
     return {
@@ -290,7 +307,7 @@ async function checkGitHub() {
     //
     // This call also returns the viewer's `permissions`, which is the only way to
     // detect the Triage requirement before a run hits it.
-    const repoRes = await get(`https://api.github.com/repos/${owner}/${repo}`);
+    const repoRes = await get(`${apiBase}/repos/${owner}/${repo}`);
 
     if (repoRes.status === 401) {
       return {
@@ -375,7 +392,7 @@ async function checkGitHub() {
     let quota = '';
     let low = false;
     try {
-      const limitRes = await get('https://api.github.com/rate_limit');
+      const limitRes = await get(`${apiBase}/rate_limit`);
       if (limitRes.ok) {
         const core = (await limitRes.json()).resources?.core;
         if (core) {
@@ -435,7 +452,7 @@ async function checkBobCredits() {
   const balance = await bobCredits.getBalance();
 
   if (!balance.available) {
-    // checkBob already reports a missing BOB_API_KEY as a hard failure; repeating
+    // checkAgent already reports a missing BOB_API_KEY as a hard failure; repeating
     // it here would show one root cause as two red tiles.
     if (balance.reason === 'no-api-key') {
       return {
@@ -526,6 +543,63 @@ async function checkBobCredits() {
 }
 
 /**
+ * Month-to-date spend of an agent that bills in dollars.
+ *
+ * With CLAUDE_MONTHLY_BUDGET_USD set the tile also shows what is left and warns
+ * below CLAUDE_BUDGET_LOW_PCT, for the same reason as the Bobcoins tile: a
+ * nearly-spent budget works now and refuses the next scheduled review.
+ *
+ * @returns {Promise<Object>}
+ */
+async function checkSpend() {
+  const adapter = agents.resolve();
+  const constants = require('../constants');
+  const { spent, source } = await spend.monthToDate(adapter);
+  const month = `$${spent.toFixed(2)} spent this month`;
+  const origin = source === 'ledger' ? 'From the local ledger. ' : '';
+  const budget = constants.CLAUDE_MONTHLY_BUDGET_USD;
+
+  if (!(budget > 0)) {
+    return {
+      id: 'spend',
+      label: 'Spend',
+      status: OK,
+      detail: month,
+      hint: `${origin}No monthly budget set (CLAUDE_MONTHLY_BUDGET_USD).`.trim(),
+    };
+  }
+
+  const remaining = Math.round((budget - spent) * 100) / 100;
+  const percentRemaining = Math.min(
+    100,
+    Math.max(0, (remaining / budget) * 100)
+  );
+  const lowPct = constants.CLAUDE_BUDGET_LOW_PCT;
+  const detail = `${month} of $${budget}`;
+
+  if (remaining <= 0) {
+    return {
+      id: 'spend',
+      label: 'Spend',
+      status: FAILED,
+      detail,
+      hint: 'The monthly budget is spent. The next scheduled run pauses the schedule; resume it in Settings once the budget resets.',
+    };
+  }
+
+  const low = percentRemaining < lowPct;
+  return {
+    id: 'spend',
+    label: 'Spend',
+    status: low ? WARNING : OK,
+    detail,
+    hint:
+      `${origin}${Math.round(percentRemaining)}% remaining` +
+      (low ? ` — below ${lowPct}% of the monthly budget.` : '.'),
+  };
+}
+
+/**
  * Check Elasticsearch, which is optional — the agent logs to the console when it
  * is not configured, so absence is reported as unknown rather than failed.
  *
@@ -592,9 +666,11 @@ async function checkElasticsearch() {
  * @returns {Promise<Object>} { checks: [...], overall: string, timestamp: string }
  */
 async function runAll() {
+  // Bob's balance is a gateway figure; every other agent reports dollars it spent.
+  const bobcoins = agents.resolve().costUnit === 'bobcoins';
   const runners = [
-    ['bob', checkBob],
-    ['bobcoins', checkBobCredits],
+    ['agent', checkAgent],
+    bobcoins ? ['bobcoins', checkBobCredits] : ['spend', checkSpend],
     ['carbon-mcp', checkCarbonMcp],
     ['github', checkGitHub],
     ['elasticsearch', checkElasticsearch],
@@ -629,8 +705,9 @@ async function runAll() {
 
 module.exports = {
   runAll,
-  checkBob,
+  checkAgent,
   checkBobCredits,
+  checkSpend,
   checkCarbonMcp,
   checkGitHub,
   checkElasticsearch,

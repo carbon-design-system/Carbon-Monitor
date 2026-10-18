@@ -2,7 +2,10 @@
  * Test token usage estimation
  */
 
-const { estimateTokenUsage } = require('../src/reviewPrompt');
+const {
+  estimateTokenUsage,
+  formatSummaryComment,
+} = require('../src/reviewPrompt');
 
 console.log('🧪 Testing Token Usage Estimation\n');
 
@@ -85,6 +88,91 @@ if (roundUsage.input === 3) {
   console.log('  ✅ PASS\n');
 } else {
   console.log('  ❌ FAIL\n');
+  process.exit(1);
+}
+
+// Test 5: Summary comment wording per source
+console.log('Test 5: Summary comment token section by source');
+function commentFor(tokenUsage) {
+  return formatSummaryComment({
+    agent: 'bob',
+    summaryMarkdown: 'Summary.',
+    prNumber: 1,
+    commitSha: 'abcdef1234567',
+    tokenUsage,
+  });
+}
+const counts = { input: 12345, output: 678, total: 13023 };
+const estimateBody = commentFor({ ...counts, source: 'estimate' });
+const missingBody = commentFor(counts);
+const bobBody = commentFor({ ...counts, source: 'bob', cacheRead: 5 });
+
+const estimateOk =
+  estimateBody === missingBody &&
+  estimateBody.includes('**Estimated Token Usage:**') &&
+  estimateBody.includes('- Input tokens: ~12,345') &&
+  estimateBody.includes('- Total tokens: ~13,023') &&
+  estimateBody.includes('Token estimates are approximate');
+const bobOk =
+  bobBody.includes('**Token Usage:**') &&
+  !bobBody.includes('Estimated') &&
+  bobBody.includes('- Input tokens: 12,345\n') &&
+  bobBody.includes('- Output tokens: 678\n') &&
+  bobBody.includes('- Total tokens: 13,023\n') &&
+  !bobBody.includes('~') &&
+  !bobBody.includes('approximate');
+const noneOk = !commentFor(null).includes('Token Usage');
+
+if (estimateOk && bobOk && noneOk) {
+  console.log('  ✅ PASS\n');
+} else {
+  console.log(
+    `  ❌ FAIL (estimate ${estimateOk}, bob ${bobOk}, none ${noneOk})\n`
+  );
+  process.exit(1);
+}
+
+// Test 6: attribution and exactness follow the agent, not the word "bob"
+console.log('Test 6: Summary comment attribution and exact tokens per agent');
+const attributed = (agent, agentName, source) =>
+  formatSummaryComment({
+    agent,
+    agentName,
+    summaryMarkdown: 'Summary.',
+    prNumber: 1,
+    commitSha: 'abcdef1234567',
+    tokenUsage: { ...counts, source },
+  });
+const claudeBody = attributed('claude', 'Claude', 'claude');
+const ibmBobBody = attributed('bob', 'IBM Bob', 'bob');
+const idOnlyBody = attributed('bob', undefined, 'bob');
+const attributionOk =
+  claudeBody.includes('Reviewed by: Claude · Commit: abcdef1') &&
+  claudeBody.includes('- Agent: Claude\n') &&
+  claudeBody.includes('**Token Usage:**') &&
+  !claudeBody.includes('Estimated') &&
+  claudeBody.includes('- Input tokens: 12,345\n') &&
+  ibmBobBody.includes('Reviewed by: IBM Bob · Commit: abcdef1') &&
+  ibmBobBody.includes('- Agent: IBM Bob\n') &&
+  // A caller that passes no display name still prints the id, as it always did.
+  idOnlyBody.includes('Reviewed by: bob · Commit: abcdef1') &&
+  idOnlyBody.includes('- Agent: bob\n');
+
+const { tokensFromStats } = require('../src/index');
+const agentsRegistry = require('../src/agents');
+const stats = { input_tokens: 10, output_tokens: 5, cache_read_tokens: 2 };
+const sourcesOk =
+  tokensFromStats(stats, agentsRegistry.get('claude')).source === 'claude' &&
+  tokensFromStats(stats, agentsRegistry.get('bob')).source === 'bob' &&
+  tokensFromStats(stats).source === 'bob' &&
+  tokensFromStats({ input_tokens: 10 }) === null;
+
+if (attributionOk && sourcesOk) {
+  console.log('  ✅ PASS\n');
+} else {
+  console.log(
+    `  ❌ FAIL (attribution ${attributionOk}, sources ${sourcesOk})\n`
+  );
   process.exit(1);
 }
 

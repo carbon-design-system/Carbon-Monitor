@@ -40,6 +40,8 @@ END_REVIEW_JSON`;
   return json;
 }
 
+let failures = 0;
+
 console.log('🧪 Testing edge cases for JSON truncation...\n');
 
 // Test 1: Truncate at exactly 8165 characters (simulating the reported error)
@@ -53,6 +55,7 @@ if (result1 && result1.findings && result1.findings.length > 0) {
   );
   console.log(`   Summary: "${result1.summaryMarkdown.substring(0, 50)}..."`);
 } else {
+  failures++;
   console.log('❌ FAIL: Could not parse truncated JSON');
 }
 console.log();
@@ -83,6 +86,7 @@ if (result2 && result2.findings.length === 1) {
     '✅ PASS: Recovered 1 complete finding, discarded incomplete one'
   );
 } else {
+  failures++;
   console.log(
     '❌ FAIL: Expected 1 finding, got:',
     result2?.findings?.length || 'null'
@@ -111,6 +115,7 @@ const result3 = parseReviewOutput(midArray);
 if (result3 && result3.findings.length === 1) {
   console.log('✅ PASS: Recovered 1 complete finding');
 } else {
+  failures++;
   console.log(
     '❌ FAIL: Expected 1 finding, got:',
     result3?.findings?.length || 'null'
@@ -143,6 +148,7 @@ const result4 = parseReviewOutput(withEscapes);
 if (result4 && result4.findings.length === 1) {
   console.log('✅ PASS: Handled escaped quotes correctly, recovered 1 finding');
 } else {
+  failures++;
   console.log(
     '❌ FAIL: Expected 1 finding, got:',
     result4?.findings?.length || 'null'
@@ -166,6 +172,7 @@ const result5 = parseReviewOutput(noComplete);
 if (result5 && result5.findings.length === 0) {
   console.log('✅ PASS: Correctly returned empty findings array');
 } else {
+  failures++;
   console.log(
     '❌ FAIL: Expected 0 findings, got:',
     result5?.findings?.length || 'null'
@@ -174,3 +181,4 @@ if (result5 && result5.findings.length === 0) {
 console.log();
 
 console.log('🏁 Edge case tests complete');
+if (failures > 0) process.exit(1);

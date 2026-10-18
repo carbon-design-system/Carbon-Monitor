@@ -54,6 +54,7 @@ const ALWAYS_ALLOW = [
   'get_charts',
   'code_search',
   'docs_search',
+  'code_audit',
 ];
 
 // Renew this far ahead of expiry. Carbon MCP's own REFRESH_MARGIN_SEC default is
@@ -390,7 +391,18 @@ async function writeBobMcpHeaders({ token, sessionId }) {
     headers['X-MCP-Session'] = sessionId;
   }
 
-  config.mcpServers[SERVER_NAME] = { ...existing, headers, disabled: false };
+  // Union, so an entry written before a tool was added still gets it and a
+  // headless run never waits on an approval prompt.
+  const alwaysAllow = [
+    ...new Set([...(existing.alwaysAllow || []), ...ALWAYS_ALLOW]),
+  ];
+
+  config.mcpServers[SERVER_NAME] = {
+    ...existing,
+    headers,
+    alwaysAllow,
+    disabled: false,
+  };
 
   await fs.mkdir(getBobConfigDir(), { recursive: true });
   await fs.writeFile(getBobMcpConfigPath(), JSON.stringify(config, null, 2), {
@@ -403,6 +415,38 @@ async function writeBobMcpHeaders({ token, sessionId }) {
     serverName: SERVER_NAME,
     hasToken: !!headers['Authorization'],
     hasSession: !!headers['X-MCP-Session'],
+  };
+}
+
+/**
+ * The URL and headers of the carbon-mcp entry in Bob's mcp.json, for agents that
+ * take their MCP config as a file of their own. That file stays the credential
+ * store the refresh timer writes.
+ * @returns {Promise<{url: string, headers: Object}|null>} null without a bearer
+ */
+async function getCredentials() {
+  let entry;
+  try {
+    entry = (await readBobMcpConfig()).mcpServers?.[SERVER_NAME];
+  } catch (_) {
+    return null;
+  }
+  // Header names are case-insensitive and the file can be hand-edited.
+  const pick = (name) => {
+    const key = Object.keys(entry?.headers || {}).find(
+      (k) => k.toLowerCase() === name.toLowerCase()
+    );
+    return key ? entry.headers[key] : undefined;
+  };
+  const bearer = pick('Authorization');
+  if (!bearer) return null;
+  const session = pick('X-MCP-Session');
+  return {
+    url: entry.url || MCP_URL,
+    headers: {
+      Authorization: bearer,
+      ...(session ? { 'X-MCP-Session': session } : {}),
+    },
   };
 }
 
@@ -914,7 +958,7 @@ async function probe() {
         params: {
           protocolVersion: '2025-03-26',
           capabilities: {},
-          clientInfo: { name: 'carbon-monitor-probe', version: '1.3.0' },
+          clientInfo: { name: 'carbon-monitor-probe', version: '1.4.0' },
         },
       }),
     });
@@ -993,6 +1037,7 @@ module.exports = {
   setManualCredentials,
   disconnect,
   writeBobMcpHeaders,
+  getCredentials,
   probe,
   getStatus,
   decodeJwt,

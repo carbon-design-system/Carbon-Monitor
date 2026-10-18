@@ -322,12 +322,14 @@ function Console({ authRequired = false, onSignOut }) {
     setSettingsOpen(true);
   }
 
-  // Bobcoins is pulled out of the health row and handed to the tile that already
-  // shows the balance, so the dependency is still reported exactly once.
+  // The spend check (Bobcoins for Bob, `spend` for Claude) is pulled out of the
+  // health row and handed to the tile that already shows it, so the dependency
+  // is still reported exactly once.
+  const SPEND_IDS = ['bobcoins', 'spend'];
   const healthChecks =
-    status?.checks?.filter((check) => check.id !== 'bobcoins') || [];
-  const bobcoinsCheck =
-    status?.checks?.find((check) => check.id === 'bobcoins') || null;
+    status?.checks?.filter((check) => !SPEND_IDS.includes(check.id)) || [];
+  const spendCheck =
+    status?.checks?.find((check) => SPEND_IDS.includes(check.id)) || null;
 
   // Says nothing about a limit the console has not been told, and stays honest
   // when that limit is 1 — where "up to 1, comma separated" would be nonsense.
@@ -512,7 +514,7 @@ function Console({ authRequired = false, onSignOut }) {
             <h1 className="cm-page-heading">Dashboard</h1>
             <p className="cm-page-caption">
               {cfg
-                ? `Reviewing pull requests in ${cfg.owner}/${cfg.repo} with the ${cfg.agent} agent.`
+                ? `Reviewing pull requests in ${cfg.owner}/${cfg.repo} with ${cfg.agentName || cfg.agent}.`
                 : 'Connection and review status for the Carbon PR review agent.'}
             </p>
             {error && (
@@ -750,7 +752,7 @@ function Console({ authRequired = false, onSignOut }) {
           </Column>
 
           <Column sm={4} md={8} lg={6}>
-            <BobcoinsPanel credits={credits} check={bobcoinsCheck} />
+            <BobcoinsPanel credits={credits} check={spendCheck} />
           </Column>
         </Grid>
 

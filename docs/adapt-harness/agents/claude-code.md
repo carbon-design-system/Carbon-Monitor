@@ -1,170 +1,38 @@
 # Worker agent: Claude Code
 
-**Status: not exercised here.** `src/agentRunner.js` has a `claude` case that
-was never run in production, and it uses `--dangerously-skip-permissions` with
-`stream-json` output, which the snippets below replace. Treat everything as a
-starting point: confirm each item against the current Claude Code documentation,
-then record the confirmed values in SPEC section 5 and the tasks in section 12.
+**Status: supported.** Claude runs through the Claude Code CLI in print mode
+(`claude -p`) as a built-in adapter, `src/agents/claude.js`. Keeping Claude, or
+moving a deployment to it, means the SPEC marks each row **configure**:
+`GITHUB_AI_AGENT_CLI=claude` and `ANTHROPIC_API_KEY`. Every item below is read
+from the code. The adapter contract is in `docs/HARNESS.md` section 4.
 
-## Verify first
+## Where each concern lives
 
-- [ ] Package name and a version to pin: `@anthropic-ai/claude-code`
-- [ ] Headless flags: `-p`, `--output-format json`, `--permission-mode`, `--allowedTools`, `--max-turns`, `--mcp-config`
-- [ ] The JSON result's fields, especially `result` and `total_cost_usd`
-- [ ] MCP server shape for a streamable-HTTP server with headers
-- [ ] Where project skills load from (`.claude/skills/`) and the instruction file name (`CLAUDE.md`)
+| Concern           | File                                                                    | Detail                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Invocation        | `src/agents/claude.js` `buildArgs`, run by `src/agentRunner.js`         | `claude -p --output-format stream-json --verbose --permission-mode dontAsk --permission-prompts none --allowedTools <list> --disallowedTools <list> --mcp-config <bundle>/claude-config/claude-mcp.json --strict-mcp-config --setting-sources project --no-session-persistence --model <model> --effort <effort> [--max-budget-usd N] [--max-turns N] "<prompt>"`. The cwd is the per-item workspace; stdin is ignored; the timeout is 10 minutes (SIGTERM, then SIGKILL after 10 s). `--bare` is not used, because it suppresses project skill discovery. Defaults: `CLAUDE_MODEL=claude-sonnet-5-5`, `CLAUDE_EFFORT=high`, `CLAUDE_MAX_BUDGET_USD=5`, `CLAUDE_MAX_TURNS=60` (`0` omits a cap's flag) |
+| Event stream      | `src/agents/claude.js` `parseEvent`                                     | One JSON object per line. `system/init` is logged once (model, MCP server status, skills); a `carbon-mcp` status other than `connected` is a warning. The skill list includes the CLI's own bundled skills (19 in a live run), so the `skills: N` count is not ours and only a missing `carbon-builder` warns. Each `assistant` content block becomes an event, and text blocks of one API response share `message.id`, so the collector joins them. `user` `tool_result` blocks pair with their tool call by id. `thinking` blocks, `rate_limit_event`, `system/api_retry` and other `system` records are ignored                                                                                     |
+| Result mapping    | `src/agents/claude.js` `statsFromResult`                                | `session_id` becomes `stats.task_id` (and the `bob_task_id` telemetry field), `total_cost_usd` becomes `session_costs`, `duration_ms` is kept. `input_tokens` is the uncached input plus cache creation plus cache read, `total_tokens` is that plus output, and the cache counts are also kept apart. `error_max_budget_usd` ends the run as a `cost-limit`, `error_max_turns` as a `turn-limit`, any other non-success result as `agent-error`. A non-empty `permission_denials` is logged as a warning                                                                                                                                                                                              |
+| Permissions       | `CLAUDE_ALLOWED_TOOLS`, `CLAUDE_DISALLOWED_TOOLS`, `BASELINE_DENIES`    | Read-only. Allowed by default: `Read(./**),Glob,Grep,Skill(carbon-builder),mcp__carbon-mcp`. Denied by default: `Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch,Agent`. The adapter always appends `Read(./claude-config/**)`, `Read(~/**)` and `Read(//proc/**)`, so an override cannot drop them. Under `dontAsk` anything not allowed is refused, never prompted                                                                                                                                                                                                                                                                                                                         |
+| Environment       | `src/agents/claude.js` `env`                                            | An allowlist, not the harness's environment: `PATH`, `HOME`, `TMPDIR`, `LANG`, `LC_ALL`, `TERM`, `USER`, `LOGNAME`, `SHELL`, proxy and CA variables, `ANTHROPIC_*` and `CLAUDE_*`. The adapter sets `CLAUDE_CONFIG_DIR=<bundle>/claude-config` and `DISABLE_AUTOUPDATER=1`. `HOME` stays real; the config directory is the isolation, which is why Claude runs `REVIEW_CONCURRENCY` reviews side by side                                                                                                                                                                                                                                                                                               |
+| Authentication    | `.env.example`, the `SECRET_KEYS` default in `deploy_ce.sh`             | `ANTHROPIC_API_KEY`, an API key from the Claude Console. A subscription login is not used. A `SECRET_KEYS` set in `.env` replaces the default list, so it must repeat every key. `deploy_ce.sh` refuses to deploy without it when `GITHUB_AI_AGENT_CLI=claude`                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| MCP configuration | `src/api/mcpConnection.js` `getCredentials`, `claude.js` `seedHome`     | `getCredentials()` reads the `carbon-mcp` URL and headers from `~/.bob/settings/mcp.json`, the file the refresh timer keeps current. `seedHome` writes `{"mcpServers":{"carbon-mcp":{"type":"http","url":…,"headers":{…}}}}` to `<bundle>/claude-config/claude-mcp.json` at mode 0600, and its `refresh` rewrites it before a parse-failure retry. With no bearer it writes an empty server list and warns                                                                                                                                                                                                                                                                                             |
+| Skills and rules  | `src/agents/claude.js` `prepareBundle`                                  | `CLAUDE.md` (the same rules text Bob gets), `.claude/skills/carbon-builder` copied from the repo's `.bob/skills/carbon-builder`, and `.claude/settings.json` with `permissions.blockReadsOutsideWorkingDirectories`. No `.env`. Claude reads project skills and `CLAUDE.md` because `--setting-sources project` is set                                                                                                                                                                                                                                                                                                                                                                                 |
+| Evidence          | `src/agents/claude.js` `evidence`                                       | A `Skill` call naming `carbon-builder`, or a `Read` under `.claude/skills/carbon-builder/`, counts as skill evidence (log sentinel `Skill:carbon-builder`). `mcp__carbon-mcp__<tool>` calls count as Carbon MCP calls                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Cost              | `src/agents/claude.js` `credits`, `src/api/spend.js`, `creditLedger.js` | Per-run spend is the result's `total_cost_usd`, which the CLI computes client-side, in dollars. It is recorded with source `claude-result` and `costUnit: usd`; there is no balance to bracket. `CLAUDE_MONTHLY_BUDGET_USD` (unset means not metered) turns on a month-to-date figure from Elasticsearch, with the ledger as fallback, and `CLAUDE_BUDGET_LOW_PCT` (default 10) sets the pause threshold. The tile is `spend`                                                                                                                                                                                                                                                                          |
+| Install           | `Dockerfile`, the `CLAUDE_CODE_VERSION` block                           | `npm install -g @anthropic-ai/claude-code@2.1.302` and `ENV DISABLE_AUTOUPDATER=1`. The build checks the installed package version and that the resolved `claude` binary is an ELF for the image's architecture; it does not run `claude --version`, because the Bun binary aborts under qemu                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Health check      | `src/api/healthChecks.js` `checkAgent`                                  | `claude --version` under `BOB_CHECK_TIMEOUT_MS`, then checks `ANTHROPIC_API_KEY` is set. The tile is labelled `Claude Code CLI`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Network           | README, "Who can run this"                                              | The Anthropic API. No IBM network is needed for inference; Carbon MCP still needs the IBMid sign-in                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
-## 1. Dockerfile
+## Using it for another job
 
-Delete the three `ARG BOB_*` lines and the whole `---- Bob Shell ----` `RUN`
-block. In the `mkdir -p /home/app/.bob ...` block, delete the three `printf`
-lines and the `cp -R ... carbon-builder` line, keeping `/workspace` creation and
-the `chown`. Insert in place of the Bob block:
+The adapter is job-neutral except for the Carbon MCP file and the skill copy.
+For a job with no ground-truth MCP server and no skill, set
+`CLAUDE_ALLOWED_TOOLS` to just what the job needs (for example `Read(./**)`) and
+write the job's rules through `prepareBundle`'s `rules` argument. The deny rules
+and the environment allowlist stay as they are.
 
-```dockerfile
-# Claude Code, pinned. Move the pin deliberately.
-ARG CLAUDE_CODE_VERSION=x.y.z
-RUN npm install -g --registry=https://registry.npmjs.org/ --no-audit --no-fund \
-      @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
-  && claude --version
-```
-
-Keep the Debian base, Node 22, the `curl ca-certificates git` install, the
-non-root `app` user and `/workspace`. If the job uses a skill, keep the skill
-copy but target `.claude/skills/` (section 6).
-
-## 2. src/agentRunner.js
-
-`'claude'` is already in `validAgents`. Replace the `case 'claude'` block:
-
-```js
-case 'claude':
-  // Headless: one prompt, JSON result, bounded turns, no interactive permission
-  // prompts. The MCP file is written by mcpConnection into the workspace.
-  command = 'claude';
-  args = [
-    '-p', prompt,
-    '--output-format', 'json',
-    '--permission-mode', 'acceptEdits',
-    '--max-turns', String(process.env.CLAUDE_MAX_TURNS || 40),
-    '--mcp-config', `${cwd}/.claude/mcp.json`,
-  ];
-  break;
-```
-
-Delete the `env.CLAUDE_MCP_CONFIG = ...` line near the top of `runAgent`; the
-flag above replaces it. Where `runAgent` resolves, parse `stdout` as JSON and
-return `parsed.result` as the agent text, keeping `parsed.total_cost_usd` for
-the ledger (section 7).
-
-## 3. src/api/healthChecks.js
-
-Replace `checkBob` with a `checkClaude` of the same shape:
-
-```js
-async function checkClaude() {
-  const timeoutMs = Number(process.env.AGENT_CHECK_TIMEOUT_MS || 20_000);
-  const { code, stdout, stderr, failure } = await run(
-    'claude',
-    ['--version'],
-    timeoutMs
-  );
-  if (failure === 'timeout')
-    return {
-      id: 'agent',
-      label: 'Claude Code',
-      status: WARNING,
-      detail: `Did not respond within ${Math.round(timeoutMs / 1000)}s`,
-      hint: null,
-    };
-  if (code !== 0)
-    return {
-      id: 'agent',
-      label: 'Claude Code',
-      status: FAILED,
-      detail: failure === 'missing' ? 'Not found on PATH' : 'Failed to run',
-      hint: stderr.trim() || 'The image did not install Claude Code.',
-    };
-  const version = stdout.trim().split('\n')[0] || 'unknown';
-  if (!process.env.ANTHROPIC_API_KEY)
-    return {
-      id: 'agent',
-      label: 'Claude Code',
-      status: FAILED,
-      detail: `v${version} — not authenticated`,
-      hint: 'ANTHROPIC_API_KEY is not set.',
-    };
-  return {
-    id: 'agent',
-    label: 'Claude Code',
-    status: OK,
-    detail: `v${version} — API key configured`,
-    hint: null,
-  };
-}
-```
-
-Update the `Promise.all` list and the console tile that renders `id: 'bob'`.
-
-## 4. deploy_ce.sh and .env.example
-
-- `SECRET_KEYS` in `.env`: add `ANTHROPIC_API_KEY`; remove `BOB_API_KEY`, `BOB_TEAM_ID`, `BOB_INSTANCE_ID`.
-- The preflight `verify_bob_source` function and its call go.
-- `--env GITHUB_AI_AGENT_CLI=bob` becomes `claude` (or the renamed variable from SPEC section 6).
-- `.env.example`: the `BOB_GATEWAY_BASE_URL`, `BOB_CREDITS_*` and
-  `BOB_CHECK_TIMEOUT_MS` entries go with the Bobcoins tile (section 7).
-- `.env.example`: replace the Bob block with
-  ```
-  # Claude Code authenticates with an Anthropic API key.
-  ANTHROPIC_API_KEY=
-  # Turn cap per run; the run fails rather than loops when it is hit.
-  # CLAUDE_MAX_TURNS=40
-  # Monthly budget in US dollars for the spend ratio and the auto-pause (section 7).
-  AGENT_MONTHLY_BUDGET_USD=
-  # Health-check budget for `claude --version`; replaces BOB_CHECK_TIMEOUT_MS.
-  # AGENT_CHECK_TIMEOUT_MS=20000
-  ```
-
-## 5. MCP configuration
-
-`mcpConnection.js` currently writes `~/.bob/settings/mcp.json`. Write this file
-into each workspace instead, at `<cwd>/.claude/mcp.json`, from the same token
-state:
-
-```json
-{
-  "mcpServers": {
-    "carbon-mcp": {
-      "type": "http",
-      "url": "https://mcp.carbondesignsystem.com/mcp",
-      "headers": {
-        "Authorization": "Bearer <token>",
-        "X-MCP-Session": "<session id>"
-      }
-    }
-  }
-}
-```
-
-The OAuth bootstrap and refresh timer in `mcpConnection.js` stay as they are;
-only the writer's target changes. Bob's `ALWAYS_ALLOW` list in the same module
-has no place in this file: pass the same four tool names to the runner with
-`--allowedTools`, in the name form the Claude Code documentation gives for MCP
-tools (see "Verify first").
-
-## 6. Workspace instructions and skills
-
-In `src/reviewBundle.js`, write the rules file as `<cwd>/CLAUDE.md` instead of
-`.bob/rules/01-output.md`, and copy any skill to `<cwd>/.claude/skills/<name>/`.
-
-## 7. Cost
-
-There is no balance API. Read `total_cost_usd` from each run's JSON result and
-record it through `creditLedger.record`. Replace the Bobcoins balance tile with
-spend to date against a `AGENT_MONTHLY_BUDGET_USD` you set in `.env`, and point
-the scheduler's auto-pause at that ratio instead of the gateway balance.
-
-## 8. Verify in the built image
+## Verify in the built image
 
 ```bash
 npm run build:client && podman build --platform linux/amd64 -t harness-test .
@@ -172,8 +40,14 @@ podman run --rm --entrypoint claude harness-test --version
 podman run --rm -e ANTHROPIC_API_KEY --entrypoint claude harness-test -p "Reply with the single word OK" --output-format json
 ```
 
-The second command must print a JSON object whose `result` is `OK`.
+The second command must print a JSON object whose `result` is `OK` and which
+carries `total_cost_usd`. Both commands abort under qemu, so on an arm64 Mac
+run them against an arm64 build (`--platform linux/arm64`), or on an amd64 host.
 
 ## Console icon
 
-The Bobcoins panel shows the worker agent's mark: `import bobMark from '../assets/bob.svg'` in `client/src/components/BobcoinsPanel.jsx`, rendered with alt text naming Bob. Swap the import to `../assets/agents/claude.svg` and update the alt text. Marks for every mapped agent are in `client/src/assets/agents/`; each stays subject to its owner's brand guidelines.
+The spend panel shows the worker agent's mark. `client/src/components/BobcoinsPanel.jsx`
+imports `client/src/assets/agents/claude.svg` and picks it when
+`summary.costUnit` is `usd`, with alt text naming Claude. Marks for every mapped
+agent are in `client/src/assets/agents/`; each stays subject to its owner's brand
+guidelines.

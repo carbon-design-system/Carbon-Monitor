@@ -1,53 +1,34 @@
 # Token Usage Tracking
 
-The Carbon PR Review Agent now includes token usage estimation at the end of each PR review.
+Each review's summary comment ends with its token usage. The numbers are exact when the agent reports them and an estimate otherwise. The short Looks Good comment carries no token usage; the `pr_review_completed` event and the log still do.
 
-## Overview
+## Where the numbers come from
 
-After completing a PR review, the agent calculates an approximate token count based on:
+- **Exact, Bob.** Bob's `stream-json` run ends with a `result` record whose `stats` carry `input_tokens`, `output_tokens`, `total_tokens`, `cache_read_tokens` and `cache_write_tokens`. When both `input_tokens` and `output_tokens` are present, the comment shows them as they are (`source: 'bob'`). Bob Shell 2.0.0 reports no token fields at all, so reviews on it use the estimate; later releases are expected to carry them.
+- **Exact, Claude.** Claude's `stream-json` run ends with a `result` record whose `usage` holds `input_tokens`, `output_tokens`, `cache_creation_input_tokens` and `cache_read_input_tokens`. The adapter's `input_tokens` is the sum of the first, the cache creation and the cache read counts, because Claude reports uncached input on its own and the model consumed all three. The total is that input plus `output_tokens`. The cache counts are also kept separately as `cache_write_tokens` and `cache_read_tokens` (`source: 'claude'`).
+- **Estimate.** With no result record (`BOB_OUTPUT_FORMAT=pretty`, or a run of either agent that exited without one), `estimateTokenUsage` in [`src/reviewPrompt.js`](../src/reviewPrompt.js) counts 1 token per 4 characters of the prompt, the diff and the agent output (`source: 'estimate'`). Expect it to be off by 10-20% or more.
 
-- **Input tokens**: The review prompt + PR diff content
-- **Output tokens**: The agent's response (review findings and summary)
-- **Total tokens**: Sum of input and output tokens
+When a parse failure triggers the retry, the figures describe the run that produced the posted review. The spend in the ledger and the `pr_review_completed` event covers both runs, in the agent's unit (Bobcoins or dollars).
 
-## How It Works
+## Example output
 
-### Estimation Method
+With exact counts:
 
-The token estimation uses a simple heuristic:
+```text
+---
 
-- **1 token ≈ 4 characters** (for English text)
-
-This is a conservative estimate. Actual tokenization varies by model and language, but this provides a reasonable approximation for cost estimation purposes.
-
-### Implementation
-
-The token usage is calculated in [`src/reviewPrompt.js`](../src/reviewPrompt.js):
-
-```javascript
-function estimateTokenUsage({ prompt, diff, agentOutput }) {
-  const CHARS_PER_TOKEN = 4;
-
-  const inputChars = (prompt?.length || 0) + (diff?.length || 0);
-  const outputChars = agentOutput?.length || 0;
-
-  const inputTokens = Math.ceil(inputChars / CHARS_PER_TOKEN);
-  const outputTokens = Math.ceil(outputChars / CHARS_PER_TOKEN);
-  const totalTokens = inputTokens + outputTokens;
-
-  return { input: inputTokens, output: outputTokens, total: totalTokens };
-}
+**Token Usage:**
+- Input tokens: 12,500
+- Output tokens: 3,200
+- Total tokens: 15,700
 ```
 
-## Example Output
+With the estimate:
 
-At the end of each PR review comment, you'll see:
-
-```markdown
+```text
 ---
 
 **Estimated Token Usage:**
-
 - Input tokens: ~12,500
 - Output tokens: ~3,200
 - Total tokens: ~15,700
@@ -55,84 +36,23 @@ At the end of each PR review comment, you'll see:
 _Note: Token estimates are approximate and based on character count (1 token ≈ 4 characters)._
 ```
 
-## Use Cases
+## Where else they go
 
-### Cost Estimation
-
-Use the token estimates to:
-
-- Track API costs across multiple PR reviews
-- Budget for large-scale PR review operations
-- Compare efficiency across different agents (bob, claude, codex)
-
-### Performance Monitoring
-
-Monitor token usage trends to:
-
-- Identify unusually large PRs that may need manual review
-- Optimize review prompts for efficiency
-- Track agent verbosity over time
-
-### Capacity Planning
-
-Use historical token data to:
-
-- Estimate costs for reviewing a backlog of PRs
-- Plan API quota allocation
-- Determine optimal batch sizes for PR reviews
-
-## Accuracy
-
-The token estimates are **approximate** and may differ from actual token counts by:
-
-- ±10-20% for typical code and English text
-- More variance for non-English text or special characters
-- Different models tokenize differently (GPT-4, Claude, etc.)
-
-For precise token counts, consult your LLM provider's API response headers or tokenization tools.
+- The `pr_review_completed` event carries `token_input`, `token_output`, `token_total`, `token_cache_read`, `token_cache_write` and `token_source` (the agent's id, `bob` or `claude`, or `estimate`). The comment shows exact counts for any source except `estimate`.
+- Each entry in the local credits ledger carries `tokens` (`input`, `output`, `cacheRead`, `cacheWrite`, `total`), `taskId` and `toolCalls` when the agent reported them. With `ES_URL` set, `/api/credits/history` is served from Elasticsearch and drops these fields; without it, the endpoint returns the local ledger entries, which carry them. The `pr_review_completed` payload above always does.
+- The log shows `Tokens: ...` for exact counts and `Estimated tokens: ~...` for the estimate, even when `GITHUB_AI_AGENT_POST_SUMMARY_COMMENT=false` skips the comment.
 
 ## Testing
-
-Run the token usage tests:
 
 ```bash
 node tests/tokenUsage.test.js
 ```
 
-This validates:
+It covers the estimate, empty and missing inputs, rounding, and the comment wording for each `source`.
 
-- Correct calculation for typical PR reviews
-- Handling of empty/missing inputs
-- Proper rounding of fractional tokens
+## Related files
 
-## Configuration
-
-Token usage tracking is always enabled and cannot be disabled. However, you can:
-
-1. **Skip posting the summary comment** (which includes token usage):
-
-   ```bash
-   export GITHUB_AI_AGENT_POST_SUMMARY_COMMENT=false
-   ```
-
-2. **View token estimates in logs** even if comments aren't posted:
-   ```
-   📊 Calculating token usage...
-   ✅ Estimated tokens: ~15,700 (input: ~12,500, output: ~3,200)
-   ```
-
-## Future Enhancements
-
-Potential improvements:
-
-- Integration with actual tokenizer libraries (tiktoken, etc.)
-- Per-model token estimation (GPT-4 vs Claude vs Codex)
-- Token usage analytics dashboard
-- Cost estimation based on provider pricing
-- Token budget limits per PR
-
-## Related Files
-
-- [`src/reviewPrompt.js`](../src/reviewPrompt.js) - Token estimation logic
-- [`src/index.js`](../src/index.js) - Integration into review flow
-- [`tests/tokenUsage.test.js`](../tests/tokenUsage.test.js) - Test suite
+- [`src/reviewPrompt.js`](../src/reviewPrompt.js): estimate and comment formatting
+- [`src/index.js`](../src/index.js): `tokensFromStats` and the review flow
+- [`src/agentRunner.js`](../src/agentRunner.js): the `stats` the runner resolves
+- [`tests/tokenUsage.test.js`](../tests/tokenUsage.test.js)

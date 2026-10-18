@@ -6,10 +6,9 @@
  * dedicated to this console and kept separate from the Elasticsearch (ES_*)
  * account, so the two are never coupled.
  *
- * A stateless HMAC-signed token in an HttpOnly cookie — no session store, which
- * matters because Code Engine may run several instances and scale to zero. Any
- * instance can verify a token minted by any other, and a restart does not sign
- * everyone out (provided a stable signing key is configured).
+ * A stateless HMAC-signed token in an HttpOnly cookie — no session store. The
+ * deployment pins one instance that never scales to zero, and a restart does
+ * not sign everyone out if a stable signing key is configured.
  *
  * ── Deliberate divergence from the original ─────────────────────────────────
  * Carbon Migrate's verifyToken checks only the HMAC and never reads back the
@@ -32,12 +31,11 @@ const ACCESS_CONTACT_EMAIL =
 /**
  * Feature flag: whether the console requires a sign-in.
  *
- * OFF BY DEFAULT, everywhere — including production. The default deployment is
- * open, and the password-protected console is opt-in via AUTH_REQUIRED. This is
- * deliberately NOT keyed to NODE_ENV: inferring a security posture from an
- * unrelated variable is how a deployment ends up in a state nobody chose.
+ * Unset means off here; deploy_ce.sh defaults it to true, so a deployment is
+ * protected. Deliberately NOT keyed to NODE_ENV: inferring a security posture
+ * from an unrelated variable is how a deployment ends up in a state nobody chose.
  *
- * Because the default is off, the dangerous mistake is now a typo while turning
+ * Because an unset flag is off, the dangerous mistake is a typo while turning
  * it ON — AUTH_REQUIRED=1 silently leaving the console open when the operator
  * believes it is protected. So the common spellings are accepted and anything
  * unrecognised is reported loudly rather than quietly treated as false.
@@ -67,20 +65,60 @@ if (!AUTH_FLAG.recognized) {
   );
 }
 
-// Sign-in is on but unusable without credentials to check against — worth saying
-// at startup rather than letting every attempt fail with a 503.
-if (
-  AUTH_REQUIRED &&
-  !(process.env.CONSOLE_USERNAME && process.env.CONSOLE_PASSWORD)
-) {
-  console.warn(
-    '[api/sessionAuth] WARNING: AUTH_REQUIRED is set but CONSOLE_USERNAME/CONSOLE_PASSWORD ' +
-      'are not — nobody will be able to sign in.'
+/** Secure cookies require HTTPS, which is what Code Engine terminates. */
+function isSecure() {
+  return (
+    process.env.NODE_ENV === 'production' ||
+    (process.env.BASE_URL || '').trim().toLowerCase().startsWith('https://')
   );
 }
 
-/** Secure cookies require HTTPS, which is what Code Engine terminates. */
-const IS_SECURE = process.env.NODE_ENV === 'production';
+// ── Sign-in throttle ────────────────────────────────────────────────────────
+
+const THROTTLE_MAX_FAILURES = 5;
+const THROTTLE_WINDOW_MS = 15 * 60 * 1000;
+const THROTTLE_BLOCK_MS = 60 * 1000;
+// Bounds memory when many addresses fail once each.
+const THROTTLE_MAX_TRACKED = 1000;
+
+/** ip -> { count, windowStart, blockedUntil }, kept in memory per instance. */
+const failures = new Map();
+
+function throttleKey(ip) {
+  return ip || 'unknown';
+}
+
+/** Seconds a blocked address must wait, or 0 when it may try. */
+function retryAfterSeconds(ip) {
+  const entry = failures.get(throttleKey(ip));
+  if (!entry || entry.blockedUntil <= Date.now()) return 0;
+  return Math.ceil((entry.blockedUntil - Date.now()) / 1000);
+}
+
+function recordFailure(ip) {
+  const key = throttleKey(ip);
+  const now = Date.now();
+  let entry = failures.get(key);
+  if (!entry || now - entry.windowStart > THROTTLE_WINDOW_MS) {
+    entry = { count: 0, windowStart: now, blockedUntil: 0 };
+  }
+  entry.count += 1;
+  if (entry.count >= THROTTLE_MAX_FAILURES) {
+    entry.blockedUntil = now + THROTTLE_BLOCK_MS;
+  }
+  // Re-insert so Map order tracks recency and eviction drops the stalest.
+  failures.delete(key);
+  failures.set(key, entry);
+
+  if (failures.size > THROTTLE_MAX_TRACKED) {
+    for (const [k, e] of failures) {
+      if (now - e.windowStart > THROTTLE_WINDOW_MS) failures.delete(k);
+    }
+    while (failures.size > THROTTLE_MAX_TRACKED) {
+      failures.delete(failures.keys().next().value);
+    }
+  }
+}
 
 /**
  * Per-process fallback signing key.
@@ -174,27 +212,30 @@ function setSessionCookie(res, token) {
     'SameSite=Strict',
     'Path=/',
   ];
-  if (IS_SECURE) parts.push('Secure');
+  if (isSecure()) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
 function clearSessionCookie(res) {
-  res.setHeader(
-    'Set-Cookie',
-    `${COOKIE_NAME}=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/`
-  );
+  const parts = [
+    `${COOKIE_NAME}=`,
+    'Max-Age=0',
+    'HttpOnly',
+    'SameSite=Strict',
+    'Path=/',
+  ];
+  if (isSecure()) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
 }
 
 // ── Credential comparison ───────────────────────────────────────────────────
 
+// Hashed first so the compare takes the same time whatever the input length.
 function safeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
-  if (a.length !== b.length) return false;
-  try {
-    return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
-  } catch {
-    return false;
-  }
+  const ha = crypto.createHash('sha256').update(a, 'utf8').digest();
+  const hb = crypto.createHash('sha256').update(b, 'utf8').digest();
+  return crypto.timingSafeEqual(ha, hb);
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -204,9 +245,10 @@ function safeEqual(a, b) {
  *
  * @param {Object} res - Response to attach the cookie to
  * @param {Object} credentials - { username, password }
+ * @param {string} [clientIp] - Address the failed-attempt throttle is keyed on
  * @returns {{ok: boolean, status: number, body: Object}}
  */
-function login(res, { username, password } = {}) {
+function login(res, { username, password } = {}, clientIp) {
   const expectedUser = process.env.CONSOLE_USERNAME;
   const expectedPass = process.env.CONSOLE_PASSWORD;
 
@@ -223,6 +265,20 @@ function login(res, { username, password } = {}) {
     };
   }
 
+  const wait = retryAfterSeconds(clientIp);
+  if (wait > 0) {
+    res.setHeader('Retry-After', String(wait));
+    return {
+      ok: false,
+      status: 429,
+      body: {
+        error: 'Too many failed sign-in attempts. Try again shortly.',
+        retryAfter: wait,
+        contact: ACCESS_CONTACT_EMAIL,
+      },
+    };
+  }
+
   // Both comparisons run before branching so response time does not reveal
   // which field was wrong.
   const userOk = safeEqual(username, expectedUser);
@@ -233,6 +289,7 @@ function login(res, { username, password } = {}) {
   // contact address rides in its own field so the sign-in page can render it as a
   // mailto link rather than parse it out of the message.
   if (!userOk || !passOk) {
+    recordFailure(clientIp);
     return {
       ok: false,
       status: 401,
@@ -243,6 +300,7 @@ function login(res, { username, password } = {}) {
     };
   }
 
+  failures.delete(throttleKey(clientIp));
   setSessionCookie(res, makeToken());
   return { ok: true, status: 200, body: { ok: true, username } };
 }
@@ -274,6 +332,7 @@ function status(req) {
 
 module.exports = {
   login,
+  safeEqual,
   logout,
   status,
   hasValidSession,

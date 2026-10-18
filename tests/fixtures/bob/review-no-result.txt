@@ -1,0 +1,9 @@
+## Step 1
+Button.stories.js:42 — icon-only Button without iconDescription — Category 2 — pending
+
+## Step 2
+confirmed finding — Icon-only button has no accessible name
+
+BEGIN_REVIEW_JSON
+{"summaryMarkdown":"Plain pretty output.","findings":[],"findingsTable":[],"shouldPostInlineComments":false}
+END_REVIEW_JSON

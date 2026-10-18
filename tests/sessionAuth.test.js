@@ -21,6 +21,10 @@
  * 16. Common falsy spellings all leave it off
  * 17. An unrecognised value leaves it off AND warns — with the default off, a
  *     typo while enabling is the failure that matters
+ * 18. The Secure flag follows an https BASE_URL or production, on set and clear
+ * 19. Credential comparison hashes both sides (no length shortcut, no throw)
+ * 20. Five failed sign-ins from one address block it with 429 and Retry-After,
+ *     other addresses are unaffected, success resets, and the tracker is bounded
  */
 
 let passed = 0;
@@ -343,6 +347,120 @@ test('session cookie sets HttpOnly, SameSite and Path', () => {
   );
   assert(cookie.includes('SameSite=Strict'), 'cookie must be SameSite=Strict');
   assert(cookie.includes('Path=/'), 'cookie must apply to the whole app');
+});
+
+test('cookie is Secure when BASE_URL is https, even outside production', () => {
+  const saved = { b: process.env.BASE_URL, n: process.env.NODE_ENV };
+  try {
+    delete process.env.NODE_ENV;
+    process.env.BASE_URL = 'https://monitor.example.com';
+    const res = fakeRes();
+    auth.login(res, {
+      username: 'operator',
+      password: 'correct-horse-battery',
+    });
+    assert(res.headers['Set-Cookie'].includes('Secure'), 'set cookie: Secure');
+    const cleared = fakeRes();
+    auth.logout(cleared);
+    assert(cleared.headers['Set-Cookie'].includes('Secure'), 'clear: Secure');
+
+    process.env.BASE_URL = 'http://localhost:3000';
+    const plain = fakeRes();
+    auth.login(plain, {
+      username: 'operator',
+      password: 'correct-horse-battery',
+    });
+    assert(!plain.headers['Set-Cookie'].includes('Secure'), 'http: no Secure');
+
+    process.env.NODE_ENV = 'production';
+    const prod = fakeRes();
+    auth.logout(prod);
+    assert(prod.headers['Set-Cookie'].includes('Secure'), 'production: Secure');
+  } finally {
+    for (const [k, v] of [
+      ['BASE_URL', saved.b],
+      ['NODE_ENV', saved.n],
+    ]) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+});
+
+test('credential comparison hashes both sides and never throws on length', () => {
+  assert(auth.safeEqual('same', 'same') === true, 'equal strings');
+  assert(auth.safeEqual('same', 'diff') === false, 'different strings');
+  assert(auth.safeEqual('a', 'abcdef') === false, 'different lengths');
+  assert(auth.safeEqual('é', 'ab') === false, 'same bytes, different chars');
+  assert(auth.safeEqual('', '') === true, 'empty strings compare equal');
+  assert(auth.safeEqual(null, 'x') === false, 'non-string rejected');
+  for (let n = 1; n <= 64; n++) {
+    assert(
+      auth.safeEqual('é'.repeat(n), 'operator') === false,
+      `multibyte length ${n} must not throw or match`
+    );
+  }
+});
+
+const GOOD = { username: 'operator', password: 'correct-horse-battery' };
+const BAD = { username: 'operator', password: 'wrong' };
+
+test('five failed sign-ins block that address with 429 and Retry-After', () => {
+  const throttled = loadAuth(CREDS);
+  for (let i = 0; i < 5; i++) {
+    const r = throttled.login(fakeRes(), BAD, '10.0.0.1');
+    assert(r.status === 401, `attempt ${i + 1}: expected 401, got ${r.status}`);
+  }
+  const res = fakeRes();
+  const blocked = throttled.login(res, GOOD, '10.0.0.1');
+  assert(blocked.status === 429, `expected 429, got ${blocked.status}`);
+  assert(res.headers['Retry-After'] === '60', 'Retry-After should be 60');
+  assert(!res.headers['Set-Cookie'], 'a blocked attempt gets no cookie');
+
+  const other = throttled.login(fakeRes(), GOOD, '10.0.0.2');
+  assert(other.status === 200, 'a different address is unaffected');
+});
+
+test('the block lifts after 60 seconds and a success resets the count', () => {
+  const throttled = loadAuth(CREDS);
+  const realNow = Date.now;
+  let now = realNow();
+  Date.now = () => now;
+  try {
+    for (let i = 0; i < 5; i++) throttled.login(fakeRes(), BAD, '10.0.0.3');
+    assert(throttled.login(fakeRes(), GOOD, '10.0.0.3').status === 429);
+    // Attempts during the lockout do not extend it.
+    now += 30_000;
+    const mid = fakeRes();
+    assert(throttled.login(mid, GOOD, '10.0.0.3').status === 429);
+    assert(Number(mid.headers['Retry-After']) <= 30, 'remaining wait shrinks');
+    now += 31_000;
+    assert(throttled.login(fakeRes(), GOOD, '10.0.0.3').status === 200);
+
+    // Counter reset: four more failures are still plain 401s.
+    for (let i = 0; i < 4; i++) {
+      const r = throttled.login(fakeRes(), BAD, '10.0.0.3');
+      assert(r.status === 401, `post-reset attempt ${i + 1}: ${r.status}`);
+    }
+    now += 16 * 60_000;
+    // Failures outside the 15-minute window no longer count.
+    for (let i = 0; i < 4; i++) throttled.login(fakeRes(), BAD, '10.0.0.3');
+    assert(throttled.login(fakeRes(), GOOD, '10.0.0.3').status === 200);
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test('the failure tracker is bounded', () => {
+  const throttled = loadAuth(CREDS);
+  for (let i = 0; i < 5; i++) throttled.login(fakeRes(), BAD, 'victim');
+  assert(throttled.login(fakeRes(), GOOD, 'victim').status === 429);
+  for (let i = 0; i < 1100; i++) throttled.login(fakeRes(), BAD, `ip-${i}`);
+  // The stalest entry was evicted, so the map did not grow without limit.
+  assert(
+    throttled.login(fakeRes(), GOOD, 'victim').status === 200,
+    'oldest entry should have been evicted'
+  );
 });
 
 // Restore the environment for any subsequent test file in the same process.

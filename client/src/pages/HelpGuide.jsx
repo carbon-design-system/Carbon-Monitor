@@ -33,10 +33,10 @@ function HelpGuide() {
         <div className="cm-help__inner">
           <h1 className="cm-help__title">Help &amp; usage guide</h1>
           <p className="cm-help__lede">
-            Carbon Monitor runs an AI agent (Bob Shell) that reviews open pull
-            requests in the configured GitHub repository and posts its findings
-            back to GitHub. This guide walks through the screen. Each lettered
-            badge on the images matches a letter below it.
+            Carbon Monitor runs an AI agent (IBM Bob or Claude) that reviews
+            open pull requests in the configured GitHub repository and posts its
+            findings back to GitHub. This guide walks through the screen. Each
+            lettered badge on the images matches a letter below it.
           </p>
 
           {/* ── The main screen ─────────────────────────────────────────── */}
@@ -55,7 +55,8 @@ function HelpGuide() {
               </p>
               <ul className="cm-help__list">
                 <li>
-                  <strong>Bob Shell CLI</strong> — the AI agent. Green means it
+                  <strong>Agent CLI</strong> — the AI agent. The tile shows the
+                  CLI in use, Bob Shell CLI or Claude Code CLI. Green means it
                   is installed and has an API key.
                 </li>
                 <li>
@@ -106,13 +107,19 @@ function HelpGuide() {
                   you typed (enabled once you type one).
                 </li>
               </ul>
-              <p>Only one review runs at a time.</p>
+              <p>
+                Up to REVIEW_CONCURRENCY reviews run inside one batch (default
+                2). A second batch waits for the first to finish.
+              </p>
             </AccordionItem>
 
-            <AccordionItem title="C — Bobcoins">
+            <AccordionItem title="C — Spend">
               <p>
-                The agent&rsquo;s monthly budget. Shows how much is used and how
-                much is left. Reviews stop if it runs out.
+                What the agent costs. IBM Bob spends Bobcoins against a monthly
+                budget: the tile shows how much is used and how much is left,
+                and reviews stop if it runs out. Claude spends dollars. Set an
+                optional monthly budget to see the remaining share. Without one,
+                the tile reads &ldquo;Not metered&rdquo;.
               </p>
             </AccordionItem>
 
@@ -221,10 +228,10 @@ function HelpGuide() {
                 </strong>{' '}
                 An automatic run skips any pull request that already carries it.
                 Remove it and the pull request looks unreviewed again, so the
-                next run reviews it a second time &mdash; spending Bobcoins and
-                posting duplicate comments. Adding it to a pull request that was
-                never reviewed has the opposite effect: that one is skipped and
-                never reviewed.
+                next run reviews it a second time &mdash; spending the
+                agent&rsquo;s budget again and posting duplicate comments.
+                Adding it to a pull request that was never reviewed has the
+                opposite effect: that one is skipped and never reviewed.
               </p>
               <p>
                 If a pull request genuinely needs another look, leave the label
@@ -298,8 +305,8 @@ function HelpGuide() {
               <p>
                 When the schedule last ran and when it will run next. If a
                 review is already running at the scheduled time, that
-                day&rsquo;s run is skipped — only one review runs at a time —
-                and a note tells you why.
+                day&rsquo;s run is skipped — only one batch runs at a time — and
+                a note tells you why.
               </p>
             </AccordionItem>
           </Accordion>

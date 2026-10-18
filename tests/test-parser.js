@@ -79,6 +79,8 @@ BEGIN_REVIEW_JSON
 END_REVIEW_JSON
 `;
 
+let failures = 0;
+
 console.log('🧪 Testing review parser...\n');
 
 // Test 1
@@ -87,6 +89,7 @@ const result1 = parseReviewOutput(truncatedMidString);
 if (result1 && result1.findings.length === 1) {
   console.log('✅ PASS: Recovered 1 complete finding from truncated JSON');
 } else {
+  failures++;
   console.log(
     '❌ FAIL: Expected 1 finding, got:',
     result1?.findings?.length || 'null'
@@ -100,6 +103,7 @@ const result2 = parseReviewOutput(truncatedWithCompleteFindings);
 if (result2 && result2.findings.length === 2) {
   console.log('✅ PASS: Recovered 2 complete findings from truncated JSON');
 } else {
+  failures++;
   console.log(
     '❌ FAIL: Expected 2 findings, got:',
     result2?.findings?.length || 'null'
@@ -113,6 +117,7 @@ const result3 = parseReviewOutput(validJSON);
 if (result3 && result3.findings.length === 1) {
   console.log('✅ PASS: Parsed complete JSON correctly');
 } else {
+  failures++;
   console.log(
     '❌ FAIL: Expected 1 finding, got:',
     result3?.findings?.length || 'null'
@@ -121,3 +126,4 @@ if (result3 && result3.findings.length === 1) {
 console.log();
 
 console.log('🏁 Tests complete');
+if (failures > 0) process.exit(1);

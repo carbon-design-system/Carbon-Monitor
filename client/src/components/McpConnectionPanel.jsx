@@ -114,7 +114,7 @@ function McpConnectionPanel({ status, onChanged, inPanel = false, resetKey }) {
     });
 
   /**
-   * Drop the stored grant and strip Bob's MCP headers.
+   * Drop the stored grant and strip the agent's MCP headers.
    *
    * The next review then genuinely runs without a credential, which is the
    * point: it is how an operator hands the container back before it is torn
@@ -143,7 +143,7 @@ function McpConnectionPanel({ status, onChanged, inPanel = false, resetKey }) {
       report(
         'success',
         'Credentials saved',
-        'Bob’s MCP configuration was updated.'
+        'The agent’s MCP configuration was updated.'
       );
     });
   }

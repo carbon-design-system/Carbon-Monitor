@@ -31,9 +31,11 @@ SPEC section 2. The answers map directly onto the task-layer extension points in
    done marker, in that order.)
 7. **Ground truth.** Should the agent verify claims against an MCP server before
    acting? Which one, with what authentication, and which tools? (Default: none.)
-8. **Worker agent.** Bob, or another CLI? Note the answer; the matching file
-   under `docs/adapt-harness/agents/` is read when the SPEC reaches the
-   sections that need it. (Default: Bob.)
+8. **Worker agent.** Bob, Claude, or another CLI? `bob` and `claude` are
+   supported as built, so either is configuration. Another CLI needs an adapter
+   per `docs/HARNESS.md` section 4. Note the answer; the matching file under
+   `docs/adapt-harness/agents/` is read when the SPEC reaches the sections that
+   need it. (Default: Bob.)
 9. **Schedule, volume and cost.** How often, how many items per run, the cost
    ceiling per run or per month, and what the run does when the budget is low.
    (Defaults: daily, 10 items, pause the schedule below 10 percent of budget as

@@ -6,12 +6,10 @@
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
-const {
-  MAX_DIFF_CHARS,
-  CHARS_PER_TOKEN,
-  ISSUE_CONTEXT_TOKENS,
-} = require('./constants');
+const constants = require('./constants');
+const { selectCoverage, MAX_LISTED_FILES } = require('./reviewCoverage');
 const { buildReviewPrompt } = require('./reviewPrompt');
+const agents = require('./agents');
 
 /**
  * Strip single-line and multi-line comments from JSON string
@@ -44,49 +42,6 @@ function getWorkspaceRoot() {
 }
 
 /**
- * Get the current working directory's Bob settings path
- * @returns {string|null} Path to settings.json or null if not found
- */
-function getCurrentBobSettingsPath() {
-  const possiblePaths = [
-    path.join(process.cwd(), '.bob', 'settings.json'),
-    path.join(os.homedir(), '.bob', 'settings.json'),
-  ];
-
-  for (const configPath of possiblePaths) {
-    try {
-      if (require('fs').existsSync(configPath)) {
-        return configPath;
-      }
-    } catch (error) {
-      // Continue to next path
-    }
-  }
-
-  return null;
-}
-
-/**
- * Create a default Bob settings with MCP config for carbon-mcp-server
- * @param {string} tempDir - Temporary directory path
- */
-async function createDefaultBobSettings(tempDir) {
-  const bobSettings = {
-    mcpServers: {
-      'carbon-mcp-server': {
-        command: 'npx',
-        args: ['-y', 'carbon-mcp'],
-      },
-    },
-  };
-
-  await fs.writeFile(
-    path.join(tempDir, '.bob', 'settings.json'),
-    JSON.stringify(bobSettings, null, 2)
-  );
-}
-
-/**
  * Recursively copy a directory
  * @param {string} src - Source directory
  * @param {string} dest - Destination directory
@@ -107,12 +62,163 @@ async function copyDirectory(src, dest) {
   }
 }
 
+// Non-fatal: the review continues and the skill simply won't be available.
+async function copySkill(src, dest) {
+  try {
+    await copyDirectory(src, dest);
+  } catch (skillErr) {
+    console.warn(
+      '⚠️  Could not copy carbon-builder skill into bundle:',
+      skillErr.message
+    );
+  }
+}
+
+/**
+ * Give one Bob process its own HOME, seeded from the real ~/.bob.
+ *
+ * Two Bob processes must share no file: trustedFolders.json, task history, logs
+ * and mcp.json are all read and rewritten under $HOME/.bob. skills/ is
+ * read-only to Bob, so it is a symlink; the bundle cleanup removes the rest.
+ * @param {string} bundleDir - The bundle directory (also Bob's cwd)
+ * @returns {Promise<string>} The HOME to give the child
+ */
+async function seedBobHome(bundleDir) {
+  const src = path.join(os.homedir(), '.bob');
+  const home = path.join(bundleDir, 'home');
+  const dest = path.join(home, '.bob');
+  await fs.mkdir(path.join(dest, 'settings'), { recursive: true });
+
+  for (const rel of [
+    'settings.json',
+    path.join('settings', 'settings.json'),
+    path.join('settings', 'mcp.json'),
+  ]) {
+    await fs.copyFile(path.join(src, rel), path.join(dest, rel)).catch((e) => {
+      if (e.code !== 'ENOENT') throw e;
+    });
+  }
+
+  // Trust the bundle explicitly as well as passing --trust. A list or a
+  // path-keyed map are the two shapes Bob versions have used.
+  let trusted = null;
+  try {
+    trusted = JSON.parse(
+      await fs.readFile(path.join(src, 'trustedFolders.json'), 'utf8')
+    );
+  } catch {
+    // Absent or unreadable: rely on --trust.
+  }
+  if (trusted !== null && typeof trusted === 'object') {
+    const dirs = new Set([bundleDir, await fs.realpath(bundleDir)]);
+    for (const dir of dirs) {
+      if (Array.isArray(trusted)) {
+        if (!trusted.includes(dir)) trusted.push(dir);
+      } else {
+        trusted[dir] = true;
+      }
+    }
+    await fs.writeFile(
+      path.join(dest, 'trustedFolders.json'),
+      JSON.stringify(trusted, null, 2)
+    );
+  }
+
+  const rules = path.join(src, 'rules');
+  if (
+    await fs.stat(rules).then(
+      (st) => st.isDirectory(),
+      () => false
+    )
+  ) {
+    await copyDirectory(rules, path.join(dest, 'rules'));
+  }
+  const skills = path.join(src, 'skills');
+  if (
+    await fs.stat(skills).then(
+      (st) => st.isDirectory(),
+      () => false
+    )
+  ) {
+    await fs.symlink(skills, path.join(dest, 'skills'));
+  }
+  return home;
+}
+
+/**
+ * Copy the real mcp.json into a review's HOME again, so a bearer refreshed
+ * since seeding is used. Called at run boundaries only, never mid-run.
+ * @param {string} home - The HOME returned by seedBobHome
+ */
+async function refreshBobMcp(home) {
+  const rel = path.join('settings', 'mcp.json');
+  await fs
+    .copyFile(
+      path.join(os.homedir(), '.bob', rel),
+      path.join(home, '.bob', rel)
+    )
+    .catch((e) => {
+      if (e.code !== 'ENOENT') throw e;
+    });
+}
+
+// One line per file in "Files Not Reviewed"; the wording is the agent's only explanation.
+const OMIT_REASONS = {
+  'over-budget': 'over the diff size budget',
+  'no-patch': 'no diff from GitHub (binary, mode change or too large)',
+  'over-file-cap': (cap) => `over the ${cap}-file cap`,
+};
+
+function notReviewedSection(prNumber, omitted, beyondListing, maxFiles) {
+  if (omitted.length === 0 && beyondListing === 0) return '';
+  const lines = omitted.slice(0, MAX_LISTED_FILES).map((o) => {
+    const why = OMIT_REASONS[o.reason];
+    return `- \`${o.filename.replace(/`/g, '')}\` — ${typeof why === 'function' ? why(maxFiles) : why}`;
+  });
+  if (omitted.length > MAX_LISTED_FILES) {
+    lines.push(
+      `- ${(omitted.length - MAX_LISTED_FILES).toLocaleString('en-US')} more files not reviewed (names not listed)`
+    );
+  }
+  if (beyondListing > 0) {
+    lines.push(
+      `- ${beyondListing.toLocaleString('en-US')} file${beyondListing === 1 ? '' : 's'} beyond GitHub's 3,000-file listing (names unavailable)`
+    );
+  }
+  return `
+## Files Not Reviewed
+
+These files belong to PR #${prNumber} but are not in this review. Do not catalogue them, and do not report a missing test, story or changelog for a file that appears here.
+
+${lines.join('\n')}
+`;
+}
+
+function changedFileLine(reviewed, file) {
+  const cut = reviewed.truncated
+    ? ` (first ${reviewed.cut.shown} of ${reviewed.cut.total} ${reviewed.cut.unit})`
+    : '';
+  return `- \`${file.filename}\` (+${file.additions}/-${file.deletions})${cut}`;
+}
+
 /**
  * Build a review bundle for agent execution
- * @param {Object} options - { owner, repo, pr, diff, files }
- * @returns {Promise<Object>} Bundle object with dir, prompt, and cleanup function
+ * @param {Object} options - { owner, repo, pr, files, client, agent, changedFilesTotal }
+ *   `files` are pulls.listFiles entries with their `patch`; the diff is assembled
+ *   from them. `changedFilesTotal` is GitHub's changed_files, read only when the
+ *   listing is full. agent defaults to the configured one.
+ * @returns {Promise<Object>} Bundle object with dir, prompt, diff, coverage and cleanup function
  */
-async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
+async function buildReviewBundle({
+  owner,
+  repo,
+  pr,
+  files,
+  client,
+  agent,
+  changedFilesTotal,
+}) {
+  const adapter = agents.get(agent);
   // Create the bundle under a directory Bob Shell treats as trusted for MCP access.
   //
   // On macOS this must be /private/tmp: os.tmpdir() resolves to /var/folders/…/T,
@@ -127,43 +233,33 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
   );
 
   try {
-    // 1. Write .env file with API key for Bob
-    // Bob v2 reads BOB_API_KEY from the environment (renamed from BOBSHELL_API_KEY in v1)
-    const envContent = `BOB_API_KEY=${process.env.BOB_API_KEY || ''}\n`;
-    // 0600, not the 0644 a bare writeFile would produce: this is the only file
-    // in the bundle that carries a live credential, and it must not be the most
-    // readable one. The bundle directory is already 0700 from mkdtemp.
-    await fs.writeFile(path.join(tempDir, '.env'), envContent, { mode: 0o600 });
-
-    // 2. Create .bob directory for rules (carbon-mcp is configured globally via streamable HTTP)
-    const bobDir = path.join(tempDir, '.bob');
-    await fs.mkdir(bobDir, { recursive: true });
-
     // 3. Write PR metadata
     await fs.writeFile(
       path.join(tempDir, 'pr.json'),
       JSON.stringify(pr, null, 2)
     );
 
-    // 4. Write files list
+    // 4. Choose whole files that fit the budget; constants are read here, not at load, so tests can lower them
+    const { diff, reviewed, omitted, coverage } = selectCoverage({
+      files,
+      maxChars: constants.MAX_DIFF_CHARS,
+      maxFiles: constants.MAX_FILES_PER_PR,
+      filesUrl: `https://github.com/${owner}/${repo}/pull/${pr.number}/files`,
+      changedFilesTotal,
+    });
+
+    // Without `patch`: the diff is in diff.patch, and the raw patches would double the file
     await fs.writeFile(
       path.join(tempDir, 'files.json'),
-      JSON.stringify(files, null, 2)
+      JSON.stringify(
+        files.map(({ patch: _patch, ...rest }) => rest),
+        null,
+        2
+      )
     );
 
-    // 5. Write diff (with truncation if needed)
-    let diffToWrite = diff;
-    let diffTruncated = false;
-
-    if (diff.length > MAX_DIFF_CHARS) {
-      diffTruncated = true;
-      diffToWrite = diff.substring(0, MAX_DIFF_CHARS);
-      diffToWrite += '\n\n[... diff truncated due to size ...]\n';
-      diffToWrite += `Original size: ${diff.length} chars, truncated to: ~${Math.round(MAX_DIFF_CHARS / CHARS_PER_TOKEN / 1000)}k tokens (${MAX_DIFF_CHARS} chars)\n`;
-      diffToWrite += `View full diff at: https://github.com/${owner}/${repo}/pull/${pr.number}/files\n`;
-    }
-
-    await fs.writeFile(path.join(tempDir, 'diff.patch'), diffToWrite);
+    // 5. Write the assembled diff
+    await fs.writeFile(path.join(tempDir, 'diff.patch'), diff);
 
     // 6. Fetch linked issue context if a GitHub client is available
     let issueContextSection = '';
@@ -175,7 +271,8 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
       });
 
       if (issueContext.found) {
-        const maxIssueChars = ISSUE_CONTEXT_TOKENS * CHARS_PER_TOKEN;
+        const maxIssueChars =
+          constants.ISSUE_CONTEXT_TOKENS * constants.CHARS_PER_TOKEN;
         const { subIssue, parentIssue } = issueContext;
 
         let issueContent = `### Issue #${subIssue.number}: ${subIssue.title}\n\n${subIssue.body}`;
@@ -200,6 +297,8 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
       }
     }
 
+    const filesByName = new Map(files.map((f) => [f.filename, f]));
+
     // 7. Write PR review request summary — embed diff directly so the agent
     // needs only ONE file read to get all context, reducing coin spend.
     const prSummary = `# PR Review Request
@@ -218,12 +317,12 @@ ${pr.body || 'No description provided'}
 ${issueContextSection}
 ## Changed Files
 
-${files.map((f) => `- \`${f.filename}\` (+${f.additions}/-${f.deletions})`).join('\n')}
-
+${reviewed.map((r) => changedFileLine(r, filesByName.get(r.filename))).join('\n')}
+${notReviewedSection(pr.number, omitted, coverage.beyond_listing, constants.MAX_FILES_PER_PR)}
 ## Diff
 
 \`\`\`diff
-${diffToWrite}
+${diff}
 \`\`\`
 `;
 
@@ -265,43 +364,27 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
 - Produce only the requested JSON object and review Markdown.
 `;
 
-    // Write agent rules for Bob
-    const bobRulesDir = path.join(tempDir, '.bob', 'rules');
-    await fs.mkdir(bobRulesDir, { recursive: true });
-    await fs.writeFile(path.join(bobRulesDir, '01-output.md'), rules);
-
-    // Copy the carbon-builder skill into the bundle workspace.
-    // Bob resolves skills from the CWD's .bob/skills/ directory; without this
-    // copy the local .bob/ shadows ~/.bob/skills/ and the skill is never found.
-    // This does NOT force activation — it only makes the skill discoverable.
-    const skillSrc = path.join(
+    // The skill source is the vendored copy; it does not force activation, it
+    // only makes the skill discoverable.
+    const skillSource = path.join(
       __dirname,
       '..',
       '.bob',
       'skills',
       'carbon-builder'
     );
-    const skillDest = path.join(bobDir, 'skills', 'carbon-builder');
-    try {
-      await copyDirectory(skillSrc, skillDest);
-    } catch (skillErr) {
-      // Non-fatal — review continues; skill simply won't be available
-      console.warn(
-        '⚠️  Could not copy carbon-builder skill into bundle:',
-        skillErr.message
-      );
-    }
-
-    // Note: carbon-mcp is configured globally via streamable HTTP in ~/.bob/settings.json
-    // No local MCP config is needed in the bundle directory
+    await adapter.prepareBundle(tempDir, { rules, skillSource });
 
     // 6. Create review prompt using the detailed prompt builder
-    const prompt = buildReviewPrompt({ owner, repo });
+    const prompt = buildReviewPrompt({ owner, repo, agent: adapter.id });
 
     // Return bundle object (no settingsPath needed - using global config)
     return {
       dir: tempDir,
       prompt,
+      diff,
+      // The omitted names ride along so the PR comment can list them
+      coverage: { ...coverage, omitted },
       mdDiffStartLine,
       cleanup: async () => {
         try {
@@ -322,4 +405,10 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
   }
 }
 
-module.exports = { buildReviewBundle, getWorkspaceRoot };
+module.exports = {
+  buildReviewBundle,
+  getWorkspaceRoot,
+  copySkill,
+  seedBobHome,
+  refreshBobMcp,
+};

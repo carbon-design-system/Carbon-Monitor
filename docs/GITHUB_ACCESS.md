@@ -10,9 +10,25 @@ account that can comment but not label re-reviews the same PR on every run.
 
 ## GitHub token
 
-The agent makes eight distinct API calls. Six are reads, and three write:
-`pulls.createReviewComment` (inline comments), `issues.createComment` (the
-summary) and `issues.addLabels` (the `AIReviewed` label).
+The agent makes ten distinct API calls. Six are reads:
+
+- `pulls.list` selects the PRs.
+- `pulls.get` fetches one PR named by number, or the file count of a PR that fills
+  GitHub's 3,000-file listing.
+- `pulls.listFiles` lists the changed files with their patches.
+- `issues.get` fetches a linked issue.
+- A plain request to the linked issue's `parent_issue_url` fetches its parent.
+- `repos.getContent` looks for the `ORIGINAL_FILES.json` that test PRs carry. It
+  gets a 404 on any other PR, and the files come from `pulls.listFiles`.
+
+Four write:
+
+- `pulls.createReview` posts one review carrying the inline comments.
+- `pulls.createReviewComment` is the fallback. It posts the inline comments one at
+  a time when GitHub rejects the grouped review with a 422.
+- `issues.createComment` posts the summary, the Looks Good comment or the Not
+  Reviewed comment.
+- `issues.addLabels` adds the `AIReviewed` label.
 
 ### The label is the binding requirement
 

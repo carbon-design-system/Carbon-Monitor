@@ -2,7 +2,7 @@
  * Carbon PR Review Agent
  *
  * Simplified PR review agent for carbon-design-system/carbon repository
- * Uses modular architecture with CLI agents (bob/claude/codex)
+ * Uses modular architecture with CLI agents (see src/agents)
  *
  * Based on the original agent_prs.js but streamlined for Carbon's needs:
  * - Single repository only (no multi-repo loop)
@@ -46,19 +46,24 @@ if (_rawTargetPR != null) {
 }
 
 const { randomUUID } = require('crypto');
-const { createGitHubClient } = require('./githubClient');
+const { checkStartup } = require('./config/env');
+const { createGitHubClient, createOctokit } = require('./githubClient');
 const { buildReviewBundle } = require('./reviewBundle');
+const { LISTING_LIMIT } = require('./reviewCoverage');
 const {
   runAgent,
   getConfiguredAgent,
   isAgentAvailable,
 } = require('./agentRunner');
+const agents = require('./agents');
 const {
   parseReviewOutput,
   extractCarbonBuilderSkillReads,
 } = require('./reviewParser');
 const {
   formatSummaryComment,
+  formatLooksGoodComment,
+  formatNotReviewedComment,
   formatInlineComment,
   estimateTokenUsage,
 } = require('./reviewPrompt');
@@ -66,6 +71,7 @@ const { splitFindings } = require('./diffMapper');
 const { emitEvent } = require('./observability/eventService');
 const bobCredits = require('./api/bobCredits');
 const creditLedger = require('./api/creditLedger');
+const reviewLog = require('./api/reviewLog');
 const { postRunDigest } = require('./slackNotifier');
 const {
   GITHUB_OWNER,
@@ -74,11 +80,157 @@ const {
   REVIEW_AGENT,
   N_DAYS_SINCE_PR_CREATED,
   MAX_PRS_PER_RUN,
-  MAX_FILES_PER_PR,
+  REVIEW_CONCURRENCY,
 } = require('./constants');
 
 // Load GitHub token from environment
 const GITHUB_TOKEN = process.env.GITHUB_AI_AGENT_TOKEN;
+
+function reportedCost(stats) {
+  const c = stats && stats.session_costs;
+  // Same 1e-6 rounding as computeSpend, so the log and ledger never show float noise.
+  return typeof c === 'number' && Number.isFinite(c)
+    ? Math.round(c * 1e6) / 1e6
+    : null;
+}
+
+// Exact counts from the agent's result record, or null so the caller falls back
+// to the character estimate.
+function tokensFromStats(stats, adapter = agents.get(agents.DEFAULT_ID)) {
+  if (!stats) return null;
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const input = num(stats.input_tokens);
+  const output = num(stats.output_tokens);
+  if (input === null || output === null) return null;
+  return {
+    input,
+    output,
+    total: num(stats.total_tokens) ?? input + output,
+    cacheRead: num(stats.cache_read_tokens),
+    cacheWrite: num(stats.cache_write_tokens),
+    source: adapter.id,
+  };
+}
+
+// Bob's own figure is the cost of record; the balance delta is the permanent
+// fallback and the cross-check. `ledgerSource` keeps the ledger's old label
+// when neither figure exists.
+function resolveSpend({
+  stats,
+  delta,
+  tracked,
+  after,
+  label = '',
+  adapter = agents.get(agents.DEFAULT_ID),
+}) {
+  const reported = reportedCost(stats);
+  const suffix = label ? ` (${label})` : '';
+  if (adapter.costUnit !== 'bobcoins') {
+    // No balance to bracket: the result record is the only figure.
+    if (reported === null) {
+      return { coinsSpent: null, source: 'unknown', ledgerSource: 'unknown' };
+    }
+    console.log(
+      `\n💲 ${adapter.displayName} cost${suffix}: ${reported} ${adapter.costUnit}`
+    );
+    return {
+      coinsSpent: reported,
+      source: adapter.resultSource,
+      ledgerSource: adapter.resultSource,
+    };
+  }
+  if (reported !== null) {
+    if (delta !== null && Math.abs(reported - delta) > 0.01) {
+      console.warn(
+        `\n🪙 Bobcoins${suffix}: result=${reported} delta=${delta} (mismatch)`
+      );
+    } else {
+      console.log(`\n🪙 Bobcoins spent${suffix}: ${reported}`);
+    }
+    return {
+      coinsSpent: reported,
+      source: 'bob-result',
+      ledgerSource: 'bob-result',
+    };
+  }
+  if (delta !== null) {
+    console.log(`\n🪙 Bobcoins spent${suffix}: ${delta}`);
+  } else if (tracked && after && !after.available && !label) {
+    console.log(`\n🪙 Bobcoins: balance unavailable (${after.reason})`);
+  }
+  return {
+    coinsSpent: delta,
+    source: delta !== null ? 'balance-delta' : 'unknown',
+    ledgerSource: tracked ? 'balance-delta' : 'unknown',
+  };
+}
+
+// The review JSON can arrive only in Bob's final message. The earlier messages
+// stay in front of it so the catalogue check still sees the catalogue.
+function reviewTextFor(run) {
+  const marker = 'BEGIN_REVIEW_JSON';
+  if (
+    !run.text.includes(marker) &&
+    run.lastMessage &&
+    run.lastMessage.includes(marker)
+  ) {
+    return `${run.text}\n\n${run.lastMessage}`;
+  }
+  return run.text;
+}
+
+// Observed tool calls beat the transcript regex. With no recognised event
+// evidence the regex runs over the raw tool calls, then the text, so an event
+// shape this code does not know about cannot silently drop every Carbon finding.
+function skillReadsFor(
+  run,
+  text,
+  evidence,
+  adapter = agents.get(agents.DEFAULT_ID)
+) {
+  if (evidence.skillInvoked) return [adapter.skill.sentinel];
+  if (evidence.skillFiles.length > 0) return evidence.skillFiles;
+  if (run.format !== 'stream-json') return extractCarbonBuilderSkillReads(text);
+
+  // Matched per call so a skill call for another skill cannot pair with a later
+  // mention of carbon-builder.
+  const calls = run.toolCalls || [];
+  let reads = extractCarbonBuilderSkillReads(JSON.stringify(calls));
+  if (
+    reads.length === 0 &&
+    calls.some((c) => adapter.skill.pattern.test(JSON.stringify(c)))
+  ) {
+    reads = [adapter.skill.sentinel];
+  }
+  if (reads.length === 0) reads = extractCarbonBuilderSkillReads(text);
+  if (reads.length > 0) {
+    console.warn(
+      '⚠️  Carbon Builder skill detected from the transcript, not from tool events — the event shape may differ from what summarizeToolCalls expects'
+    );
+  }
+  return reads;
+}
+
+// Sum of the first run's and the retry's spend. The source is the retry's when
+// the first run has none, and the agent's result source only when both runs
+// reported one.
+function addSpend(first, retry) {
+  if (retry.coinsSpent === null) return first;
+  if (first.coinsSpent === null) {
+    return { coinsSpent: retry.coinsSpent, source: retry.source };
+  }
+  return {
+    coinsSpent: Math.round((first.coinsSpent + retry.coinsSpent) * 1e6) / 1e6,
+    source:
+      first.source === retry.source && first.source.endsWith('-result')
+        ? first.source
+        : 'balance-delta',
+  };
+}
+
+function sumCalls(calls) {
+  return Object.values(calls).reduce((a, b) => a + b, 0);
+}
 
 /**
  * Record what a single review cost to the local ledger.
@@ -98,6 +250,9 @@ const GITHUB_TOKEN = process.env.GITHUB_AI_AGENT_TOKEN;
  * @param {number|null} opts.coinsSpent
  * @param {number} opts.durationMs
  * @param {string} [opts.source='balance-delta'] - How coinsSpent was derived
+ * @param {Object|null} [opts.stats] - The agent's result stats, when the run had them
+ * @param {number|null} [opts.toolCalls]
+ * @param {Object} [opts.adapter] - Whose unit the spend is in; defaults to Bob
  */
 async function recordReviewCost({
   correlationId,
@@ -106,6 +261,9 @@ async function recordReviewCost({
   coinsSpent,
   durationMs,
   source = 'balance-delta',
+  stats = null,
+  toolCalls = null,
+  adapter = agents.get(agents.DEFAULT_ID),
 }) {
   try {
     const balance = after && after.available ? after : null;
@@ -119,6 +277,10 @@ async function recordReviewCost({
       remainingAfter: balance ? balance.remaining : null,
       durationMs,
       source,
+      costUnit: adapter.costUnit,
+      taskId: stats && stats.task_id ? String(stats.task_id) : null,
+      tokens: tokensFromStats(stats, adapter),
+      toolCalls,
     });
   } catch (error) {
     console.warn(`⚠️  Could not record review cost: ${error.message}`);
@@ -379,10 +541,10 @@ async function reviewPRs(options = {}) {
   const agent = REVIEW_AGENT;
 
   // Validate agent
-  const validAgents = ['bob', 'claude', 'codex'];
-  if (!validAgents.includes(agent)) {
+  const adapter = agents.find(agent);
+  if (!adapter) {
     console.error(
-      `❌ Invalid agent: ${agent}. Must be one of: ${validAgents.join(', ')}`
+      `❌ Invalid agent: ${agent}. Must be one of: ${agents.ids().join(', ')}`
     );
     return;
   }
@@ -395,14 +557,10 @@ async function reviewPRs(options = {}) {
     return;
   }
 
-  // Bobcoins are Bob's currency, and BOB_API_KEY stays configured whichever CLI
-  // is selected (checkBob and the MCP config both need it). Bracketing the Bob
-  // gateway around a claude or codex run would therefore attribute whatever
-  // else touched the account in that window to this review — and, with nothing
-  // else touching it, record a hard 0 that drags averagePerReview toward zero
-  // for every review. Two gateway round-trips on the review's critical path for
-  // a figure that is structurally always zero, at that.
-  const tracksBobcoins = agent === 'bob';
+  // Only the bobcoins unit brackets the Bob gateway: around another agent's run it
+  // would attribute unrelated account activity, or a hard 0, to this review.
+  const tracksBobcoins = adapter.costUnit === 'bobcoins';
+  const spendWord = tracksBobcoins ? 'Bobcoins' : 'Spend';
   if (!tracksBobcoins) {
     console.log(
       `ℹ️  Bobcoins accounting skipped — '${agent}' does not spend them\n`
@@ -410,8 +568,7 @@ async function reviewPRs(options = {}) {
   }
 
   // Create GitHub client
-  const { Octokit } = await import('@octokit/rest');
-  const octokit = new Octokit({
+  const octokit = await createOctokit({
     auth: GITHUB_TOKEN,
     baseUrl: process.env.GITHUB_API_BASE_URL || 'https://api.github.com',
   });
@@ -500,13 +657,40 @@ async function reviewPRs(options = {}) {
       }
     }
 
+    // Pool state, read by reviewOne's balance brackets as well as the workers.
+    const inFlight = [];
+    let started = 0;
+    // A balance bracket that overlaps a sibling's run includes the sibling's
+    // spend, so it proves nothing about this review's cost.
+    const overlapped = (mark) =>
+      mark.inFlight > 1 || inFlight.length > 1 || mark.starts !== started;
+    const markNow = () => ({ inFlight: inFlight.length, starts: started });
+
     // Review each PR
-    for (const pr of prs) {
+    const reviewOne = async (pr) => {
+      // This review's outcomes; the pool joins them back in list order.
+      const prResults = [];
       const prStartedAt = Date.now();
       // Declared outside the try so the `finally` below can remove it however
       // the review ends — the bundle holds a plaintext copy of BOB_API_KEY.
       let bundle = null;
       try {
+        // Scheduled batches stop spending once the balance is confirmed low,
+        // the same rule the scheduler applies before it starts one.
+        if (options.triggeredBy === 'schedule') {
+          const credits = await adapter.credits();
+          if (credits.available && credits.low) {
+            console.warn(`⏭️  PR #${pr.number} skipped — ${credits.summary}`);
+            prResults.push({
+              prNumber: pr.number,
+              prUrl: pr.html_url,
+              skipped: true,
+              reason: credits.summary,
+            });
+            return prResults;
+          }
+        }
+
         console.log(`\n${'='.repeat(80)}`);
         console.log(`📌 Reviewing PR #${pr.number}: ${pr.title}`);
         console.log(`   Author: @${pr.user.login}`);
@@ -516,9 +700,8 @@ async function reviewPRs(options = {}) {
         console.log(`   URL: ${pr.html_url}`);
         console.log(`${'='.repeat(80)}\n`);
 
-        // Fetch changed files FIRST — needed for the size gate before paying
-        // the cost of fetching the diff.
-        let filesFromTestFixture = false;
+        // Test PRs from create-test-pr.js carry their files, with real patches, in
+        // ORIGINAL_FILES.json; any other PR lists them from GitHub.
         let files;
         try {
           const { data: filesFile } = await octokit.rest.repos.getContent({
@@ -530,7 +713,6 @@ async function reviewPRs(options = {}) {
           files = JSON.parse(
             Buffer.from(filesFile.content, 'base64').toString('utf8')
           );
-          filesFromTestFixture = true;
           console.log(
             `✅ Files: ${files.length} changed (from ORIGINAL_FILES.json)`
           );
@@ -546,77 +728,6 @@ async function reviewPRs(options = {}) {
           console.log(`   - ${f.filename} (+${f.additions}/-${f.deletions})`)
         );
 
-        // Size gate — auto mode only. Explicit mode (--pr N) bypasses this so
-        // the operator can force-review any PR regardless of size.
-        if (
-          target.mode === 'auto' &&
-          !filesFromTestFixture &&
-          files.length > MAX_FILES_PER_PR
-        ) {
-          console.warn(
-            `⏭️  PR #${pr.number} skipped — ${files.length} files exceeds MAX_FILES_PER_PR (${MAX_FILES_PER_PR})`
-          );
-
-          await emitEvent({
-            event_type: 'pr_skipped_too_large',
-            correlation_id: correlationId,
-            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
-            pr_number: pr.number,
-            agent: REVIEW_AGENT,
-            payload: { file_count: files.length, limit: MAX_FILES_PER_PR },
-          });
-
-          // Label first — it is the skip gate. Comment only posts if label succeeds,
-          // preventing repeated comments on subsequent runs if labelling fails.
-          let labelAdded = false;
-          try {
-            await client.addReviewedLabel({
-              owner: GITHUB_OWNER,
-              repo: GITHUB_REPO,
-              pullNumber: pr.number,
-              label: REVIEW_LABEL,
-            });
-            labelAdded = true;
-            console.log('✅ AIReviewed label added (too-large skip)');
-          } catch (labelErr) {
-            console.warn(
-              `⚠️  Could not add AIReviewed label to PR #${pr.number}: ${labelErr.message}`
-            );
-          }
-
-          const postSummary =
-            process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
-          if (labelAdded && postSummary) {
-            const baseUrl = (process.env.BASE_URL || '').trim();
-            const consoleRef = baseUrl
-              ? `the [Carbon Monitor console](${baseUrl})`
-              : 'the Carbon Monitor console';
-            try {
-              await client.postSummaryComment({
-                owner: GITHUB_OWNER,
-                repo: GITHUB_REPO,
-                pullNumber: pr.number,
-                body: `## Carbon Monitor — Review Skipped\n\nThis PR has **${files.length} changed files**, which exceeds the ${MAX_FILES_PER_PR}-file limit for automatic review. It has been marked as \`AIReviewed\` and will not be re-queued.\n\nTo request a manual AI review, visit ${consoleRef} and enter this PR number directly.`,
-              });
-            } catch (commentErr) {
-              console.warn(
-                `⚠️  Could not post skip comment on PR #${pr.number}: ${commentErr.message}`
-              );
-            }
-          }
-
-          runResults.push({
-            prNumber: pr.number,
-            prUrl: pr.html_url,
-            skipped: true,
-            reason: `${files.length} files exceeds limit of ${MAX_FILES_PER_PR}`,
-          });
-
-          continue; // bundle is still null — cleanupBundle(null) is a no-op
-        }
-
-        // pr_review_started is emitted here, after the size gate, so it only
-        // fires for PRs that will actually be reviewed.
         await emitEvent({
           event_type: 'pr_review_started',
           correlation_id: correlationId,
@@ -626,71 +737,167 @@ async function reviewPRs(options = {}) {
           commit_sha: pr.head.sha,
         });
 
-        // Fetch PR diff — prefer ORIGINAL_DIFF.patch if present (test PRs created
-        // by create-test-pr.js embed the real Carbon diff there to preserve - lines)
-        let diff;
-        try {
-          const { data: patchFile } = await octokit.rest.repos.getContent({
-            owner: GITHUB_OWNER,
-            repo: GITHUB_REPO,
-            path: 'ORIGINAL_DIFF.patch',
-            ref: pr.head.sha,
-          });
-          diff = Buffer.from(patchFile.content, 'base64').toString('utf8');
-          console.log(
-            `✅ Diff: ${diff.length} characters (from ORIGINAL_DIFF.patch)`
-          );
-        } catch {
-          diff = await client.fetchPRDiff({
-            owner: GITHUB_OWNER,
-            repo: GITHUB_REPO,
-            pullNumber: pr.number,
-          });
-          console.log(`✅ Diff: ${diff.length} characters`);
+        // A full listing may be cut short; the PR itself says how many files there are.
+        let changedFilesTotal;
+        if (files.length === LISTING_LIMIT) {
+          try {
+            ({ changed_files: changedFilesTotal } = await client.fetchSinglePR({
+              owner: GITHUB_OWNER,
+              repo: GITHUB_REPO,
+              pullNumber: pr.number,
+            }));
+          } catch (countErr) {
+            console.warn(
+              `⚠️  Could not read PR #${pr.number}'s file count: ${countErr.message}`
+            );
+          }
         }
 
-        // Build review bundle
+        // Build review bundle; it assembles the diff from the files' patches
         bundle = await buildReviewBundle({
           owner: GITHUB_OWNER,
           repo: GITHUB_REPO,
           pr,
-          diff,
           files,
           client,
+          agent,
+          changedFilesTotal,
         });
         console.log(`✅ Bundle: ${bundle.dir}`);
+        const { coverage } = bundle;
+        console.log(
+          `✅ Diff: ${bundle.diff.length} characters, ${coverage.files_reviewed} of ${coverage.files_total} files${coverage.partial ? ' (partial review)' : ''}`
+        );
+        // The event and the digest carry the counts, not the omitted names
+        const coverageFields = {
+          files_total: coverage.files_total,
+          files_reviewed: coverage.files_reviewed,
+          files_omitted: coverage.files_omitted,
+          diff_chars_total: coverage.diff_chars_total,
+          diff_chars_reviewed: coverage.diff_chars_reviewed,
+          partial: coverage.partial,
+        };
+
+        // Not even a line of any file fits: no agent runs, but the author is told and the
+        // label is set, or the PR would be picked again on every run.
+        if (bundle.diff === '' && coverage.partial) {
+          console.warn(
+            `⚠️  PR #${pr.number}: no changed file fits the diff budget, so no agent runs`
+          );
+          await emitEvent({
+            event_type: 'pr_review_completed',
+            correlation_id: correlationId,
+            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            pr_number: pr.number,
+            agent: REVIEW_AGENT,
+            commit_sha: pr.head.sha,
+            payload: {
+              pr_title: pr.title,
+              findings_total: 0,
+              runs: 0,
+              durationMs: Date.now() - prStartedAt,
+              coverage: coverageFields,
+            },
+          });
+          if (process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false') {
+            await client.postSummaryComment({
+              owner: GITHUB_OWNER,
+              repo: GITHUB_REPO,
+              pullNumber: pr.number,
+              body: formatNotReviewedComment({
+                commitSha: pr.head.sha,
+                coverage,
+                filesUrl: `${pr.html_url}/files`,
+              }),
+            });
+          }
+          await client.addReviewedLabel({
+            owner: GITHUB_OWNER,
+            repo: GITHUB_REPO,
+            pullNumber: pr.number,
+            label: REVIEW_LABEL,
+          });
+          prResults.push({
+            prNumber: pr.number,
+            prUrl: pr.html_url,
+            skipped: true,
+            reason: `Nothing fit the diff budget (0 of ${coverage.files_total} files reviewed)`,
+            coverage: coverageFields,
+          });
+          return prResults;
+        }
+
+        // Two agent processes must share no file, so each review gets its own
+        // HOME (Bob) or config directory (Claude).
+        const creds = await require('./api/mcpConnection')
+          .getCredentials()
+          .catch(() => null);
+        const { home, refresh: refreshHome } = await adapter.seedHome(
+          bundle.dir,
+          creds
+        );
 
         // Run agent review
         console.log(`\n🤖 Running ${agent} review...`);
         console.log('This may take a few minutes...\n');
 
         // ── Bobcoins accounting ─────────────────────────────────────────────
-        // Bob only reports a run's own cost in stream-json output, and this app
-        // must keep the pretty format that reviewParser reads. The account's
-        // running usage total is bracketed around the run instead. Both reads
-        // bypass the cache: a stale "before" would silently report zero spend.
+        // Cost comes from Bob's result record (stats.session_costs). The
+        // account's running usage total is still bracketed around the run as the
+        // fallback when no result arrived, as the cross-check, and for the
+        // remaining balance. Both reads bypass the cache: a stale "before" would
+        // silently report zero spend.
         let coinsBefore = null;
+        let coinsMark = markNow();
         let coinsAfter = null;
         let coinsSpent = null;
+        let coinsSource = 'unknown';
         let agentSucceeded = false;
 
         if (tracksBobcoins) {
+          coinsMark = markNow();
           coinsBefore = await bobCredits
             .getBalance({ force: true })
             .catch(() => null);
         }
 
+        const emitLimitReached = async (err, stats) => {
+          if (err.kind !== 'cost-limit' && err.kind !== 'turn-limit') return;
+          await emitEvent({
+            event_type: 'agent_limit_reached',
+            correlation_id: correlationId,
+            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            pr_number: pr.number,
+            agent: REVIEW_AGENT,
+            commit_sha: pr.head.sha,
+            payload: {
+              kind: err.kind,
+              error: err.message,
+              coinsSpent: reportedCost(stats),
+            },
+          });
+        };
+
         let agentOutput;
+        let agentRun; // full runner result, kept for cost and token accounting
+        let runStats = null;
         try {
-          agentOutput = await runAgent({
+          agentRun = await runAgent({
             agent,
             cwd: bundle.dir,
+            home,
             prompt: bundle.prompt,
             timeout: 10 * 60 * 1000, // 10 minutes
           });
+          runStats = agentRun.stats;
+          agentOutput = reviewTextFor(agentRun);
           agentSucceeded = true;
         } catch (agentErr) {
-          const isTimeout = /timeout/i.test(agentErr.message);
+          runStats = agentErr.stats || null;
+          // Non-AgentRunError failures keep the old message test.
+          const isTimeout = agentErr.kind
+            ? agentErr.kind === 'timeout'
+            : /timeout/i.test(agentErr.message);
           if (isTimeout) {
             await emitEvent({
               event_type: 'agent_timeout',
@@ -701,6 +908,8 @@ async function reviewPRs(options = {}) {
               commit_sha: pr.head.sha,
               payload: { error: agentErr.message },
             });
+          } else {
+            await emitLimitReached(agentErr, runStats);
           }
           throw agentErr;
         } finally {
@@ -712,18 +921,24 @@ async function reviewPRs(options = {}) {
           // REPLACES the in-flight error, so an unguarded billing failure would
           // erase the reason the review actually failed.
           try {
+            let delta = null;
+            let shared = false;
             if (tracksBobcoins) {
               coinsAfter = await bobCredits.getBalance({ force: true });
-              coinsSpent = bobCredits.computeSpend(coinsBefore, coinsAfter);
-
-              if (coinsSpent !== null) {
-                console.log(`\n🪙 Bobcoins spent: ${coinsSpent}`);
-              } else if (coinsAfter && !coinsAfter.available) {
-                console.log(
-                  `\n🪙 Bobcoins: balance unavailable (${coinsAfter.reason})`
-                );
+              shared = overlapped(coinsMark);
+              if (!shared) {
+                delta = bobCredits.computeSpend(coinsBefore, coinsAfter);
               }
             }
+            const spend = resolveSpend({
+              stats: runStats,
+              delta,
+              tracked: tracksBobcoins && !shared,
+              after: coinsAfter,
+              adapter,
+            });
+            coinsSpent = spend.coinsSpent;
+            coinsSource = spend.source;
 
             await recordReviewCost({
               correlationId,
@@ -731,39 +946,67 @@ async function reviewPRs(options = {}) {
               after: coinsAfter,
               coinsSpent,
               durationMs: Date.now() - prStartedAt,
-              source: tracksBobcoins ? 'balance-delta' : 'unknown',
+              source: spend.ledgerSource,
+              stats: runStats,
+              toolCalls: runStats ? (runStats.tool_calls ?? null) : null,
+              adapter,
             });
           } catch (costErr) {
-            console.warn(`⚠️  Bobcoins accounting failed: ${costErr.message}`);
+            console.warn(
+              `⚠️  ${spendWord} accounting failed: ${costErr.message}`
+            );
           }
         }
 
         console.log(`\n✅ ${agent} review received`);
 
         // ── Carbon Builder skill activation observability ─────────────────
-        // Reuse the shared extractor from reviewParser — handles both v1
-        // (read_file calls to .bob/skills/carbon-builder/) and v2 (use_skill
-        // tool with skill_name: carbon-builder).
-        let skillFilesRead = extractCarbonBuilderSkillReads(agentOutput);
+        // Evidence is the tool calls seen in the agent's event stream (a skill
+        // call, or reads of the bundle's carbon-builder files); runs without an
+        // event stream fall back to the shared transcript extractor.
+        let evidence = adapter.evidence(agentRun.toolCalls);
+        let skillFilesRead = skillReadsFor(
+          agentRun,
+          agentOutput,
+          evidence,
+          adapter
+        );
         if (skillFilesRead.length > 0) {
-          // v2 leaves a single "use_skill:carbon-builder" signal; v1 leaves one
-          // entry per skill file the agent read. Either form means the agent
-          // loaded the skill before reviewing.
-          const how = skillFilesRead.includes('use_skill:carbon-builder')
-            ? 'invoked it via the use_skill tool'
+          // The skill invocation leaves a single sentinel entry; file reads leave
+          // one entry per skill file. Either form means the agent loaded the
+          // skill before reviewing.
+          const how = skillFilesRead.includes(adapter.skill.sentinel)
+            ? `invoked it via the ${adapter.skill.tool} tool`
             : `read ${skillFilesRead.length} skill file(s): ${skillFilesRead.join(', ')}`;
           console.log(
             `\n🔬 Carbon Builder skill: ✅ loaded and used by the agent — ${how}`
           );
         } else {
           console.log(
-            '\n🔬 Carbon Builder skill: ⚠️  NOT loaded — the agent transcript shows no use_skill call and no read of .bob/skills/carbon-builder/. Carbon claims in this review are unverified by the skill.'
+            `\n🔬 Carbon Builder skill: ⚠️  NOT loaded — the agent transcript shows no ${adapter.skill.tool} call and no read of ${adapter.skill.dir}. Carbon claims in this review are unverified by the skill.`
           );
+        }
+        if (agentRun.format === 'stream-json') {
+          const mcp = Object.entries(evidence.mcpCalls)
+            .map(([name, n]) => `${name}=${n}`)
+            .join(' ');
+          console.log(`🔎 Carbon MCP calls: ${mcp || 'none'}`);
         }
         // ─────────────────────────────────────────────────────────────────
 
         // Parse review output
-        let review = parseReviewOutput(agentOutput);
+        let review = parseReviewOutput(agentOutput, {
+          skillReads: skillFilesRead,
+          skillDir: adapter.skill.dir,
+          readTool: adapter.promptFragments.readTool,
+        });
+
+        // Run of record: the first run, or the retry when it produced the review.
+        let finalRun = agentRun;
+        let runs = 1;
+        let totalSpent = coinsSpent;
+        let totalSource = coinsSource;
+        let balanceAfter = coinsAfter;
 
         // Retry once on parse failure. Bob's JSON block is a fresh, non-deterministic
         // generation each run: a malformed-output parse failure (an escape/quote
@@ -771,61 +1014,111 @@ async function reviewPRs(options = {}) {
         // Re-run the agent once and re-parse before skipping the PR entirely.
         if (!review) {
           console.warn(
-            '⚠️  Parse failed — retrying bob review once (output is non-deterministic)'
+            `⚠️  Parse failed — retrying ${agent} review once (output is non-deterministic)`
           );
           try {
+            runs = 2;
             let retryCoinsBefore = null;
+            let retryMark = markNow();
+            // A bearer refreshed during the first run is picked up here.
+            await refreshHome?.().catch(() => {});
             if (tracksBobcoins) {
+              retryMark = markNow();
               retryCoinsBefore = await bobCredits
                 .getBalance({ force: true })
                 .catch(() => null);
             }
             let retryOutput;
+            let retryRun;
+            let retryStats = null;
             try {
-              retryOutput = await runAgent({
+              retryRun = await runAgent({
                 agent,
                 cwd: bundle.dir,
+                home,
                 prompt: bundle.prompt,
                 timeout: 10 * 60 * 1000,
               });
+              retryStats = retryRun.stats;
+              retryOutput = reviewTextFor(retryRun);
+            } catch (retryRunErr) {
+              retryStats = retryRunErr.stats || null;
+              await emitLimitReached(retryRunErr, retryStats);
+              throw retryRunErr;
             } finally {
               // Mirror the first run's billing: the retry burns coins too, so record
               // its spend. Guarded so an accounting failure never masks the retry.
               try {
+                let retryCoinsAfter = null;
+                let retryDelta = null;
+                let retryShared = false;
                 if (tracksBobcoins) {
-                  const retryCoinsAfter = await bobCredits.getBalance({
+                  retryCoinsAfter = await bobCredits.getBalance({
                     force: true,
                   });
-                  const retrySpent = bobCredits.computeSpend(
-                    retryCoinsBefore,
-                    retryCoinsAfter
-                  );
-                  if (retrySpent !== null) {
-                    console.log(`\n🪙 Bobcoins spent (retry): ${retrySpent}`);
-                  }
-                  await recordReviewCost({
-                    correlationId,
-                    pr,
-                    after: retryCoinsAfter,
-                    coinsSpent: retrySpent,
-                    durationMs: Date.now() - prStartedAt,
-                    source: 'balance-delta',
-                  });
+                  retryShared = overlapped(retryMark);
+                  retryDelta = retryShared
+                    ? null
+                    : bobCredits.computeSpend(
+                        retryCoinsBefore,
+                        retryCoinsAfter
+                      );
+                  balanceAfter = retryCoinsAfter;
                 }
+                const retrySpend = resolveSpend({
+                  stats: retryStats,
+                  delta: retryDelta,
+                  tracked: tracksBobcoins && !retryShared,
+                  after: retryCoinsAfter,
+                  label: 'retry',
+                  adapter,
+                });
+                const sum = addSpend(
+                  { coinsSpent, source: coinsSource },
+                  retrySpend
+                );
+                totalSpent = sum.coinsSpent;
+                totalSource = sum.source;
+                await recordReviewCost({
+                  correlationId,
+                  pr,
+                  after: retryCoinsAfter,
+                  coinsSpent: retrySpend.coinsSpent,
+                  durationMs: Date.now() - prStartedAt,
+                  source: retrySpend.ledgerSource,
+                  stats: retryStats,
+                  toolCalls: retryStats
+                    ? (retryStats.tool_calls ?? null)
+                    : null,
+                  adapter,
+                });
               } catch (costErr) {
                 console.warn(
-                  `⚠️  Bobcoins accounting failed (retry): ${costErr.message}`
+                  `⚠️  ${spendWord} accounting failed (retry): ${costErr.message}`
                 );
               }
             }
             if (retryOutput) {
-              review = parseReviewOutput(retryOutput);
+              const retryEvidence = adapter.evidence(retryRun.toolCalls);
+              const retrySkillReads = skillReadsFor(
+                retryRun,
+                retryOutput,
+                retryEvidence,
+                adapter
+              );
+              review = parseReviewOutput(retryOutput, {
+                skillReads: retrySkillReads,
+                skillDir: adapter.skill.dir,
+                readTool: adapter.promptFragments.readTool,
+              });
               if (review) {
                 // Adopt the successful retry as the run of record so the token
-                // estimate and skill_unavailable metric below reflect the output
+                // figures and skill_unavailable metric below reflect the output
                 // actually used.
                 agentOutput = retryOutput;
-                skillFilesRead = extractCarbonBuilderSkillReads(retryOutput);
+                skillFilesRead = retrySkillReads;
+                evidence = retryEvidence;
+                finalRun = retryRun;
                 console.log(
                   '✅ Retry succeeded — parsed review from second attempt'
                 );
@@ -848,7 +1141,7 @@ async function reviewPRs(options = {}) {
             commit_sha: pr.head.sha,
           });
           // The `finally` below removes the bundle on the way out.
-          continue;
+          return prResults;
         }
 
         console.log(`✅ Parsed: ${review.findings.length} findings`);
@@ -878,15 +1171,21 @@ async function reviewPRs(options = {}) {
           });
         }
 
+        // Nits are never inline: a convention-only remark is not worth a diff comment
+        const nitFindings = review.findings.filter((f) => f.severity === 'nit');
+        const nonNitFindings = review.findings.filter(
+          (f) => f.severity !== 'nit'
+        );
+
         // Split findings into inline-able and summary-only
         const { inlineFindings, summaryFindings } = splitFindings(
-          review.findings,
-          diff,
+          nonNitFindings,
+          bundle.diff,
           files,
           bundle.mdDiffStartLine
         );
         console.log(
-          `✅ Inline: ${inlineFindings.length}, Summary: ${summaryFindings.length}`
+          `✅ Inline: ${inlineFindings.length}, Summary: ${summaryFindings.length}, Nits: ${nitFindings.length}`
         );
 
         // Post inline review comments if any (check env flag)
@@ -945,17 +1244,34 @@ async function reviewPRs(options = {}) {
             summaryFindings.push(...inlineFindings);
             inlineFindings.length = 0;
           }
+        } else if (inlineFindings.length > 0) {
+          // The kill switch must not lose findings: they move to the summary.
+          console.log(
+            `ℹ️  Inline comments disabled, including ${inlineFindings.length} finding(s) in the summary`
+          );
+          summaryFindings.push(...inlineFindings);
+          inlineFindings.length = 0;
         }
 
-        // Calculate token usage estimate
-        const tokenUsage = estimateTokenUsage({
-          prompt: bundle.prompt,
-          diff: diff,
-          agentOutput: agentOutput,
-        });
-        console.log(
-          `✅ Estimated tokens: ~${tokenUsage.total.toLocaleString()} (input: ~${tokenUsage.input.toLocaleString()}, output: ~${tokenUsage.output.toLocaleString()})`
-        );
+        // Exact counts from the agent's result record, else the character estimate.
+        const tokenUsage = tokensFromStats(finalRun.stats, adapter) || {
+          ...estimateTokenUsage({
+            prompt: bundle.prompt,
+            diff: bundle.diff,
+            agentOutput: agentOutput,
+          }),
+          source: 'estimate',
+        };
+        if (tokenUsage.source !== 'estimate') {
+          console.log(
+            `✅ Tokens: ${tokenUsage.total.toLocaleString()} (input: ${tokenUsage.input.toLocaleString()}, output: ${tokenUsage.output.toLocaleString()})`
+          );
+        } else {
+          console.log(
+            `✅ Estimated tokens: ~${tokenUsage.total.toLocaleString()} (input: ~${tokenUsage.input.toLocaleString()}, output: ~${tokenUsage.output.toLocaleString()})`
+          );
+        }
+        const observed = finalRun.format === 'stream-json';
 
         // ── Emit metrics event for this review ──────────────────────────────
         await emitEvent({
@@ -991,10 +1307,24 @@ async function reviewPRs(options = {}) {
             token_input: tokenUsage.input,
             token_output: tokenUsage.output,
             token_total: tokenUsage.total,
-            coinsSpent,
+            token_cache_read: tokenUsage.cacheRead ?? null,
+            token_cache_write: tokenUsage.cacheWrite ?? null,
+            token_source: tokenUsage.source,
+            cost_unit: adapter.costUnit,
+            coins_source: totalSpent === null ? 'unknown' : totalSource,
+            bob_task_id: finalRun.stats
+              ? (finalRun.stats.task_id ?? null)
+              : null,
+            tool_calls: observed ? evidence.total : null,
+            mcp_tool_calls: observed ? sumCalls(evidence.mcpCalls) : null,
+            runs,
+            coinsSpent: totalSpent,
             remainingAfter:
-              coinsAfter && coinsAfter.available ? coinsAfter.remaining : null,
+              balanceAfter && balanceAfter.available
+                ? balanceAfter.remaining
+                : null,
             durationMs: Date.now() - prStartedAt,
+            coverage: coverageFields,
           },
         });
 
@@ -1005,19 +1335,35 @@ async function reviewPRs(options = {}) {
         const postSummary =
           process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
         if (postSummary) {
-          const commentBody = formatSummaryComment({
-            agent,
-            summaryMarkdown: review.summaryMarkdown,
-            prNumber: pr.number,
-            commitSha: pr.head.sha,
-            inlineFindings,
-            summaryFindings,
-            tokenUsage,
-            recommendation: review.recommendation,
-            recommendationRationale: review.recommendationRationale,
-            catalogueWarning: review.catalogueWarning,
-            findingsTable: review.findingsTable,
-          });
+          // The attempt_completion fallback says looks-good with a warning; a quiet comment would drop it
+          const commentBody =
+            review.recommendation === 'looks-good' && !review.catalogueWarning
+              ? formatLooksGoodComment({
+                  agent,
+                  agentName: adapter.displayName,
+                  summaryMarkdown: review.summaryMarkdown,
+                  commitSha: pr.head.sha,
+                  nitFindings,
+                  coverage,
+                  filesUrl: `${pr.html_url}/files`,
+                })
+              : formatSummaryComment({
+                  agent,
+                  agentName: adapter.displayName,
+                  summaryMarkdown: review.summaryMarkdown,
+                  prNumber: pr.number,
+                  commitSha: pr.head.sha,
+                  inlineFindings,
+                  summaryFindings,
+                  tokenUsage,
+                  recommendation: review.recommendation,
+                  recommendationRationale: review.recommendationRationale,
+                  catalogueWarning: review.catalogueWarning,
+                  findingsTable: review.findingsTable,
+                  nitFindings,
+                  coverage,
+                  filesUrl: `${pr.html_url}/files`,
+                });
 
           await client.postSummaryComment({
             owner: GITHUB_OWNER,
@@ -1042,12 +1388,13 @@ async function reviewPRs(options = {}) {
         console.log(`\n✅ PR #${pr.number} review complete`);
 
         // Record success for the Slack digest
-        runResults.push({
+        prResults.push({
           prNumber: pr.number,
           prUrl: pr.html_url,
           findingsCount: review.findings.length,
           summary: review.summaryMarkdown,
           recommendation: review.recommendation,
+          coverage: coverageFields,
         });
       } catch (prError) {
         console.error(
@@ -1065,7 +1412,7 @@ async function reviewPRs(options = {}) {
         });
         // Record failure for the Slack digest so it appears as a ⚠️ entry
         // rather than silently vanishing from the summary.
-        runResults.push({
+        prResults.push({
           prNumber: pr.number,
           failed: true,
           error: prError.message,
@@ -1076,7 +1423,68 @@ async function reviewPRs(options = {}) {
         // BOB_API_KEY, is ever left behind.
         await cleanupBundle(bundle);
       }
+      return prResults;
+    };
+
+    // REVIEW_CONCURRENCY workers, numbered from 1, each take the next PR in
+    // list order and take another when it finishes. `options.concurrency` is a
+    // test hook. One review's failure never reaches another; the batch waits
+    // for all of them.
+    const requested = Math.max(
+      1,
+      Math.floor(options.concurrency) || REVIEW_CONCURRENCY
+    );
+    // Only an isolated agent gets a private HOME or config directory; any other
+    // keeps per-user state in the real one and so runs alone.
+    const concurrency = agents.effectiveConcurrency(adapter, requested);
+    if (concurrency < requested) {
+      console.log(
+        `ℹ️  REVIEW_CONCURRENCY=${requested} ignored — '${agent}' shares one HOME, so reviews run one at a time`
+      );
     }
+    const pending = prs.map((pr, index) => ({ pr, index }));
+    const perPr = [];
+    const report = () =>
+      options.onProgress?.({
+        inFlight: inFlight.map((entry) => ({ ...entry })),
+        queued: pending.map(({ pr }) => pr.number),
+        concurrency,
+      });
+    report();
+
+    const work = async (slot) => {
+      while (pending.length > 0) {
+        const { pr, index } = pending.shift();
+        const entry = {
+          worker: slot,
+          pr: pr.number,
+          startedAt: new Date().toISOString(),
+        };
+        inFlight.push(entry);
+        started++;
+        report();
+        try {
+          perPr[index] = await reviewLog.runWithContext(
+            { worker: slot, pr: pr.number },
+            () => reviewOne(pr)
+          );
+        } catch (error) {
+          // reviewOne handles its own errors; this is a failure in its handler.
+          perPr[index] = [
+            { prNumber: pr.number, failed: true, error: error.message },
+          ];
+        } finally {
+          inFlight.splice(inFlight.indexOf(entry), 1);
+          report();
+        }
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, prs.length) }, (_, i) =>
+        work(i + 1)
+      )
+    );
+    for (const outcomes of perPr) runResults.push(...outcomes);
 
     const runDurationMs = Date.now() - runStartedAt;
     await emitEvent({
@@ -1137,12 +1545,26 @@ function _countBy(arr, field) {
 //
 // parsePrNumbers and resolveReviewTargets are exported so the API server enforces
 // exactly the rules this module obeys, rather than a second copy of them.
-module.exports = { reviewPRs, parsePrNumbers, resolveReviewTargets };
+module.exports = {
+  reviewPRs,
+  parsePrNumbers,
+  resolveReviewTargets,
+  resolveSpend,
+  tokensFromStats,
+  reviewTextFor,
+  skillReadsFor,
+  addSpend,
+};
 
 // Run if executed directly
 if (require.main === module) {
-  reviewPRs().catch((error) => {
-    console.error('Fatal error:', error);
-    process.exit(1);
-  });
+  checkStartup({ mode: 'cli' });
+  // Capture tags terminal lines with their worker and PR, as the console does.
+  reviewLog.start(`cli-${Date.now()}`);
+  reviewPRs()
+    .catch((error) => {
+      console.error('Fatal error:', error);
+      process.exitCode = 1;
+    })
+    .finally(() => reviewLog.stop());
 }

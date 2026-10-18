@@ -3,6 +3,7 @@ import {
   InlineLoading,
   CopyButton,
   Button,
+  Dropdown,
   IconButton,
   Tile,
   Link,
@@ -20,9 +21,12 @@ const TAIL_INTERVAL_MS = 2000;
 // single `running` flag — no per-PR index. The per-PR view is therefore
 // reconstructed from the live log, which already prints a start marker
 // ("📌 Reviewing PR #123: title") and a completion marker
-// ("✅ PR #123 review complete") for each PR. No backend change is needed.
+// ("✅ PR #123 review complete") for each PR. Lines also carry an "[agent 1 #123] "
+// prefix and `worker` / `pr` fields; the regexes are unanchored so the prefix is
+// harmless, and the `pr` field is preferred when present.
 const PR_START_RE = /Reviewing PR #(\d+):\s*(.*)/;
 const PR_DONE_RE = /PR #(\d+) review complete/;
+const ALL_OUTPUT = { id: 'all', label: 'All output' };
 
 // Derived status → Carbon IconIndicator `kind` + a human label. Kinds are
 // Carbon's own status vocabulary, verified against @carbon/react's IconIndicator.
@@ -50,13 +54,16 @@ function parsePrProgress(lines, prNumbers, running) {
     const text = line.text || '';
     const start = PR_START_RE.exec(text);
     if (start) {
-      const n = Number(start[1]);
+      const n = line.pr ?? Number(start[1]);
       if (!started.has(n))
         started.set(n, { title: (start[2] || '').trim(), order: order++ });
       continue;
     }
     const fin = PR_DONE_RE.exec(text);
-    if (fin) done.add(Number(fin[1]));
+    if (fin) {
+      done.add(line.pr ?? Number(fin[1]));
+      continue;
+    }
   }
 
   const statusFor = (n) => {
@@ -111,6 +118,7 @@ function ReviewLog({
   repo,
 }) {
   const [lines, setLines] = useState([]);
+  const [filter, setFilter] = useState(ALL_OUTPUT);
   const [dropped, setDropped] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState(null);
@@ -184,11 +192,28 @@ function ReviewLog({
   useEffect(() => {
     const el = scrollRef.current;
     if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
-  }, [lines]);
+  }, [lines, filter]);
 
   // Rebuilt each render from the current lines — cheap, and it guarantees the
   // per-PR view can never disagree with the log it is derived from.
   const prProgress = parsePrProgress(lines, prNumbers, running);
+
+  // Filter choices come from the lines themselves: one entry per agent slot seen
+  // so far. Offered only once a second slot has logged, so a single review looks
+  // as it always did.
+  const workers = [
+    ...new Set(lines.filter((l) => l.worker).map((l) => l.worker)),
+  ].sort((a, b) => a - b);
+  const filterItems = [
+    ALL_OUTPUT,
+    ...workers.map((w) => ({ id: `w${w}`, label: `Agent ${w}`, worker: w })),
+  ];
+  const activeFilter =
+    filterItems.find((i) => i.id === filter.id) || ALL_OUTPUT;
+  const shown =
+    activeFilter === ALL_OUTPUT
+      ? lines
+      : lines.filter((l) => l.worker === activeFilter.worker);
 
   // Exactly the condition the early return below uses, so what the page is told
   // and what this component renders cannot drift apart.
@@ -440,6 +465,20 @@ function ReviewLog({
         rather than a child — placing it inside role="log" would have it
         announced as log output on every live-region update.
       */}
+      {workers.length > 1 && (
+        <Dropdown
+          id="cm-log-filter"
+          className="cm-log__filter"
+          size="sm"
+          titleText="Show output from"
+          label="All output"
+          items={filterItems}
+          itemToString={(item) => item?.label || ''}
+          selectedItem={activeFilter}
+          onChange={({ selectedItem }) => setFilter(selectedItem || ALL_OUTPUT)}
+        />
+      )}
+
       <span id="cm-log-scroll-hint" className="cds--visually-hidden">
         Scrollable region. Use arrow keys or scroll to read. Tab to exit.
       </span>
@@ -454,16 +493,15 @@ function ReviewLog({
         aria-describedby="cm-log-scroll-hint"
         tabIndex={0}
       >
-        {lines.length === 0 ? (
+        {shown.length === 0 ? (
           <div className="cm-log__line cm-log__line--muted">
-            Waiting for output…
+            {lines.length === 0
+              ? 'Waiting for output…'
+              : 'No output for this selection yet.'}
           </div>
         ) : (
-          lines.map((line) => (
-            <div
-              key={line.seq}
-              className={`cm-log__line${line.stream === 'stderr' ? ' cm-log__line--err' : ''}`}
-            >
+          shown.map((line) => (
+            <div key={line.seq} className="cm-log__line">
               {line.text}
             </div>
           ))

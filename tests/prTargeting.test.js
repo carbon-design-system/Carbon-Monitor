@@ -86,6 +86,7 @@ function runIndex(argv, env = {}) {
       env: {
         ...process.env,
         GITHUB_AI_AGENT_TOKEN: '', // ensure no real run starts
+        CARBON_MONITOR_SKIP_DOTENV: '1', // a developer .env must not override it
         ...env,
       },
       timeout: 5000,

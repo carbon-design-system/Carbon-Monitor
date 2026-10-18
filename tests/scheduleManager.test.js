@@ -66,6 +66,12 @@ const originalHome = process.env.HOME;
 process.env.HOME = sandbox;
 process.env.SCHEDULE_STATE_PATH = path.join(sandbox, 'test-schedule.json');
 
+// Recorded, not posted: the pause and the reminder hand it their arguments.
+const alerts = [];
+require('../src/slackNotifier').postLowTokenAlert = async (opts) => {
+  alerts.push(opts);
+};
+
 // Require AFTER setting env so the module resolves the sandboxed path.
 const sm = require('../src/api/scheduleManager');
 
@@ -605,9 +611,7 @@ async function main() {
     );
 
     // Whitespace-tolerant: the formatter may wrap this condition.
-    const balanceGuardIdx = src.search(
-      /balance\.available\s*&&\s*balance\.percentRemaining !== null/
-    );
+    const balanceGuardIdx = src.search(/isLowBalance\(balance\)/);
     // Use the unique step-6 comment as the anchor for the idempotency token write.
     const tokenWriteIdx = src.indexOf(
       '// 6. Write the idempotency token BEFORE firing'
@@ -617,7 +621,7 @@ async function main() {
 
     assert(
       balanceGuardIdx !== -1,
-      'balance.available guard must appear in scheduleManager.js'
+      'isLowBalance guard must appear in scheduleManager.js'
     );
     assert(
       tokenWriteIdx !== -1,
@@ -659,6 +663,220 @@ async function main() {
       src.indexOf("require('./bobCredits')") !== -1,
       'bobCredits must be required in scheduleManager.js'
     );
+  });
+
+  // ── 15. The pause and the reminder name the agent's unit ─────────────────
+  const agents = require('../src/agents');
+  const constants = require('../src/constants');
+  const bobCredits = require('../src/api/bobCredits');
+  const realCurrent = agents.current;
+  const realFetch = global.fetch;
+  const ledgerPath = path.join(sandbox, 'ledger.jsonl');
+
+  /** Run one tick in the current minute with the given state; returns what it logged and fired. */
+  async function runTick(statePatch) {
+    // The ICU test above leaves the module's flag off; the probe sets it again.
+    sm.startScheduler(() => {}, {}, {});
+    sm.stopScheduler();
+    const current = sm.currentLocalMinute();
+    if (!current) return null;
+    fs.writeFileSync(
+      process.env.SCHEDULE_STATE_PATH,
+      JSON.stringify(
+        {
+          ...sm.defaultState(),
+          enabled: true,
+          paused: false,
+          timeLocal: current,
+          lastFiredAt: null,
+          ...statePatch,
+        },
+        null,
+        2
+      )
+    );
+    await sm.loadSchedule();
+    alerts.length = 0;
+    const lines = [];
+    const realWarn = console.warn;
+    const realLog = console.log;
+    console.warn = (...a) => lines.push(a.join(' '));
+    console.log = (...a) => lines.push(a.join(' '));
+    let fired = 0;
+    const state = { running: false };
+    try {
+      await sm.tick(
+        async () => {
+          fired++;
+        },
+        state,
+        { start() {}, stop() {} }
+      );
+    } finally {
+      console.warn = realWarn;
+      console.log = realLog;
+    }
+    // A fired run saves lastRunAt when it settles; the next write must not race it.
+    for (let i = 0; i < 100 && fired && state.running !== false; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    await new Promise((r) => setTimeout(r, 30));
+    return { lines, fired, saved: readStateFile() };
+  }
+
+  const stubBobBalance = (usage) => {
+    process.env.BOB_API_KEY = 'test-key';
+    bobCredits.resetCache();
+    global.fetch = async () => ({
+      status: 200,
+      ok: true,
+      json: async () => ({ usage, budget_limit: 1000 }),
+    });
+  };
+  const seedClaudeLedger = (spent) => {
+    process.env.CREDIT_LEDGER_PATH = ledgerPath;
+    fs.writeFileSync(
+      ledgerPath,
+      JSON.stringify({
+        at: new Date().toISOString(),
+        coinsSpent: spent,
+        costUnit: 'usd',
+      }) + '\n'
+    );
+  };
+  const asClaude = (budget) => {
+    agents.current = () => agents.get('claude');
+    constants.CLAUDE_MONTHLY_BUDGET_USD = budget;
+  };
+  const restoreAgent = () => {
+    agents.current = realCurrent;
+    constants.CLAUDE_MONTHLY_BUDGET_USD = 0;
+    global.fetch = realFetch;
+    delete process.env.BOB_API_KEY;
+    delete process.env.CREDIT_LEDGER_PATH;
+  };
+
+  await test('Bob: the auto-pause says Bobcoins, word for word, and alerts for bob', async () => {
+    stubBobBalance(950);
+    try {
+      const out = await runTick({});
+      if (!out) return console.log('      (skipped: Intl unavailable)');
+      assert(out.fired === 0, 'a low balance must not fire the review');
+      assert(
+        out.lines.includes(
+          '[schedule] auto-pausing — Bobcoins at 5% (threshold 10%)'
+        ),
+        JSON.stringify(out.lines)
+      );
+      assertEqual(
+        out.saved.lastSkipReason,
+        'Auto-paused: Bobcoins at 5% (below 10% threshold)',
+        'lastSkipReason'
+      );
+      assert(out.saved.paused === true, 'the schedule must be paused');
+      assertEqual(alerts.length, 1, 'alerts');
+      assertEqual(alerts[0].agent, 'bob', 'alert agent');
+      assertEqual(alerts[0].percentRemaining, 5, 'alert percent');
+      assertEqual(alerts[0].threshold, 10, 'alert threshold');
+      assertEqual(alerts[0].isReminder, false, 'initial alert');
+    } finally {
+      restoreAgent();
+    }
+  });
+
+  await test('Bob: a healthy balance fires, and a paused schedule reminds with the Bob balance', async () => {
+    stubBobBalance(100);
+    try {
+      const fine = await runTick({});
+      if (!fine) return console.log('      (skipped: Intl unavailable)');
+      assertEqual(fine.fired, 1, 'fired');
+      assert(fine.saved.paused !== true, 'not paused');
+
+      stubBobBalance(950);
+      const paused = await runTick({ paused: true });
+      assertEqual(paused.fired, 0, 'fired while paused');
+      assertEqual(alerts.length, 1, 'reminder alerts');
+      assertEqual(alerts[0].agent, 'bob', 'reminder agent');
+      assertEqual(alerts[0].percentRemaining, 5, 'reminder percent');
+      assertEqual(alerts[0].isReminder, true, 'reminder flag');
+    } finally {
+      restoreAgent();
+    }
+  });
+
+  await test('Claude: the auto-pause says Claude budget, from month-to-date spend', async () => {
+    asClaude(10);
+    seedClaudeLedger(9.5);
+    try {
+      const out = await runTick({});
+      if (!out) return console.log('      (skipped: Intl unavailable)');
+      assert(out.fired === 0, 'a spent budget must not fire the review');
+      assert(
+        out.lines.includes(
+          '[schedule] auto-pausing — Claude budget at 5% (threshold 10%)'
+        ),
+        JSON.stringify(out.lines)
+      );
+      assertEqual(
+        out.saved.lastSkipReason,
+        'Auto-paused: Claude budget at 5% (below 10% threshold)',
+        'lastSkipReason'
+      );
+      assert(
+        !out.lines
+          .concat(out.saved.lastSkipReason)
+          .some((l) => /Bobcoins/.test(l)),
+        'no Bobcoins on the Claude path'
+      );
+      assertEqual(alerts[0].agent, 'claude', 'alert agent');
+      assertEqual(alerts[0].threshold, 10, 'alert threshold');
+    } finally {
+      restoreAgent();
+    }
+  });
+
+  await test('Claude: a paused schedule with a budget reminds with the Claude figures', async () => {
+    asClaude(10);
+    seedClaudeLedger(9.5);
+    try {
+      const out = await runTick({ paused: true });
+      if (!out) return console.log('      (skipped: Intl unavailable)');
+      assertEqual(out.fired, 0, 'paused');
+      assertEqual(alerts.length, 1, 'reminder alerts');
+      assertEqual(alerts[0].agent, 'claude', 'reminder agent');
+      assertEqual(alerts[0].percentRemaining, 5, 'reminder percent');
+      assertEqual(alerts[0].threshold, 10, 'reminder threshold');
+      assertEqual(alerts[0].isReminder, true, 'reminder flag');
+    } finally {
+      restoreAgent();
+    }
+  });
+
+  await test('Claude: unmetered or within budget fires; a paused unmetered schedule sends no reminder', async () => {
+    asClaude(0);
+    seedClaudeLedger(9.5);
+    try {
+      const unmetered = await runTick({});
+      if (!unmetered) return console.log('      (skipped: Intl unavailable)');
+      assertEqual(unmetered.fired, 1, 'unmetered fires');
+
+      asClaude(100);
+      const within = await runTick({});
+      assertEqual(within.fired, 1, 'within budget fires');
+
+      asClaude(0);
+      const reminder = await runTick({ paused: true });
+      assertEqual(reminder.fired, 0, 'paused');
+      assertEqual(alerts.length, 0, 'no budget, no reminder');
+      assert(
+        reminder.lines.includes(
+          '[schedule] low-budget reminder skipped — Claude budget is not metered (not-metered)'
+        ),
+        JSON.stringify(reminder.lines)
+      );
+    } finally {
+      restoreAgent();
+    }
   });
 
   // ── Cleanup ──────────────────────────────────────────────────────────────

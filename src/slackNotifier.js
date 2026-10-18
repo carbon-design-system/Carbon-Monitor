@@ -123,6 +123,16 @@ function formatEasternTime(ts) {
 
 // ── Low-token alert Block Kit builder ────────────────────────────────────────
 
+// What a human does about a low balance, keyed by the unit the agent spends in.
+const LOW_CREDIT_ACTION = {
+  bobcoins:
+    'increase your Bobcoins token limit, or disable scheduled ' +
+    'reviews in the Carbon Monitor Settings panel. ',
+  usd:
+    'raise CLAUDE_MONTHLY_BUDGET_USD, or disable scheduled ' +
+    'reviews in the Carbon Monitor Settings panel. ',
+};
+
 /**
  * Build the Slack Block Kit payload for a low-token auto-pause alert.
  *
@@ -132,9 +142,10 @@ function formatEasternTime(ts) {
  *
  * @param {Object}       opts
  * @param {number|null}  opts.percentRemaining - Current % of budget remaining, or null
- * @param {number}       opts.threshold        - The BOB_CREDITS_LOW_PCT threshold
+ * @param {number}       opts.threshold        - The agent's low-water mark (e.g. BOB_CREDITS_LOW_PCT)
  * @param {string}       opts.repo             - "owner/repo"
  * @param {boolean}      opts.isReminder       - true on daily reminders after initial pause
+ * @param {string}       [opts.agent]          - Agent id naming the unit and the remedy; defaults to the configured agent
  * @returns {Object} Slack API blocks payload
  */
 function buildLowTokenPayload({
@@ -142,7 +153,10 @@ function buildLowTokenPayload({
   threshold,
   repo,
   isReminder,
+  agent,
 }) {
+  const agents = require('./agents');
+  const adapter = agents.resolve(agent || undefined);
   const blocks = [];
 
   // ── Header ──────────────────────────────────────────────────────────────────
@@ -162,14 +176,13 @@ function buildLowTokenPayload({
   // ── Status section ──────────────────────────────────────────────────────────
   // Build the detail lines, omitting the percentage line when unavailable.
   const detailLines = [`*Repo:* ${repo}`];
+  const unit = adapter.creditLabel;
+  // A metered threshold is always known; an unmetered agent's reminder has none.
+  const limit = threshold == null ? '' : ` (threshold: ${threshold}%)`;
   if (percentRemaining !== null && percentRemaining !== undefined) {
-    detailLines.push(
-      `*Bobcoins remaining:* ${percentRemaining}% (threshold: ${threshold}%)`
-    );
+    detailLines.push(`*${unit} remaining:* ${percentRemaining}%${limit}`);
   } else {
-    detailLines.push(
-      `*Bobcoins remaining:* below threshold (threshold: ${threshold}%)`
-    );
+    detailLines.push(`*${unit} remaining:* below threshold${limit}`);
   }
   if (isReminder) {
     detailLines.push(
@@ -193,8 +206,7 @@ function buildLowTokenPayload({
     text: {
       type: 'mrkdwn',
       text:
-        '*Action required:* increase your Bobcoins token limit, or disable scheduled ' +
-        'reviews in the Carbon Monitor Settings panel. ' +
+        `*Action required:* ${LOW_CREDIT_ACTION[adapter.costUnit] || LOW_CREDIT_ACTION.bobcoins}` +
         'Scheduled reviews will remain paused until a human resumes them.',
     },
   });
@@ -271,12 +283,12 @@ function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
           },
         });
       } else if (result.skipped) {
-        // Skipped PR — too large to review automatically
+        // Skipped PR: left unreviewed on purpose (a low balance, or no file fits the diff budget)
         blocks.push({
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `⏭️  *<${result.prUrl}|PR #${result.prNumber}>* — Skipped\n_${escapeAtSign(result.reason || 'Too large to review')}_`,
+            text: `⏭️  *<${result.prUrl}|PR #${result.prNumber}>* — Skipped\n_${escapeAtSign(result.reason || 'Skipped before the review started')}_`,
           },
         });
       } else {
@@ -289,13 +301,18 @@ function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
           rawSummary.split('`').length % 2 === 0 ? rawSummary + '`' : rawSummary
         );
 
+        const cov = result.coverage;
+        const partial = cov?.partial
+          ? ` · partial review: ${cov.files_reviewed} of ${cov.files_total} files`
+          : '';
+
         blocks.push({
           type: 'section',
           text: {
             type: 'mrkdwn',
             text: [
               `${emoji}  *<${result.prUrl}|PR #${result.prNumber}>* — ${label}`,
-              `${result.findingsCount} ${issueWord} found`,
+              `${result.findingsCount} ${issueWord} found${partial}`,
               summary ? `_${summary}_` : '',
             ]
               .filter(Boolean)
@@ -395,7 +412,7 @@ function postToSlack(payload) {
  * @param {number}  opts.startedAt     - epoch ms when the run started (from runStartedAt in index.js)
  * @param {string}  opts.repo          - "owner/repo" string
  * @param {Array}   opts.results       - Array of per-PR result objects:
- *   Success shape: { prNumber, prUrl, findingsCount, summary, recommendation }
+ *   Success shape: { prNumber, prUrl, findingsCount, summary, recommendation, coverage }
  *   Failure shape: { prNumber, failed: true, error }
  *   Skipped shape: { prNumber, prUrl, skipped: true, reason }
  * @param {number}   [opts.maxPRs]     - selection cap (MAX_PRS_PER_RUN), shown in the Criteria line
@@ -454,6 +471,7 @@ async function postRunDigest({
  * @param {number}       opts.threshold        - The BOB_CREDITS_LOW_PCT threshold value
  * @param {string}       opts.repo             - "owner/repo" string
  * @param {boolean}      opts.isReminder       - true for daily reminders, false for initial alert
+ * @param {string}       [opts.agent]          - Agent id; names the unit and the remedy
  * @param {Function}     [opts.emitEvent]      - optional emitEvent fn for ES observability
  * @returns {Promise<void>}
  */
@@ -462,6 +480,7 @@ async function postLowTokenAlert({
   threshold,
   repo,
   isReminder,
+  agent,
   emitEvent,
 }) {
   if (!_enabled) return;
@@ -471,6 +490,7 @@ async function postLowTokenAlert({
     threshold,
     repo,
     isReminder,
+    agent,
   });
   const eventType = isReminder
     ? 'schedule_low_token_reminder'

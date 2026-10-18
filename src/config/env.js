@@ -1,12 +1,12 @@
 /**
- * env.js — centralised, whitespace-trimmed environment config
+ * env.js: environment helpers and the startup configuration check
  *
- * All credential env vars are passed through readTrimmedString() before
- * reaching any call site. Kubernetes/Code Engine secrets created via CLI
- * --from-literal or copy-pasted YAML can carry trailing newlines or spaces
- * that silently cause 401s. Trimming here means no call site needs to remember.
+ * Credentials pass through readTrimmedString() before use. Kubernetes and Code
+ * Engine secrets created with --from-literal or pasted YAML can carry trailing
+ * newlines or spaces that silently cause 401s.
  *
- * Architecture mirrors carbon-migrate/agent-dispatcher/src/config/env.js.
+ * checkStartup() lists the variables a mode cannot run without. It only reports:
+ * the process stays up so the console can still show what is wrong.
  */
 
 'use strict';
@@ -21,46 +21,87 @@ function readTrimmedString(name) {
 
 /**
  * Produce a safe diagnostic description of a credential value.
- * Never logs the actual value — logs length, whitespace flags, first/last
- * 2 chars, and a SHA-256 prefix so local and deployed secrets can be compared.
+ * Never logs any part of the value or a hash of it — only whether it is
+ * set, its length, and whitespace/control-character flags.
  */
 function describeCredential(label, value) {
-  const { createHash } = require('crypto');
-  const raw = process.env[label] || '';
+  // The env var keeps its whitespace for the flags; value covers a default.
+  const raw = process.env[label] || value || '';
   const trimmed = raw.trim();
   return {
     label,
+    set: trimmed.length > 0,
     length: raw.length,
     trimmedLength: trimmed.length,
     hasLeadingWhitespace: raw.length > 0 && raw[0] !== trimmed[0],
     hasTrailingWhitespace:
       raw.length > 0 && raw[raw.length - 1] !== trimmed[trimmed.length - 1],
     hasInnerControlChars: /[\x00-\x1f\x7f]/.test(trimmed),
-    firstChars: trimmed.length >= 2 ? trimmed.slice(0, 2) : trimmed,
-    lastChars: trimmed.length >= 2 ? trimmed.slice(-2) : trimmed,
-    sha256Prefix:
-      trimmed.length > 0
-        ? createHash('sha256').update(trimmed).digest('hex').slice(0, 12)
-        : '(empty)',
   };
 }
 
-const env = {
-  es: {
-    url: readTrimmedString('ES_URL'),
-    username: readTrimmedString('ES_USERNAME') || 'elastic',
-    password: readTrimmedString('ES_PASSWORD'),
-    caCertPath: readTrimmedString('ES_CA_CERT_PATH'),
-    index: readTrimmedString('ES_INDEX') || 'carbon-monitor-events',
-  },
-  observability: {
-    otlpEndpoint: readTrimmedString('OTEL_EXPORTER_OTLP_ENDPOINT'),
-    retentionDays: Math.max(
-      90,
-      parseInt(readTrimmedString('EVENTS_RETENTION_DAYS') || '180', 10)
-    ),
-    logLevel: readTrimmedString('LOG_LEVEL') || 'info',
-  },
-};
+let startupProblems = [];
 
-module.exports = { env, readTrimmedString, describeCredential };
+/**
+ * Log one line per missing required variable and remember them for /api/ready.
+ *
+ * @param {Object} options
+ * @param {'server'|'cli'} options.mode
+ * @param {boolean} [options.authRequired] - Console sign-in is enforced (server mode)
+ * @param {boolean} [options.bearerEnabled] - API_SECRET bearer path is on (server mode)
+ * @returns {string[]} The problems found
+ */
+function checkStartup({
+  mode,
+  authRequired = false,
+  bearerEnabled = true,
+} = {}) {
+  const required = [
+    [
+      'GITHUB_AI_AGENT_TOKEN',
+      'reviews cannot read or comment on pull requests',
+    ],
+  ];
+
+  // Lazy: the registry loads constants, which reads the environment at load.
+  const agents = require('../agents');
+  const agent = readTrimmedString('GITHUB_AI_AGENT_CLI') || agents.DEFAULT_ID;
+  const adapter = agents.find(agent);
+  if (adapter && adapter.requiredEnv) {
+    required.push([
+      adapter.requiredEnv,
+      `the ${agent} CLI cannot authenticate in a container`,
+    ]);
+  }
+
+  if (mode === 'server' && authRequired) {
+    required.push(
+      ['CONSOLE_USERNAME', 'nobody can sign in to the console'],
+      ['CONSOLE_PASSWORD', 'nobody can sign in to the console']
+    );
+    if (bearerEnabled) {
+      required.push(['API_SECRET', 'bearer-token API calls are rejected']);
+    }
+  }
+
+  startupProblems = required
+    .filter(([name]) => !readTrimmedString(name))
+    .map(([name, why]) => `${name} is not set: ${why}`);
+
+  for (const problem of startupProblems) {
+    console.warn(`[config] ${problem}`);
+  }
+  return startupProblems;
+}
+
+/** The problems from the last checkStartup(), for /api/ready. */
+function getStartupProblems() {
+  return [...startupProblems];
+}
+
+module.exports = {
+  readTrimmedString,
+  describeCredential,
+  checkStartup,
+  getStartupProblems,
+};

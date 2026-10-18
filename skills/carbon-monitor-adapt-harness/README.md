@@ -12,10 +12,11 @@ Two paths, chosen at the first question:
 | **PR reviews for another repository** | You want this reviewer on your own repo, maybe with a different rubric or MCP server                                                                 | Mostly configuration; a short implementation                     |
 | **A different job on the harness**    | You want the schedule, cloud deployment, cost tracking, telemetry and Slack digest, but the agent should do something else against some other system | A real adaptation: the task layer is replaced, the harness stays |
 
-Both paths ask which agent runs the job. Bob is the default and the tested path;
-`docs/adapt-harness/agents/` describes what changes for Claude Code, Codex,
-Gemini CLI and Copilot CLI, with the Dockerfile, runner and health-check
-snippets an implementer needs.
+Both paths ask which agent runs the job. Bob (the default) and Claude are built
+in, so choosing either is configuration: `GITHUB_AI_AGENT_CLI` and its key.
+`docs/adapt-harness/agents/` describes both as built, and what an adapter for
+Codex, Gemini CLI or Copilot CLI would need, with the Dockerfile and
+configuration snippets an implementer uses.
 
 ## Install
 
@@ -51,7 +52,7 @@ The skill does not front-load the repository. Step 1 reads one section of
 `docs/HARNESS.md`. The interview loads only its own question file. While
 writing the SPEC, [reading-map.md](reading-map.md) names the single section or
 block each SPEC section needs, and the worker-agent file is opened only when
-the chosen agent is not Bob and only at the sections that use it. Source files
+the chosen agent is not Bob or Claude and only at the sections that use it. Source files
 are not read end to end; a function name is confirmed by search.
 
 ## What you get

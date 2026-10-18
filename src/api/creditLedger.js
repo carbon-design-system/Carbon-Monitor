@@ -29,6 +29,17 @@ const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
 
+// Rows written before units existed are Bobcoins.
+const DEFAULT_UNIT = 'bobcoins';
+const unitOf = (entry) => (entry && entry.costUnit) || DEFAULT_UNIT;
+
+// The unit the configured agent spends in; lazy because the registry loads constants.
+function currentUnit() {
+  const agents = require('../agents');
+  const adapter = agents.find(require('../constants').REVIEW_AGENT);
+  return adapter ? adapter.costUnit : DEFAULT_UNIT;
+}
+
 /** Newest entries retained; older ones are pruned on write. */
 function getMaxEntries() {
   const n = Number(process.env.CREDIT_LEDGER_MAX || 1000);
@@ -149,14 +160,18 @@ async function readAll() {
  * not the work done here.
  *
  * @param {number} [limit=100]
+ * @param {Object} [opts]
+ * @param {string} [opts.unit] - Only entries of this cost unit; all when omitted
  * @returns {Promise<Object[]>}
  */
-async function readRecent(limit = 100) {
+async function readRecent(limit = 100, { unit } = {}) {
   const n =
     Number.isFinite(Number(limit)) && Number(limit) > 0
       ? Math.floor(Number(limit))
       : 100;
-  const entries = await readAll();
+  const all = await readAll();
+  // Filtered before the slice so another unit's rows do not use up the limit.
+  const entries = unit ? all.filter((e) => unitOf(e) === unit) : all;
   return entries.slice(-n).reverse();
 }
 
@@ -191,6 +206,21 @@ function normalize(entry = {}) {
     remainingAfter: numberOrNull(entry.remainingAfter),
     durationMs: numberOrNull(entry.durationMs),
     source: entry.source || 'unknown',
+    costUnit: entry.costUnit || DEFAULT_UNIT,
+    taskId: typeof entry.taskId === 'string' ? entry.taskId : null,
+    tokens: normalizeTokens(entry.tokens),
+    toolCalls: numberOrNull(entry.toolCalls),
+  };
+}
+
+function normalizeTokens(tokens) {
+  if (!tokens || typeof tokens !== 'object') return null;
+  return {
+    input: numberOrNull(tokens.input),
+    output: numberOrNull(tokens.output),
+    cacheRead: numberOrNull(tokens.cacheRead),
+    cacheWrite: numberOrNull(tokens.cacheWrite),
+    total: numberOrNull(tokens.total),
   };
 }
 
@@ -243,10 +273,11 @@ async function endsWithNewline(ledgerPath) {
  * exception would replace the agent's real failure with a bookkeeping one.
  *
  * @param {Object} entry - { at, prNumber, repo, correlationId, coinsSpent,
- *                           remainingAfter, durationMs, source }
+ *                           remainingAfter, durationMs, source, costUnit,
+ *                           taskId, tokens, toolCalls }
  * @returns {Promise<boolean>} Whether the entry was persisted
  */
-async function record(entry) {
+async function appendEntry(entry) {
   const ledgerPath = getLedgerPath();
   try {
     await fs.mkdir(path.dirname(ledgerPath), { recursive: true });
@@ -280,6 +311,15 @@ async function record(entry) {
   }
 }
 
+// Concurrent reviews call record(); the prune's read-modify-write must not
+// interleave, so writes run one after another.
+let writes = Promise.resolve();
+function record(entry) {
+  const done = writes.then(() => appendEntry(entry));
+  writes = done.catch(() => {});
+  return done;
+}
+
 // ── Derived views ───────────────────────────────────────────────────────────
 
 /**
@@ -294,16 +334,21 @@ async function record(entry) {
  * tab — without this, each poll re-reads and re-parses the entire file on the
  * single-threaded loop that also serves the console.
  *
+ * Only entries of `unit` are counted, so a deployment that switched agents does
+ * not add dollars to Bobcoins.
+ *
+ * @param {Object} [opts]
+ * @param {string} [opts.unit] - Defaults to the configured agent's cost unit
  * @returns {Promise<Object>}
  */
-async function summary() {
+async function summary({ unit = currentUnit() } = {}) {
   const fingerprint = await ledgerFingerprint();
   // The 24h/7d windows move with the clock, so a cached total would drift even
   // on an untouched file. Re-derived when either the file or the minute changes.
-  const key = `${fingerprint}:${Math.floor(Date.now() / 60_000)}`;
+  const key = `${fingerprint}:${unit}:${Math.floor(Date.now() / 60_000)}`;
   if (summaryCache && summaryCache.key === key) return summaryCache.value;
 
-  const entries = await readAll();
+  const entries = (await readAll()).filter((e) => unitOf(e) === unit);
 
   const now = Date.now();
   const DAY_MS = 24 * 60 * 60 * 1000;
@@ -358,14 +403,18 @@ async function summary() {
  * descending "cumulative" line.
  *
  * @param {Object[]} entries
+ * @param {Object} [opts]
+ * @param {string} [opts.unit] - Defaults to the configured agent's cost unit
  * @returns {Object[]} [{ at, spent, cumulativeSpent, remaining }]
  */
-function buildCumulative(entries = []) {
-  const ordered = [...entries].sort((a, b) => {
-    const at = Date.parse(a && a.at) || 0;
-    const bt = Date.parse(b && b.at) || 0;
-    return at - bt;
-  });
+function buildCumulative(entries = [], { unit = currentUnit() } = {}) {
+  const ordered = entries
+    .filter((e) => unitOf(e) === unit)
+    .sort((a, b) => {
+      const at = Date.parse(a && a.at) || 0;
+      const bt = Date.parse(b && b.at) || 0;
+      return at - bt;
+    });
 
   let running = 0;
   return ordered.map((entry) => {

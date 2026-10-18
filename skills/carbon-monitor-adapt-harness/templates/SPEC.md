@@ -1,12 +1,12 @@
 # SPEC: <short name of the adapted system>
 
-|              |                                                      |
-| ------------ | ---------------------------------------------------- |
-| Status       | draft                                                |
-| Source       | Carbon-Monitor at commit `<sha>`                     |
-| Branch       | PR review for another repo / New job on the harness  |
-| Worker agent | bob / claude-code / codex / gemini-cli / copilot-cli |
-| Written      | <date>                                               |
+|              |                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------- |
+| Status       | draft                                                                                              |
+| Source       | Carbon-Monitor at commit `<sha>`                                                                   |
+| Branch       | PR review for another repo / New job on the harness                                                |
+| Worker agent | bob / claude (built in) / codex / gemini-cli / copilot-cli (need an adapter, `docs/HARNESS.md` §4) |
+| Written      | <date>                                                                                             |
 
 <!-- Every section is required. Write "none" rather than leaving one out.
      Facts come from docs/HARNESS.md, docs/ARCHITECTURE.md and the interview.

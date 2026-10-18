@@ -787,6 +787,29 @@ async function main() {
     );
   });
 
+  await test('record keeps task id, tokens and tool calls, and nulls them when absent', async () => {
+    resetLedger();
+    await creditLedger.record({
+      prNumber: 1,
+      coinsSpent: 1,
+      taskId: 'task-abc',
+      tokens: { input: 10, output: 5, cacheRead: 2, cacheWrite: 1, total: 15 },
+      toolCalls: 7,
+    });
+    await creditLedger.record({ prNumber: 2, coinsSpent: 1 });
+
+    const [full, partial] = await creditLedger.readAll();
+    assert(full.taskId === 'task-abc', 'taskId should pass through');
+    assert(full.tokens.cacheRead === 2 && full.tokens.total === 15);
+    assert(full.toolCalls === 7, 'toolCalls should pass through');
+    assert(
+      partial.taskId === null &&
+        partial.tokens === null &&
+        partial.toolCalls === null,
+      'absent fields should default to null'
+    );
+  });
+
   await test('record does not throw when the ledger cannot be written', async () => {
     const original = process.env.CREDIT_LEDGER_PATH;
     // A file standing where the directory should be: mkdir fails, so the whole
@@ -905,6 +928,61 @@ async function main() {
       series[2].remaining === 90,
       `remaining should carry through: ${series[2].remaining}`
     );
+  });
+
+  await test('a row without a unit is Bobcoins; a recorded unit is kept', async () => {
+    resetLedger();
+    await creditLedger.record({ prNumber: 1, coinsSpent: 2 });
+    await creditLedger.record({
+      prNumber: 2,
+      coinsSpent: 0.5,
+      costUnit: 'usd',
+    });
+    const rows = await creditLedger.readRecent(10);
+    const byPr = Object.fromEntries(rows.map((r) => [r.prNumber, r.costUnit]));
+    assert(byPr[1] === 'bobcoins', `default unit, got ${byPr[1]}`);
+    assert(byPr[2] === 'usd', `recorded unit, got ${byPr[2]}`);
+  });
+
+  await test('summary, readRecent and buildCumulative count only the asked unit', async () => {
+    resetLedger();
+    const at = new Date().toISOString();
+    await creditLedger.record({ at, prNumber: 1, coinsSpent: 2 });
+    await creditLedger.record({
+      at,
+      prNumber: 2,
+      coinsSpent: 0.5,
+      costUnit: 'usd',
+    });
+    await creditLedger.record({
+      at,
+      prNumber: 3,
+      coinsSpent: 0.25,
+      costUnit: 'usd',
+    });
+
+    // The default unit is the configured agent's, bob in the test environment.
+    const bob = await creditLedger.summary();
+    assert(bob.totalSpent === 2 && bob.reviewCount === 1, JSON.stringify(bob));
+    const usd = await creditLedger.summary({ unit: 'usd' });
+    assert(
+      usd.totalSpent === 0.75 && usd.reviewCount === 2,
+      JSON.stringify(usd)
+    );
+    assert(usd.averagePerReview === 0.375, `average ${usd.averagePerReview}`);
+
+    const recent = await creditLedger.readRecent(1, { unit: 'usd' });
+    assert(recent.length === 1 && recent[0].prNumber === 3, 'newest usd row');
+    assert(
+      (await creditLedger.readRecent(10)).length === 3,
+      'no unit: all rows'
+    );
+
+    const all = await creditLedger.readAll();
+    const series = creditLedger.buildCumulative(all, { unit: 'usd' });
+    assert(series.length === 2, `usd points: ${series.length}`);
+    assert(series[1].cumulativeSpent === 0.75, 'dollars add up on their own');
+    assert(creditLedger.buildCumulative(all).length === 1, 'default is bob');
   });
 
   // Restore the environment and remove the scratch directory.

@@ -37,8 +37,10 @@ larger adaptation than A; say so once.
 - One question at a time, in the file's order, at most ten.
 - State the default with each question; accept "default".
 - Skip a question the user has already answered in any form.
-- If an answer names a worker agent other than Bob, note it; the agent file is
-  read later, at the step that needs it.
+- If an answer names a worker agent other than Bob, note it. `bob` and `claude`
+  are supported as built, so either is configuration only. Any other CLI needs an
+  adapter (`docs/HARNESS.md` section 4, "Add an agent"); its agent file is read
+  later, at the step that needs it.
 - Stop early when every SPEC section can be filled.
 
 ## Step 4. Write the SPEC, pulling context section by section
@@ -67,8 +69,8 @@ sections. Rules:
 
 - [ ] Every template section present, none left as a placeholder
 - [ ] A decision for every row of `docs/HARNESS.md` sections 2 and 3
-- [ ] Section 6 complete for B, or "none" for A with no renames (a non-Bob
-      agent always renames something; see the reading map)
+- [ ] Section 6 complete for B, or "none" for A with no renames (an agent
+      other than Bob or Claude adds new names; see the reading map)
 - [ ] Every file or function cited as existing today found in the repository;
       every new name marked as new
 - [ ] Every open question has an owner

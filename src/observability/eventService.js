@@ -20,6 +20,7 @@
  *   pr_review_completed — review posted, label added
  *   pr_review_failed    — per-PR catch block fired
  *   agent_timeout       — agent process killed by timeout
+ *   agent_limit_reached — agent stopped at its cost or turn cap
  *   parse_failed        — parseReviewOutput returned null
  */
 
@@ -33,6 +34,7 @@ const ERROR_EVENTS = new Set([
   'run_failed',
   'pr_review_failed',
   'agent_timeout',
+  'agent_limit_reached',
   'parse_failed',
 ]);
 const WARN_EVENTS = new Set(['skill_unavailable', 'inline_post_failed']);
@@ -73,7 +75,7 @@ function scrubPayload(payload) {
  * @param {string}  opts.correlation_id  — UUID for the current reviewPRs() run
  * @param {string}  [opts.repo]          — "owner/repo"
  * @param {number}  [opts.pr_number]
- * @param {string}  [opts.agent]         — bob | claude | codex
+ * @param {string}  [opts.agent]         — an id from src/agents
  * @param {string}  [opts.commit_sha]
  * @param {Object}  [opts.payload]       — event-specific fields
  */
@@ -119,6 +121,10 @@ async function emitEvent({
     parts.push(`findings=${payload.findings_total}`);
   if (payload.token_total != null)
     parts.push(`tokens=${payload.token_total.toLocaleString()}`);
+  if (payload.coverage?.partial)
+    parts.push(
+      `coverage=${payload.coverage.files_reviewed}/${payload.coverage.files_total}`
+    );
   if (payload.duration_ms != null)
     parts.push(`duration=${Math.round(payload.duration_ms / 1000)}s`);
   if (payload.prs_reviewed != null)

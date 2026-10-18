@@ -21,9 +21,11 @@ SPEC section 2.
 5. **Ground truth.** Carbon MCP, a different MCP server, or none? For a different
    server: URL, authentication method, and the tool names the agent may call.
    (Default: Carbon MCP.)
-6. **Worker agent.** Bob, or another CLI? Note the answer; the matching file
-   under `docs/adapt-harness/agents/` is read when the SPEC reaches the
-   sections that need it. (Default: Bob.)
+6. **Worker agent.** Bob, Claude, or another CLI? `bob` and `claude` are
+   supported as built, so either is configuration. Another CLI needs an adapter
+   per `docs/HARNESS.md` section 4. Note the answer; the matching file under
+   `docs/adapt-harness/agents/` is read when the SPEC reaches the sections that
+   need it. (Default: Bob.)
 7. **Schedule and digest.** Daily run time and time zone, and whether a Slack
    digest is wanted. (Defaults: schedule off until an operator enables it in the
    console; Slack on when a webhook is configured.)
@@ -34,8 +36,9 @@ SPEC section 2.
    when Elasticsearch is configured; otherwise off, which the code already
    supports.)
 10. **Comment wording.** Anything in the posted comments that must change:
-    language, disclaimer, the review header. (Default: keep.)
+    language, disclaimer, the review header. There are three kinds: the inline
+    review, the summary and the short Looks Good comment. (Default: keep.)
 
 Branch one is expected to produce a SPEC where most decisions are **configure**
-and the only **modify** rows are the rubric, the MCP endpoint and, for a non-Bob
-agent, the agent slot.
+and the only **modify** rows are the rubric, the MCP endpoint and, for an agent
+other than Bob or Claude, a new adapter.

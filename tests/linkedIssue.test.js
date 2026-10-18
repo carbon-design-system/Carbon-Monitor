@@ -51,8 +51,16 @@ const MINIMAL_PR = {
   updated_at: '2024-01-02T00:00:00Z',
 };
 
-const MINIMAL_DIFF = 'diff --git a/foo.js b/foo.js\n+const x = 1;\n';
-const MINIMAL_FILES = [{ filename: 'foo.js', additions: 1, deletions: 0 }];
+const MINIMAL_FILES = [
+  {
+    filename: 'foo.js',
+    status: 'added',
+    additions: 1,
+    deletions: 0,
+    changes: 1,
+    patch: '@@ -0,0 +1 @@\n+const x = 1;',
+  },
+];
 
 /**
  * Build a mock octokit whose issues.get and request return canned data.
@@ -447,7 +455,6 @@ async function runTests() {
       owner: 'o',
       repo: 'r',
       pr: MINIMAL_PR,
-      diff: MINIMAL_DIFF,
       files: MINIMAL_FILES,
       client: makeFakeClient({
         found: true,
@@ -484,7 +491,6 @@ async function runTests() {
       owner: 'o',
       repo: 'r',
       pr: MINIMAL_PR,
-      diff: MINIMAL_DIFF,
       files: MINIMAL_FILES,
       client: makeFakeClient({ found: false }),
     });
@@ -507,7 +513,6 @@ async function runTests() {
       owner: 'o',
       repo: 'r',
       pr: MINIMAL_PR,
-      diff: MINIMAL_DIFF,
       files: MINIMAL_FILES,
       // no client
     });
@@ -530,7 +535,6 @@ async function runTests() {
       owner: 'o',
       repo: 'r',
       pr: MINIMAL_PR,
-      diff: MINIMAL_DIFF,
       files: MINIMAL_FILES,
       client: makeFakeClient({
         found: true,
@@ -566,7 +570,6 @@ async function runTests() {
       owner: 'o',
       repo: 'r',
       pr: MINIMAL_PR,
-      diff: MINIMAL_DIFF,
       files: MINIMAL_FILES,
       client: makeFakeClient({
         found: true,
@@ -600,7 +603,6 @@ async function runTests() {
       owner: 'o',
       repo: 'r',
       pr: MINIMAL_PR,
-      diff: MINIMAL_DIFF,
       files: MINIMAL_FILES,
       client: makeFakeClient({
         found: true,
@@ -665,7 +667,6 @@ async function runTests() {
       owner: 'o',
       repo: 'r',
       pr: MINIMAL_PR,
-      diff: MINIMAL_DIFF,
       files: MINIMAL_FILES,
       client: makeFakeClient({
         found: true,
@@ -703,7 +704,6 @@ async function runTests() {
       owner: 'o',
       repo: 'r',
       pr: MINIMAL_PR,
-      diff: MINIMAL_DIFF,
       files: MINIMAL_FILES,
       client: makeFakeClient({
         found: true,
@@ -736,7 +736,6 @@ async function runTests() {
       owner: 'o',
       repo: 'r',
       pr: MINIMAL_PR,
-      diff: MINIMAL_DIFF,
       files: MINIMAL_FILES,
       client: makeFakeClient({
         found: true,

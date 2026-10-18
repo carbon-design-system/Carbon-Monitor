@@ -87,14 +87,16 @@ function makePR(overrides = {}) {
  * params it was called with, so tests can assert on the query too.
  */
 function makeFakeOctokit(prs, capture = {}) {
+  const list = async (params) => {
+    capture.params = params;
+    return { data: prs };
+  };
   return {
-    rest: {
-      pulls: {
-        list: async (params) => {
-          capture.params = params;
-          return { data: prs };
-        },
-      },
+    rest: { pulls: { list } },
+    // One page, run through the map callback the way octokit.paginate does.
+    paginate: async (route, params, mapFn) => {
+      const response = await route(params);
+      return mapFn(response, () => {});
     },
   };
 }
@@ -235,6 +237,56 @@ async function runTests() {
     assertEqual(capture.params.state, 'open', 'state filter');
     assertEqual(capture.params.sort, 'created', 'sort field');
     assertEqual(capture.params.direction, 'desc', 'sort direction');
+  });
+
+  await test('pages through the list and stops once the window or the cap is reached', async () => {
+    const pages = [
+      [makePR({ number: 9, created_at: daysAgo(1) })],
+      [makePR({ number: 8, created_at: daysAgo(2) })],
+      [makePR({ number: 7, created_at: daysAgo(400) })],
+      [makePR({ number: 6, created_at: daysAgo(401) })],
+    ];
+    const fetched = [];
+    const octokit = {
+      rest: { pulls: { list: async () => ({}) } },
+      paginate: async (route, params, mapFn) => {
+        const out = [];
+        let stopped = false;
+        for (let i = 0; i < pages.length && !stopped; i++) {
+          fetched.push(i);
+          out.push(...mapFn({ data: pages[i] }, () => (stopped = true)));
+        }
+        return out;
+      },
+    };
+    const client = createGitHubClient(octokit);
+    const result = await client.fetchReviewablePRs({
+      owner: 'o',
+      repo: 'r',
+      daysBack: DAYS_BACK,
+      label: LABEL,
+    });
+    assertDeepEqual(
+      result.map((p) => p.number),
+      [9, 8],
+      'kept across pages'
+    );
+    assertDeepEqual(fetched, [0, 1, 2], 'stopped at the first stale page');
+
+    fetched.length = 0;
+    const capped = await client.fetchReviewablePRs({
+      owner: 'o',
+      repo: 'r',
+      daysBack: DAYS_BACK,
+      label: LABEL,
+      maxPRs: 1,
+    });
+    assertDeepEqual(
+      capped.map((p) => p.number),
+      [9],
+      'capped at maxPRs'
+    );
+    assertDeepEqual(fetched, [0], 'stopped once the cap was met');
   });
 
   // ── Summary ───────────────────────────────────────────────────────────────

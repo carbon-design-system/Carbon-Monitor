@@ -13,6 +13,21 @@ Both are obtained from the same place and should be refreshed together.
 
 ---
 
+## How the automatic refresh works
+
+`src/api/mcpConnection.js` owns the connection. `refreshIfNeeded` renews the
+access token shortly before it expires (a timer checks every 60 seconds by default, `MCP_REFRESH_CHECK_MS` overrides it, and once at startup).
+Carbon MCP rotates its refresh token on every use, so the new one is persisted at
+once: in the Elasticsearch state backend when `MCP_STATE_BACKEND=elasticsearch`
+and an Elasticsearch client is available, otherwise in a state file. `writeBobMcpHeaders` then writes the new
+`Authorization` and `X-MCP-Session` headers into `~/.bob/settings/mcp.json`,
+which is what Bob reads. Claude reads a per-review copy of the same credentials
+(`claude-config/claude-mcp.json` in the review bundle, built from that file), so
+this file is the one to fix for either agent. The manual steps below replace
+those two values by hand.
+
+---
+
 ## Getting New Credentials
 
 1. Go to the Carbon MCP portal
