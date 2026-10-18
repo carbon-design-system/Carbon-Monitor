@@ -327,6 +327,23 @@ read status and trigger a review. See
 | **Kibana dashboard**  | Review metrics from Elasticsearch, when `ES_URL` is set. Setup is in [kibana/README.md](kibana/README.md).                                                                                                                                                                                                                                                                             |
 | **Cost tracking**     | Bob: the Bobcoins balance and per-review spend; scheduled reviews pause themselves, and alert Slack, when the balance falls below `BOB_CREDITS_LOW_PCT` (default 10%). Claude: per-review spend in dollars and the month so far; with `CLAUDE_MONTHLY_BUDGET_USD` set, scheduled reviews pause below `CLAUDE_BUDGET_LOW_PCT` (default 10%) of it, and without it they are not metered. |
 
+### Spend caps and budgets
+
+Per review, the agent CLI enforces the caps, so they hold whichever agent runs:
+
+| Cap              | IBM Bob                                            | Claude                                                            |
+| ---------------- | -------------------------------------------------- | ----------------------------------------------------------------- |
+| Cost per review  | `BOB_MAX_COST` in Bobcoins, passed as `--max-cost` | `CLAUDE_MAX_BUDGET_USD` (default 5), passed as `--max-budget-usd` |
+| Turns per review | `BOB_MAX_TURNS`, passed as `--max-turns`           | `CLAUDE_MAX_TURNS` (default 60), passed as `--max-turns`          |
+| Wall time        | the harness timeout                                | the harness timeout                                               |
+
+Both CLIs check the cost cap between turns, so a run can pass it by one turn's cost. Leave headroom. A run stopped by a cap is recorded with its spend and reported as a cost or turn limit in the log, the ledger and telemetry.
+
+Per month, the two agents differ:
+
+- **Bob.** The account's Bobcoins allowance is enforced by the Bob gateway. When it is spent, reviews are refused whatever the harness does. The harness pauses scheduled reviews earlier, below `BOB_CREDITS_LOW_PCT` of the balance, and tells Slack.
+- **Claude.** There is no account-side stop the harness can see. `CLAUDE_MONTHLY_BUDGET_USD` is the harness's own gate over recorded spend (Elasticsearch, with the local ledger as a fallback). Scheduled reviews pause below `CLAUDE_BUDGET_LOW_PCT` of it. The gate covers scheduled runs only, and reviews in flight are not counted yet, so spend can pass the budget by up to `REVIEW_CONCURRENCY × CLAUDE_MAX_BUDGET_USD`. Unset means not metered. For a hard account-level stop, set a monthly spend limit on the workspace that owns the API key in the Anthropic Console. Details in [docs/CONFIGURATION.md](docs/CONFIGURATION.md#the-monthly-budget-gate).
+
 ## Documentation
 
 | Document                                                                             | Covers                                                                                               |
