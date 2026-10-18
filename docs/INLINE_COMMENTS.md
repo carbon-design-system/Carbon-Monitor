@@ -57,26 +57,36 @@ If inline comment posting fails:
 
 ### Diff Position Calculation
 
-GitHub uses a **position-based** system for inline comments, not line numbers:
+GitHub's review comment API takes a **position**, not a line number: the
+number of lines below the first `@@` hunk header of that file in the unified
+diff. The header itself is not counted, a later hunk header in the same file
+is, and the count resets at the next `diff --git` line.
 
 ```
-Position 1: diff --git a/file.js b/file.js
-Position 2: index 1234567..abcdefg 100644
-Position 3: --- a/file.js
-Position 4: +++ b/file.js
-Position 5: @@ -10,7 +10,8 @@
-Position 6:  unchanged line
-Position 7: -removed line
-Position 8: +added line
-Position 9:  unchanged line
+            diff --git a/file.js b/file.js      (not counted)
+            index 1234567..abcdefg 100644       (not counted)
+            --- a/file.js                       (not counted)
+            +++ b/file.js                       (not counted)
+            @@ -10,7 +10,8 @@                   (not counted)
+Position 1:  unchanged line                     new-file line 10
+Position 2: -removed line
+Position 3: +added line                         new-file line 11
+Position 4:  unchanged line                     new-file line 12
+Position 5: @@ -40,3 +41,4 @@                   (a later header counts)
+Position 6:  unchanged line                     new-file line 41
 ```
 
 The mapper:
 
-1. Parses the diff to build a line-to-position map
-2. Looks up the finding's line number in the map
-3. Returns the position for GitHub's API
-4. Falls back to nearby lines (±5) if exact match not found
+1. Parses the diff into a map from new-file line number to position, per file
+2. Looks up the finding's line number in that map
+3. Falls back to treating the reported line as a `PR_REVIEW_REQUEST.md` line
+   number and converting it through the hunk offsets
+4. Returns the position for GitHub's API, or routes the finding to the summary
+
+Until Oct 18, 2026 the first header was counted too, so every inline comment
+landed one line below the finding and a finding on the last line of a file's
+diff was rejected with a 422 ("position could not be resolved").
 
 ### Comment Format
 
@@ -176,38 +186,36 @@ Set to `false` to disable inline comments and post all findings in summary.
 Example with carbon-builder:
 
 ```
-🤖 Bob Review Comment
-
 **Missing aria-label**
 
-Severity: major
+> **[major]** Worth addressing before merge.
 
 Icon button needs aria-label for accessibility. Add aria-label prop with descriptive text.
 
-✓ Verified with carbon-builder
+*✓ Verified with Carbon Builder + MCP*
 ```
 
 Example with carbon-mcp (fallback):
 
 ```
-🤖 Bob Review Comment
-
 **Missing aria-label**
 
-Severity: major
+> **[major]** Worth addressing before merge.
 
 Icon button needs aria-label for accessibility. Add aria-label prop with descriptive text.
 
-✓ Verified with carbon-mcp
+*✓ Verified with Carbon MCP*
 ```
+
+An inline comment does not name the agent. The summary comment does.
 
 ### Summary Comment
 
 ```markdown
-[AI agent review — Carbon grounded]
+[AI agent review — Carbon grounded] · **Consider Revising**
 
-Reviewed by: bob
-Carbon verification policy: Carbon-specific claims verified via Carbon Builder skill (preferred) or Carbon MCP (fallback).
+Reviewed by: IBM Bob · Commit: abc1234
+Carbon verification: Carbon-specific claims verified using Carbon Builder skill (primary authority) and Carbon MCP (fallback).
 
 ## Review Summary
 
@@ -230,7 +238,7 @@ Review artifacts:
 
 - PR: #123
 - Commit: abc1234
-- Agent: bob
+- Agent: IBM Bob
 - Inline comments: 2
 - Summary findings: 1
 ```

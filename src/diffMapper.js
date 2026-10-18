@@ -31,8 +31,8 @@ function parseDiffLinePositions(diff) {
 
     // File header: diff --git a/path b/path
     // GitHub resets position per file; the diff --git line itself is not counted.
-    // index, new file mode, deleted file mode, ---, +++ are also not counted —
-    // GitHub position starts at 1 for the first @@ hunk header of each file.
+    // index, new file mode, deleted file mode, ---, +++ are also not counted:
+    // position 1 is the first line below the file's first @@ hunk header.
     if (line.startsWith('diff --git')) {
       const match = line.match(/\sb\/(.+)$/);
       if (match) {
@@ -44,7 +44,7 @@ function parseDiffLinePositions(diff) {
     }
 
     // Skip file metadata lines — do NOT count these in position.
-    // GitHub position counting begins at the @@ hunk header, not before it.
+    // GitHub position counting begins below the first @@ hunk header.
     if (
       line.startsWith('---') ||
       line.startsWith('+++') ||
@@ -56,19 +56,19 @@ function parseDiffLinePositions(diff) {
     }
 
     // Hunk header: @@ -old_start,old_count +new_start,new_count @@
-    // This is position 1 (or the first position of a subsequent hunk).
+    // The first header of a file is not a position; later ones are, because
+    // GitHub keeps counting every diff line until the next file.
     if (line.startsWith('@@')) {
       const match = line.match(/@@ -(\d+),?\d* \+(\d+),?\d* @@/);
       if (match) {
         oldLine = parseInt(match[1], 10);
         newLine = parseInt(match[2], 10);
       }
-      position++;
-      // Record this hunk's position within the diff string for secondary lookup.
       if (currentFile) {
-        fileMap
-          .get(currentFile)
-          .hunkLines.push({ diffLine, newFileStart: newLine });
+        const entry = fileMap.get(currentFile);
+        if (entry.hunkLines.length > 0) position++;
+        // Record this hunk's position within the diff string for secondary lookup.
+        entry.hunkLines.push({ diffLine, newFileStart: newLine });
       }
       continue;
     }

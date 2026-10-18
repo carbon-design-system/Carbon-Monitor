@@ -21,4 +21,4 @@ for f in evals/concurrency/0*.js; do node "$f"; done
 | `03-cost-limit-sibling.js`      | A cost-limit failure leaves the sibling review intact     |
 | `04-timeout-kills-one.js`       | A 1 s timeout kills only the slow child                   |
 | `05-retry-under-concurrency.js` | A retry parses while the sibling runs, sharing one HOME   |
-| `06-non-bob-agent.js`           | A non-Bob agent runs one at a time, with one log line     |
+| `06-non-bob-agent.js`           | Claude at N=2: overlapping runs, a config dir each        |

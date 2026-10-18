@@ -12,9 +12,13 @@ import { GaugeChart } from '@carbon/charts-react';
 // Vite resolves this to a hashed URL at build time. The vector is used rather
 // than the PNG so the mark stays sharp at any size and on any density.
 import bobMark from '../assets/bob.svg';
+import claudeMark from '../assets/agents/claude.svg';
 
 /**
- * Bobcoin budget and burn-down.
+ * Bobcoin budget and burn-down, or Claude's dollar spend.
+ *
+ * `credits.summary.costUnit` picks the view: `bobcoins` renders the tiles below
+ * as they always were, `usd` renders SpendTile and a dollar ledger.
  *
  * Two tiles that no longer travel together: the balance (what is left of the
  * monthly allowance) belongs beside the review controls, because it is what
@@ -107,6 +111,17 @@ function coins(value) {
   return Number.isFinite(value) ? COIN_FORMAT.format(value) : '—';
 }
 
+// Pinned to en-US so the symbol matches the server's "$1.23" strings.
+const USD_FORMAT = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+});
+
+/** A dollar amount as plain text with two decimals, or an em dash when absent. */
+function dollars(value) {
+  return Number.isFinite(value) ? USD_FORMAT.format(value) : '—';
+}
+
 /**
  * Dates are rendered with the time attached, including the budget reset.
  *
@@ -145,6 +160,12 @@ function CoinValue({ value }) {
   return text === MISSING ? <Missing /> : text;
 }
 
+/** A dollar amount for display on its own, announced when it is absent. */
+function DollarValue({ value }) {
+  const text = dollars(value);
+  return text === MISSING ? <Missing /> : text;
+}
+
 /** A timestamp for display on its own, announced when it is absent. */
 function TimeValue({ value }) {
   const text = timestamp(value);
@@ -172,7 +193,7 @@ function planLabel(balance) {
  *
  * `succeeded` renders nothing: the balance below already says so, in numbers.
  */
-function CheckNotice({ check }) {
+function CheckNotice({ check, fallbackTitle = 'Bobcoins check did not pass' }) {
   if (!check || check.status === 'succeeded') return null;
 
   const kind = check.status === 'failed' ? 'error' : 'warning';
@@ -180,7 +201,7 @@ function CheckNotice({ check }) {
   return (
     <InlineNotification
       kind={kind}
-      title={check.detail || 'Bobcoins check did not pass'}
+      title={check.detail || fallbackTitle}
       subtitle={check.hint || ''}
       hideCloseButton
       lowContrast
@@ -399,6 +420,149 @@ function BalanceTile({ balance, summary, check }) {
 }
 
 /**
+ * Why Claude's month-to-date spend has no remaining balance to show.
+ *
+ * `not-metered` is the normal state of a deployment with no monthly budget, so
+ * it reads as information; any other reason is a read failure.
+ */
+function spendUnavailableCopy(reason) {
+  if (reason === 'not-metered') {
+    return {
+      kind: 'info',
+      title: 'Not metered',
+      subtitle:
+        'No monthly budget is set, so there is no remaining balance to show. Set CLAUDE_MONTHLY_BUDGET_USD to track one. Spend recorded here is still listed below.',
+    };
+  }
+  return {
+    kind: 'warning',
+    title: 'Spend unavailable',
+    subtitle: reason
+      ? `Month-to-date spend could not be read: ${reason}.`
+      : 'Month-to-date spend could not be read.',
+  };
+}
+
+/**
+ * The Claude counterpart of BalanceTile: dollars against an optional monthly
+ * budget. Without a budget there is no remaining balance, so the tile says
+ * "Not metered" and shows the month-to-date figure the status check carries.
+ */
+function SpendTile({ balance, check }) {
+  const metered = balance?.available === true;
+  // Spend can pass the budget (reviews in flight are not counted), so the
+  // headline stops at zero and the overshoot is stated separately.
+  const animatedRemaining = useAnimatedNumber(
+    Number.isFinite(balance?.remaining)
+      ? Math.max(0, balance.remaining)
+      : balance?.remaining
+  );
+  const { kind, title, subtitle } = spendUnavailableCopy(balance?.reason);
+
+  const budget =
+    Number.isFinite(balance?.budget) && balance.budget > 0
+      ? balance.budget
+      : null;
+  const spent = Number.isFinite(balance?.spent) ? balance.spent : null;
+  const exhausted =
+    budget !== null &&
+    Number.isFinite(balance?.remaining) &&
+    balance.remaining <= 0;
+
+  const over =
+    Number.isFinite(balance?.remaining) && balance.remaining < 0
+      ? -balance.remaining
+      : null;
+
+  // Same arc as the Bobcoins gauge. Low is the server's call (the budget's
+  // low-water mark), critical is below 10% as for Bobcoins.
+  const gaugeValue = Number.isFinite(balance?.percentRemaining)
+    ? Math.round(balance.percentRemaining)
+    : 0;
+  const critical = gaugeValue < 10;
+  const low = balance?.low === true;
+  const gaugeStatus = critical ? 'danger' : low ? 'warning' : 'success';
+  const gaugeUrgency = critical ? 'critical' : low ? 'low' : null;
+  const gaugeColor = critical ? '#da1e28' : low ? '#ff832b' : '#0f62fe';
+  const gaugeData = [{ group: 'value', value: gaugeValue }];
+  const gaugeOptions = {
+    resizable: true,
+    height: '152px',
+    gauge: { type: 'semi', status: gaugeStatus },
+    color: { scale: { value: gaugeColor } },
+    toolbar: { enabled: false },
+  };
+
+  const notMetered = balance?.reason === 'not-metered';
+
+  return (
+    <Tile className="cm-coins cm-fill">
+      <div className="cm-tile-head">
+        <h2 className="cm-section-heading cm-tile-head__title">Claude spend</h2>
+        <img
+          src={claudeMark}
+          alt="Spend is charged to Claude, Anthropic's AI agent"
+          className="cm-claude-mark"
+        />
+      </div>
+
+      {/* The budget-exhausted notification below says the same thing. */}
+      {!exhausted && (metered || notMetered) && (
+        <CheckNotice check={check} fallbackTitle="Spend check did not pass" />
+      )}
+
+      {metered && budget !== null && spent !== null ? (
+        <div className="cm-coins__budget">
+          <div
+            role="img"
+            aria-label={`Budget gauge: ${gaugeValue}% remaining${gaugeUrgency ? ` · ${gaugeUrgency}` : ''}`}
+            className="cm-coins__gauge-wrapper"
+          >
+            <div className="cm-coins__gauge" aria-hidden="true">
+              <GaugeChart data={gaugeData} options={gaugeOptions} />
+            </div>
+          </div>
+          <div className="cm-coins__figures">
+            <p className="cm-coins__value">
+              <DollarValue value={animatedRemaining} />
+            </p>
+            <p className="cm-coins__label">remaining this month</p>
+            <p className="cm-coins__sub">
+              {`${dollars(spent)} spent · ${dollars(budget)} monthly budget${over !== null ? ` · ${dollars(over)} over` : ''}${gaugeUrgency ? ` · ${gaugeUrgency}` : ''}`}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {notMetered && check?.status === 'succeeded' && check.detail && (
+            <p className="cm-stat__value">{check.detail}</p>
+          )}
+          <InlineNotification
+            kind={kind}
+            title={title}
+            subtitle={subtitle}
+            hideCloseButton
+            lowContrast
+            className="cm-coins__notification"
+          />
+        </>
+      )}
+
+      {exhausted && (
+        <InlineNotification
+          kind="error"
+          title="Budget exhausted"
+          subtitle={`The ${dollars(budget)} monthly budget is spent. The next scheduled run pauses the schedule; resume it in Settings once the budget resets.`}
+          hideCloseButton
+          lowContrast
+          className="cm-coins__notification"
+        />
+      )}
+    </Tile>
+  );
+}
+
+/**
  * The per-review ledger.
  *
  * "Remaining after" is the depletion story told plainly: read down the column
@@ -412,6 +576,9 @@ function LedgerTile({ entries, hasCredits, summary, balance }) {
     .slice(0, 10);
 
   const available = balance?.available === true;
+  // Claude's ledger is dollars with no account-balance snapshot per review.
+  const usd = summary?.costUnit === 'usd';
+  const Amount = usd ? DollarValue : CoinValue;
 
   // The spend summary that used to sit inside the balance card lives here now,
   // where there is full width for it. Moving it out is what lets the balance card
@@ -420,18 +587,27 @@ function LedgerTile({ entries, hasCredits, summary, balance }) {
   const stats = [
     {
       label: 'Total recorded here',
-      value: <CoinValue value={summary?.totalSpent} />,
+      value: <Amount value={summary?.totalSpent} />,
     },
     {
       label: 'Average per review',
-      value: <CoinValue value={summary?.averagePerReview} />,
+      value: <Amount value={summary?.averagePerReview} />,
     },
     {
       label: 'Last 24 hours',
-      value: <CoinValue value={summary?.last24hSpent} />,
+      value: <Amount value={summary?.last24hSpent} />,
     },
-    { label: 'Last 7 days', value: <CoinValue value={summary?.last7dSpent} /> },
-    ...(available
+    { label: 'Last 7 days', value: <Amount value={summary?.last7dSpent} /> },
+    ...(usd && available
+      ? [
+          {
+            label: 'Spent this month',
+            value: <Amount value={balance.spent} />,
+          },
+          { label: 'Monthly budget', value: <Amount value={balance.budget} /> },
+        ]
+      : []),
+    ...(!usd && available
       ? [
           { label: 'Plan', value: planLabel(balance) },
           {
@@ -464,16 +640,20 @@ function LedgerTile({ entries, hasCredits, summary, balance }) {
       ) : (
         <StructuredListWrapper
           isCondensed
-          aria-label="Bobcoins spent per review"
+          aria-label={
+            usd ? 'Dollars spent per review' : 'Bobcoins spent per review'
+          }
         >
           <StructuredListHead>
             <StructuredListRow head>
               <StructuredListCell head>Pull request</StructuredListCell>
               <StructuredListCell head>Finished</StructuredListCell>
               <StructuredListCell head>Spent</StructuredListCell>
-              <StructuredListCell head>
-                Account balance after
-              </StructuredListCell>
+              {!usd && (
+                <StructuredListCell head>
+                  Account balance after
+                </StructuredListCell>
+              )}
             </StructuredListRow>
           </StructuredListHead>
           <StructuredListBody>
@@ -486,18 +666,20 @@ function LedgerTile({ entries, hasCredits, summary, balance }) {
                   <TimeValue value={entry.at} />
                 </StructuredListCell>
                 <StructuredListCell className="cm-coins__numeric">
-                  <CoinValue value={entry.coinsSpent} />
+                  <Amount value={entry.coinsSpent} />
                 </StructuredListCell>
-                <StructuredListCell className="cm-coins__numeric">
-                  <CoinValue value={entry.remainingAfter} />
-                </StructuredListCell>
+                {!usd && (
+                  <StructuredListCell className="cm-coins__numeric">
+                    <CoinValue value={entry.remainingAfter} />
+                  </StructuredListCell>
+                )}
               </StructuredListRow>
             ))}
           </StructuredListBody>
         </StructuredListWrapper>
       )}
 
-      {rows.length > 0 && (
+      {rows.length > 0 && !usd && (
         <p className="cm-coins__caption">
           “Account balance after” is the account balance snapshotted right after
           each review, and it is unlikely to match the live “Remaining this
@@ -519,6 +701,22 @@ function LedgerTile({ entries, hasCredits, summary, balance }) {
 function BobcoinsPanel({ credits, check }) {
   // The endpoints are additive, so a server that predates them returns 404 and
   // the console must still say something coherent instead of rendering zeros.
+  if (!credits && check?.id === 'spend') {
+    return (
+      <Tile>
+        <h2 className="cm-section-heading">Spend</h2>
+        <InlineNotification
+          kind="info"
+          title="Spend accounting unavailable"
+          subtitle="This server did not return spend figures. It may be running an older build."
+          hideCloseButton
+          lowContrast
+          className="cm-coins__notification"
+        />
+      </Tile>
+    );
+  }
+
   if (!credits) {
     return (
       <Tile>
@@ -533,6 +731,10 @@ function BobcoinsPanel({ credits, check }) {
         />
       </Tile>
     );
+  }
+
+  if (credits.summary?.costUnit === 'usd') {
+    return <SpendTile balance={credits.balance} check={check} />;
   }
 
   return (

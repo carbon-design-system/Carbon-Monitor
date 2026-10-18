@@ -132,4 +132,48 @@ if (estimateOk && bobOk && noneOk) {
   process.exit(1);
 }
 
+// Test 6: attribution and exactness follow the agent, not the word "bob"
+console.log('Test 6: Summary comment attribution and exact tokens per agent');
+const attributed = (agent, agentName, source) =>
+  formatSummaryComment({
+    agent,
+    agentName,
+    summaryMarkdown: 'Summary.',
+    prNumber: 1,
+    commitSha: 'abcdef1234567',
+    tokenUsage: { ...counts, source },
+  });
+const claudeBody = attributed('claude', 'Claude', 'claude');
+const ibmBobBody = attributed('bob', 'IBM Bob', 'bob');
+const idOnlyBody = attributed('bob', undefined, 'bob');
+const attributionOk =
+  claudeBody.includes('Reviewed by: Claude · Commit: abcdef1') &&
+  claudeBody.includes('- Agent: Claude\n') &&
+  claudeBody.includes('**Token Usage:**') &&
+  !claudeBody.includes('Estimated') &&
+  claudeBody.includes('- Input tokens: 12,345\n') &&
+  ibmBobBody.includes('Reviewed by: IBM Bob · Commit: abcdef1') &&
+  ibmBobBody.includes('- Agent: IBM Bob\n') &&
+  // A caller that passes no display name still prints the id, as it always did.
+  idOnlyBody.includes('Reviewed by: bob · Commit: abcdef1') &&
+  idOnlyBody.includes('- Agent: bob\n');
+
+const { tokensFromStats } = require('../src/index');
+const agentsRegistry = require('../src/agents');
+const stats = { input_tokens: 10, output_tokens: 5, cache_read_tokens: 2 };
+const sourcesOk =
+  tokensFromStats(stats, agentsRegistry.get('claude')).source === 'claude' &&
+  tokensFromStats(stats, agentsRegistry.get('bob')).source === 'bob' &&
+  tokensFromStats(stats).source === 'bob' &&
+  tokensFromStats({ input_tokens: 10 }) === null;
+
+if (attributionOk && sourcesOk) {
+  console.log('  ✅ PASS\n');
+} else {
+  console.log(
+    `  ❌ FAIL (attribution ${attributionOk}, sources ${sourcesOk})\n`
+  );
+  process.exit(1);
+}
+
 console.log('✅ All token usage tests passed!');

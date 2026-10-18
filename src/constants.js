@@ -20,14 +20,44 @@ const BOB_DISABLE_TOOL_GROUPS = (
   process.env.BOB_DISABLE_TOOL_GROUPS || ''
 ).trim();
 
+// Unset or blank takes the default; 0 omits the flag. A typo falls back to the default.
+function capFromEnv(name, fallback) {
+  const raw = (process.env[name] || '').trim();
+  if (raw === '') return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+const listFromEnv = (name, fallback) =>
+  (process.env[name] || '').trim() || fallback;
+
+const CLAUDE_MODEL =
+  (process.env.CLAUDE_MODEL || '').trim() || 'claude-sonnet-5-5';
+const CLAUDE_EFFORT = (process.env.CLAUDE_EFFORT || '').trim() || 'high';
+// Anthropic says spend can pass the cap, so the default leaves headroom.
+const CLAUDE_MAX_BUDGET_USD = capFromEnv('CLAUDE_MAX_BUDGET_USD', 5);
+const CLAUDE_MAX_TURNS = capFromEnv('CLAUDE_MAX_TURNS', 60);
+const CLAUDE_ALLOWED_TOOLS = listFromEnv(
+  'CLAUDE_ALLOWED_TOOLS',
+  'Read(./**),Glob,Grep,Skill(carbon-builder),mcp__carbon-mcp'
+);
+// Reads stay inside the bundle. The denies that guard the MCP bearer and the
+// host (claude-config, ~, /proc) are appended by the Claude adapter, so an
+// override of this list cannot drop them.
+const CLAUDE_DISALLOWED_TOOLS = listFromEnv(
+  'CLAUDE_DISALLOWED_TOOLS',
+  'Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch,Agent'
+);
+// 0 or unset means unmetered.
+const CLAUDE_MONTHLY_BUDGET_USD =
+  Number(process.env.CLAUDE_MONTHLY_BUDGET_USD) || 0;
+// Scheduled reviews pause below this percentage of the monthly budget.
+const CLAUDE_BUDGET_LOW_PCT = capFromEnv('CLAUDE_BUDGET_LOW_PCT', 10);
+
 // Reviews in flight inside one batch; 1 restores sequential reviews.
 const _concurrency = Number.parseInt(process.env.REVIEW_CONCURRENCY, 10);
 const REVIEW_CONCURRENCY = Number.isFinite(_concurrency)
   ? Math.max(1, _concurrency)
   : 2;
-// Bob alone gets a private HOME per review; other CLIs run one at a time.
-const EFFECTIVE_REVIEW_CONCURRENCY =
-  REVIEW_AGENT === 'bob' ? REVIEW_CONCURRENCY : 1;
 
 const N_DAYS_SINCE_PR_CREATED = Number(
   process.env.GITHUB_AI_AGENT_DAYS_BACK || 21
@@ -63,8 +93,15 @@ module.exports = {
   BOB_MAX_COST,
   BOB_MAX_TURNS,
   BOB_DISABLE_TOOL_GROUPS,
+  CLAUDE_MODEL,
+  CLAUDE_EFFORT,
+  CLAUDE_MAX_BUDGET_USD,
+  CLAUDE_MAX_TURNS,
+  CLAUDE_ALLOWED_TOOLS,
+  CLAUDE_DISALLOWED_TOOLS,
+  CLAUDE_MONTHLY_BUDGET_USD,
+  CLAUDE_BUDGET_LOW_PCT,
   REVIEW_CONCURRENCY,
-  EFFECTIVE_REVIEW_CONCURRENCY,
   N_DAYS_SINCE_PR_CREATED,
   MAX_DIFF_CHARS,
   MAX_INPUT_TOKENS,
@@ -74,3 +111,16 @@ module.exports = {
   MAX_PRS_PER_RUN,
   MAX_FILES_PER_PR,
 };
+
+// A getter, not a value: src/agents requires this module, so it resolves lazily.
+// An unknown agent runs one at a time; the readiness probe reports it.
+Object.defineProperty(module.exports, 'EFFECTIVE_REVIEW_CONCURRENCY', {
+  enumerable: true,
+  get() {
+    const agents = require('./agents');
+    return agents.effectiveConcurrency(
+      agents.find(REVIEW_AGENT),
+      REVIEW_CONCURRENCY
+    );
+  },
+});

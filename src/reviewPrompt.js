@@ -4,6 +4,7 @@
 
 const { CHARS_PER_TOKEN } = require('./constants');
 const { escapeAtSign } = require('./textUtils');
+const agents = require('./agents');
 
 /**
  * Estimate token usage for a PR review
@@ -101,7 +102,8 @@ function formatInlineComment(finding) {
  * work without modification — no silent undefined in rendered output.
  *
  * @param {Object}  options
- * @param {string}  options.agent                - Agent name (bob, claude, codex)
+ * @param {string}  options.agent                - Agent id (an id from src/agents)
+ * @param {string}  [options.agentName]           - Name shown in the comment; defaults to the id
  * @param {string}  options.summaryMarkdown       - Agent's 1-2 sentence summary (never mutated)
  * @param {number}  options.prNumber              - PR number
  * @param {string}  options.commitSha             - Head commit SHA
@@ -116,6 +118,7 @@ function formatInlineComment(finding) {
  */
 function formatSummaryComment({
   agent,
+  agentName = agent,
   summaryMarkdown,
   prNumber,
   commitSha,
@@ -131,7 +134,7 @@ function formatSummaryComment({
   const recAdvice = RECOMMENDATION_ADVICE[recommendation] || '';
 
   let comment = `[AI agent review — Carbon grounded] · **${recLabel}**\n\n`;
-  comment += `Reviewed by: ${agent} · Commit: ${commitSha.substring(0, 7)}\n`;
+  comment += `Reviewed by: ${agentName} · Commit: ${commitSha.substring(0, 7)}\n`;
   comment += `Carbon verification: Carbon-specific claims verified using Carbon Builder skill (primary authority) and Carbon MCP (fallback).\n\n`;
 
   // ── Recommendation section ─────────────────────────────────────────────
@@ -221,7 +224,7 @@ function formatSummaryComment({
   comment += `Review artifacts:\n`;
   comment += `- PR: #${prNumber}\n`;
   comment += `- Commit: ${commitSha.substring(0, 7)}\n`;
-  comment += `- Agent: ${agent}\n`;
+  comment += `- Agent: ${agentName}\n`;
 
   if (inlineFindings && inlineFindings.length > 0) {
     comment += `- Inline comments: ${inlineFindings.length}\n`;
@@ -232,8 +235,8 @@ function formatSummaryComment({
 
   // ── Token usage ─────────────────────────────────────────────────────────
   if (tokenUsage) {
-    // Counts from Bob's result record are exact; anything else is an estimate.
-    const exact = tokenUsage.source === 'bob';
+    // Counts from the agent's result record are exact; 'estimate' or no source is not.
+    const exact = !!tokenUsage.source && tokenUsage.source !== 'estimate';
     const approx = exact ? '' : '~';
     comment += `\n---\n\n`;
     comment += `**${exact ? 'Token Usage' : 'Estimated Token Usage'}:**\n`;
@@ -265,17 +268,21 @@ function formatSummaryComment({
  * @param {Object} options - Prompt options
  * @param {string} options.owner - Repository owner
  * @param {string} options.repo  - Repository name
+ * @param {string} [options.agent] - Adapter id; the registry default (Bob) when omitted
  * @returns {string} - Formatted prompt
  */
-function buildReviewPrompt({ owner, repo }) {
+function buildReviewPrompt({ owner, repo, agent }) {
+  const { noCompletion, noFileWrite, skillPath, readTool } = agents.get(
+    agent || agents.DEFAULT_ID
+  ).promptFragments;
   return `You are an agentic PR reviewer for ${owner}/${repo}.
 
 **OUTPUT CONTRACT — read before starting:**
 1. Write catalogue lines to your visible response (not inside <thinking>) — the parser checks for them.
-2. Do not call attempt_completion at any point — writing the JSON block between BEGIN_REVIEW_JSON and END_REVIEW_JSON markers IS the completion step.
+2. ${noCompletion} at any point — writing the JSON block between BEGIN_REVIEW_JSON and END_REVIEW_JSON markers IS the completion step.
 3. Do not end your response without the JSON block, even when findings is an empty array.
 4. After resolving each pending catalogue item, write a new visible line — either \`confirmed finding — [title]\` or \`discarded: [reason]\` — immediately after it. Do not rely on <thinking> to resolve pending items. A run where pending items appear in the catalogue but no resolution lines appear will be flagged as unreliable.
-5. Do not use write_to_file, write_file, or any file-writing tool at any point. Writing to a file does not satisfy the output contract — the JSON block must appear in your visible response text.
+5. ${noFileWrite} at any point. Writing to a file does not satisfy the output contract — the JSON block must appear in your visible response text.
 
 ## Step 1 — Read and catalogue the diff (do this before forming any opinion)
 
@@ -482,7 +489,7 @@ When a JS/TS prop default is removed (e.g. \`size = 'md'\` → \`size\`) AND the
 
 ## Step 4 — Output the JSON
 
-Your ONLY structured output is the JSON block between BEGIN_REVIEW_JSON and END_REVIEW_JSON markers below. Do not call attempt_completion, do not write any prose after the JSON block. Writing the JSON block IS the completion step — do it even when findings is an empty array.
+Your ONLY structured output is the JSON block between BEGIN_REVIEW_JSON and END_REVIEW_JSON markers below. ${noCompletion}, do not write any prose after the JSON block. Writing the JSON block IS the completion step — do it even when findings is an empty array.
 
 Primary objective: Find correctness, accessibility, test, migration, and Carbon Design System issues introduced by this PR.
 
@@ -498,7 +505,7 @@ Category 1 — Carbon API finding: about a Carbon component's props, tokens, var
 - MANDATORY: Tool unavailability is NOT a reason to drop the finding. The review MUST continue.
 - Set: carbonVerified: true, mcpEvidence MUST be a direct quote from the tool response
 - verificationSource: set based on which tier resolved this finding:
-  - "carbon-builder" — if the \`carbon-builder\` skill was consulted (any file under .bob/skills/carbon-builder/) before MCP calls for this finding
+  - "carbon-builder" — if the \`carbon-builder\` skill was consulted (any file under ${skillPath}) before MCP calls for this finding
   - "carbon-mcp" — if \`carbon-builder\` was unavailable and MCP tools were used directly as fallback
 - If MCP unavailable or tool call fails: omit the finding, do NOT reclassify it as not-carbon-specific
 
@@ -585,7 +592,7 @@ BEGIN_REVIEW_JSON
 END_REVIEW_JSON
 
 verificationSource values:
-- "carbon-builder": verified via Carbon Builder skill files governing Carbon MCP calls, with at least one explicit read_file call to .bob/skills/carbon-builder/SKILL.md or another file under .bob/skills/carbon-builder/ visible in the transcript before the MCP evidence is used — mcpEvidence MUST be a direct quote from the tool response
+- "carbon-builder": verified via Carbon Builder skill files governing Carbon MCP calls, with at least one explicit ${readTool} call to ${skillPath}SKILL.md or another file under ${skillPath} visible in the transcript before the MCP evidence is used — mcpEvidence MUST be a direct quote from the tool response
 - "carbon-mcp": verified via Carbon MCP directly (skill unavailable) — mcpEvidence MUST be a direct quote from the tool response
 - "not-carbon-specific": generic correctness, accessibility, test, or migration finding
 

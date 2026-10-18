@@ -139,6 +139,7 @@ const INDEX_MAPPING = {
         token_cache_read: { type: 'integer' },
         token_cache_write: { type: 'integer' },
         token_source: { type: 'keyword' },
+        cost_unit: { type: 'keyword' },
         coins_source: { type: 'keyword' },
         bob_task_id: { type: 'keyword' },
         tool_calls: { type: 'integer' },

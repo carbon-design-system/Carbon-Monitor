@@ -18,6 +18,9 @@ package-lock.json
 # Vendored upstream skill: kept byte-identical to carbon-mcp's copy
 .bob/skills/
 
+# Byte-exact prompt snapshot
+tests/fixtures/prompt/
+
 # Rendered assets and the hero's render source
 docs/images/
 

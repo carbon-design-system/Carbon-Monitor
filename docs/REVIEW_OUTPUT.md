@@ -25,7 +25,7 @@ accessible label. Add aria-label="Time zone" (or equivalent) to the element.
 ```
 [AI agent review — Carbon grounded] · **Consider Revising**
 
-Reviewed by: bob · Commit: a1b2c3d
+Reviewed by: IBM Bob · Commit: a1b2c3d
 Carbon verification: Carbon-specific claims verified using Carbon Builder skill (primary authority) and Carbon MCP (fallback).
 
 ## Recommendation
@@ -63,7 +63,7 @@ This PR updates the time picker Figma Code Connect mappings. 1 blocking finding:
 Review artifacts:
 - PR: #12345
 - Commit: a1b2c3d
-- Agent: bob
+- Agent: IBM Bob
 - Inline comments: 1
 - Summary findings: 1
 
@@ -81,7 +81,9 @@ Review artifacts:
 *An AI agent generated this review. Human review is advised before acting on any findings.*
 ```
 
-The token section shows exact counts from Bob's result record. When a run has no result record, it is titled **Estimated Token Usage:**, the numbers carry a `~`, and a note says they come from character count (see [TOKEN_USAGE_TRACKING.md](TOKEN_USAGE_TRACKING.md)).
+The agent is named by its display name, `IBM Bob` or `Claude`, on the `Reviewed by:` line and the `Agent:` line.
+
+The token section shows exact counts from the agent's result record. When a run has no result record, it is titled **Estimated Token Usage:**, the numbers carry a `~`, and a note says they come from character count (see [TOKEN_USAGE_TRACKING.md](TOKEN_USAGE_TRACKING.md)).
 
 ### Recommendation values
 
@@ -113,9 +115,9 @@ An unreliable run still posts a comment but sets the recommendation to `Suggeste
 
 ### Observed tool calls
 
-The visible catalogue shows what the agent wrote, not what it did. With Bob's `stream-json` output the harness also reads the tool calls in the event stream:
+The visible catalogue shows what the agent wrote, not what it did. With either agent's `stream-json` output the harness also reads the tool calls in the event stream:
 
-- A `use_skill` call for `carbon-builder`, or a read of a file under `.bob/skills/carbon-builder/`, counts as skill evidence. A `carbon-builder` finding with no such evidence is dropped. Runs without an event stream fall back to matching the transcript text.
-- Calls to the Carbon MCP tools (`docs_search`, `code_search`, and the rest) are counted. The log prints them (`Carbon MCP calls: docs_search=2 ...`) and the `pr_review_completed` event carries `tool_calls` and `mcp_tool_calls`.
+- Skill evidence is a call that loads `carbon-builder`: for Bob a `use_skill` call, or a read of a file under `.bob/skills/carbon-builder/`; for Claude a `Skill` call naming `carbon-builder`, or a `Read` of a file under `.claude/skills/carbon-builder/`. A `carbon-builder` finding with no such evidence is dropped. Runs without an event stream fall back to matching the transcript text.
+- Calls to the Carbon MCP tools (`docs_search`, `code_search`, and the rest) are counted, whether the agent calls them through `use_mcp_tool` (Bob) or as `mcp__carbon-mcp__<tool>` (Claude). The log prints them (`Carbon MCP calls: docs_search=2 ...`) and the `pr_review_completed` event carries `tool_calls` and `mcp_tool_calls`.
 
 The raw events are kept in `agent-events.ndjson` in the review bundle (see `GITHUB_AI_AGENT_KEEP_ARTIFACTS`).

@@ -74,6 +74,16 @@ async function main() {
     );
   });
 
+  await test('Bob rows carry the Bobcoins unit and the comment names IBM Bob', () => {
+    for (const row of four.ledger) {
+      assert.strictEqual(row.costUnit, 'bobcoins', `unit of #${row.prNumber}`);
+    }
+    const body = four.comments(1)[0].body.body;
+    assert.ok(body.includes('Reviewed by: IBM Bob · Commit: sha1'), body);
+    assert.ok(body.includes('\n- Agent: IBM Bob\n'));
+    assert.ok(body.includes('**Token Usage:**'), 'exact tokens, as before');
+  });
+
   await test('two in flight at most, and the queue shrinks 2, 1, 0', () => {
     assert.strictEqual(four.maxInFlight, 2);
     const started = four.snapshots.find((s) => s.inFlight.length === 2);

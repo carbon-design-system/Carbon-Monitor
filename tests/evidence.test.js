@@ -92,6 +92,38 @@ test('without options the transcript regex still decides (no reads, filtered)', 
   assert(parsed && parsed.findings.length === 0, 'expected the old behaviour');
 });
 
+function rejectionReason(options) {
+  const lines = [];
+  const log = console.log;
+  console.log = (...a) => lines.push(a.join(' '));
+  try {
+    parseReviewOutput(fixtureText, { skillReads: [], ...options });
+  } finally {
+    console.log = log;
+  }
+  return lines.find((l) => l.includes('Reason:'));
+}
+
+test('the rejection log names Bob skill wording by default', () => {
+  assert(
+    rejectionReason() ===
+      '   Reason: verificationSource=carbon-builder but no .bob/skills/carbon-builder/ read_file calls were detected in the transcript',
+    'Bob wording changed'
+  );
+});
+
+test('the rejection log takes the agent skill wording', () => {
+  const line = rejectionReason({
+    skillDir: '.claude/skills/carbon-builder/',
+    readTool: 'Read',
+  });
+  assert(
+    line.includes('no .claude/skills/carbon-builder/ Read calls') &&
+      !line.includes('.bob'),
+    line
+  );
+});
+
 console.log(
   '\n── evidence, cost and token helpers ───────────────────────────'
 );
@@ -248,6 +280,110 @@ test('tokens come from stats only when input and output are numbers', () => {
   assert(t.cacheWrite === null);
   assert(tokensFromStats(null) === null);
   assert(tokensFromStats({ total_tokens: 9 }) === null);
+});
+
+console.log(
+  '\n── Claude evidence ────────────────────────────────────────────'
+);
+
+const agents = require('../src/agents');
+const claude = agents.get('claude');
+const claudeRun = (toolCalls) => ({ format: 'stream-json', toolCalls });
+
+test('a Claude Skill call is the skill evidence', () => {
+  const run = claudeRun([
+    { name: 'Skill', params: { skill: 'carbon-builder' }, status: 'success' },
+  ]);
+  const reads = skillReadsFor(run, '', claude.evidence(run.toolCalls), claude);
+  assert(reads.length === 1 && reads[0] === 'Skill:carbon-builder');
+});
+
+test('a Claude Read under .claude/skills is the skill evidence', () => {
+  const file = '/w/.claude/skills/carbon-builder/SKILL.md';
+  const run = claudeRun([{ name: 'Read', params: { file_path: file } }]);
+  const reads = skillReadsFor(run, '', claude.evidence(run.toolCalls), claude);
+  assert(reads.length === 1 && reads[0] === file);
+});
+
+test('Claude MCP calls alone are not skill evidence, and nothing is warned', () => {
+  const run = claudeRun([
+    { name: 'mcp__carbon-mcp__docs_search', params: { query: 'Button' } },
+    { name: 'Skill', params: { skill: 'other' } },
+    { name: 'Read', params: { file_path: 'PR_REVIEW_REQUEST.md' } },
+  ]);
+  const { value, lines } = quietly(() =>
+    skillReadsFor(run, 'plain text', claude.evidence(run.toolCalls), claude)
+  );
+  assert(value.length === 0 && lines.length === 0);
+});
+
+test('an unrecognised Claude Skill shape is caught by the raw fallback, with a warning', () => {
+  const run = claudeRun([
+    { name: 'Skill', params: { name: 'carbon-builder' } },
+  ]);
+  const hit = quietly(() =>
+    skillReadsFor(run, '', claude.evidence(run.toolCalls), claude)
+  );
+  assert(hit.value[0] === 'Skill:carbon-builder');
+  assert(hit.lines.length === 1 && /not from tool events/.test(hit.lines[0]));
+});
+
+test('a Claude review keeps its carbon-builder finding: no false skill_unavailable', () => {
+  const run = claudeRun([
+    { name: 'Skill', params: { skill: 'carbon-builder' } },
+  ]);
+  const reads = skillReadsFor(run, '', claude.evidence(run.toolCalls), claude);
+  const parsed = parseReviewOutput(fixtureText, { skillReads: reads });
+  assert(parsed && parsed.findings.length === 1);
+});
+
+test('the Bob default of skillReadsFor is unchanged', () => {
+  const run = claudeRun([
+    { name: 'Skill', params: { skill: 'carbon-builder' } },
+  ]);
+  const reads = skillReadsFor(run, '', claude.evidence(run.toolCalls));
+  assert(reads[0] === 'use_skill:carbon-builder', 'default adapter is Bob');
+});
+
+test('Claude spend comes from the result record, with no balance logic', () => {
+  const quiet = (args) =>
+    quietly(() => resolveSpend({ adapter: claude, ...args }));
+  const reported = quiet({
+    stats: { session_costs: 0.4 },
+    delta: 9,
+    tracked: false,
+  });
+  assert(reported.value.coinsSpent === 0.4);
+  assert(reported.value.source === 'claude-result');
+  assert(reported.value.ledgerSource === 'claude-result');
+  assert(
+    reported.lines.length === 1 &&
+      /Claude cost: 0\.4 usd/.test(reported.lines[0])
+  );
+
+  const retry = quiet({
+    stats: { session_costs: 0.1 },
+    tracked: false,
+    label: 'retry',
+  });
+  assert(/Claude cost \(retry\): 0\.1 usd/.test(retry.lines[0]));
+
+  const none = quiet({ stats: null, delta: null, tracked: false });
+  assert(
+    none.value.coinsSpent === null && none.value.ledgerSource === 'unknown'
+  );
+  assert(none.lines.length === 0);
+});
+
+test('the retry source follows the result source of either agent', () => {
+  const claudeSpend = (n) => ({ coinsSpent: n, source: 'claude-result' });
+  const both = addSpend(claudeSpend(0.1), claudeSpend(0.2));
+  assert(both.coinsSpent === 0.3 && both.source === 'claude-result');
+  const first = addSpend(claudeSpend(0.1), {
+    coinsSpent: null,
+    source: 'unknown',
+  });
+  assert(first.coinsSpent === 0.1 && first.source === 'claude-result');
 });
 
 console.log(

@@ -25,6 +25,11 @@ const { runBatch } = require('../../tests/fixtures/concurrencyHarness');
       return false;
     }
   };
+  // The runner rejects on SIGTERM before the child is reaped, so allow it a moment.
+  const deadline = Date.now() + 3000;
+  while (alive(r.bundles[1].env.pid) && Date.now() < deadline) {
+    await new Promise((res) => setTimeout(res, 50));
+  }
   assert(!alive(r.bundles[1].env.pid), 'PR 1 child was killed');
   assert(
     r.bobRuns.every((x) => x.pr !== 1),

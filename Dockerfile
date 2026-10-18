@@ -61,6 +61,16 @@ RUN set -eux; \
   rm -f /tmp/bobshell.tgz; \
   bob --version
 
+# Both CLIs ship; GITHUB_AI_AGENT_CLI selects one at runtime.
+# Claude is a Bun binary that aborts under qemu, so an amd64 build on an arm64 Mac checks the exact installed version and that bin/claude is an ELF for this architecture instead of running it.
+ARG CLAUDE_CODE_VERSION=2.1.302
+RUN set -eux; \
+  npm install -g --registry=https://registry.npmjs.org/ --no-audit --no-fund \
+    "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"; \
+  node -e 'process.exit(require(process.argv[1]+"/@anthropic-ai/claude-code/package.json").version===process.argv[2]?0:1)' "$(npm root -g)" "${CLAUDE_CODE_VERSION}"; \
+  node -e 'const fs=require("fs"),b=Buffer.alloc(20),f=fs.openSync(fs.realpathSync(process.argv[1]),"r");fs.readSync(f,b,0,20,0);process.exit(b.readUInt32BE(0)===0x7f454c46&&b.readUInt16LE(18)==={x64:0x3e,arm64:0xb7}[process.arch]?0:1)' "$(command -v claude)"
+ENV DISABLE_AUTOUPDATER=1
+
 WORKDIR /app
 
 # Non-root, with a real home directory: Bob writes its settings, MCP

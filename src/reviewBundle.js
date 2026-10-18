@@ -12,6 +12,7 @@ const {
   ISSUE_CONTEXT_TOKENS,
 } = require('./constants');
 const { buildReviewPrompt } = require('./reviewPrompt');
+const agents = require('./agents');
 
 /**
  * Strip single-line and multi-line comments from JSON string
@@ -44,49 +45,6 @@ function getWorkspaceRoot() {
 }
 
 /**
- * Get the current working directory's Bob settings path
- * @returns {string|null} Path to settings.json or null if not found
- */
-function getCurrentBobSettingsPath() {
-  const possiblePaths = [
-    path.join(process.cwd(), '.bob', 'settings.json'),
-    path.join(os.homedir(), '.bob', 'settings.json'),
-  ];
-
-  for (const configPath of possiblePaths) {
-    try {
-      if (require('fs').existsSync(configPath)) {
-        return configPath;
-      }
-    } catch (error) {
-      // Continue to next path
-    }
-  }
-
-  return null;
-}
-
-/**
- * Create a default Bob settings with MCP config for carbon-mcp-server
- * @param {string} tempDir - Temporary directory path
- */
-async function createDefaultBobSettings(tempDir) {
-  const bobSettings = {
-    mcpServers: {
-      'carbon-mcp-server': {
-        command: 'npx',
-        args: ['-y', 'carbon-mcp'],
-      },
-    },
-  };
-
-  await fs.writeFile(
-    path.join(tempDir, '.bob', 'settings.json'),
-    JSON.stringify(bobSettings, null, 2)
-  );
-}
-
-/**
  * Recursively copy a directory
  * @param {string} src - Source directory
  * @param {string} dest - Destination directory
@@ -104,6 +62,18 @@ async function copyDirectory(src, dest) {
     } else {
       await fs.copyFile(srcPath, destPath);
     }
+  }
+}
+
+// Non-fatal: the review continues and the skill simply won't be available.
+async function copySkill(src, dest) {
+  try {
+    await copyDirectory(src, dest);
+  } catch (skillErr) {
+    console.warn(
+      '⚠️  Could not copy carbon-builder skill into bundle:',
+      skillErr.message
+    );
   }
 }
 
@@ -197,10 +167,19 @@ async function refreshBobMcp(home) {
 
 /**
  * Build a review bundle for agent execution
- * @param {Object} options - { owner, repo, pr, diff, files }
+ * @param {Object} options - { owner, repo, pr, diff, files, agent } (agent defaults to the configured one)
  * @returns {Promise<Object>} Bundle object with dir, prompt, and cleanup function
  */
-async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
+async function buildReviewBundle({
+  owner,
+  repo,
+  pr,
+  diff,
+  files,
+  client,
+  agent,
+}) {
+  const adapter = agents.get(agent);
   // Create the bundle under a directory Bob Shell treats as trusted for MCP access.
   //
   // On macOS this must be /private/tmp: os.tmpdir() resolves to /var/folders/…/T,
@@ -215,18 +194,6 @@ async function buildReviewBundle({ owner, repo, pr, diff, files, client }) {
   );
 
   try {
-    // 1. Write .env file with API key for Bob
-    // Bob v2 reads BOB_API_KEY from the environment (renamed from BOBSHELL_API_KEY in v1)
-    const envContent = `BOB_API_KEY=${process.env.BOB_API_KEY || ''}\n`;
-    // 0600, not the 0644 a bare writeFile would produce: this is the only file
-    // in the bundle that carries a live credential, and it must not be the most
-    // readable one. The bundle directory is already 0700 from mkdtemp.
-    await fs.writeFile(path.join(tempDir, '.env'), envContent, { mode: 0o600 });
-
-    // 2. Create .bob directory for rules (carbon-mcp is configured globally via streamable HTTP)
-    const bobDir = path.join(tempDir, '.bob');
-    await fs.mkdir(bobDir, { recursive: true });
-
     // 3. Write PR metadata
     await fs.writeFile(
       path.join(tempDir, 'pr.json'),
@@ -353,38 +320,19 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
 - Produce only the requested JSON object and review Markdown.
 `;
 
-    // Write agent rules for Bob
-    const bobRulesDir = path.join(tempDir, '.bob', 'rules');
-    await fs.mkdir(bobRulesDir, { recursive: true });
-    await fs.writeFile(path.join(bobRulesDir, '01-output.md'), rules);
-
-    // Copy the carbon-builder skill into the bundle workspace.
-    // Bob resolves skills from the CWD's .bob/skills/ directory; without this
-    // copy the local .bob/ shadows ~/.bob/skills/ and the skill is never found.
-    // This does NOT force activation — it only makes the skill discoverable.
-    const skillSrc = path.join(
+    // The skill source is the vendored copy; it does not force activation, it
+    // only makes the skill discoverable.
+    const skillSource = path.join(
       __dirname,
       '..',
       '.bob',
       'skills',
       'carbon-builder'
     );
-    const skillDest = path.join(bobDir, 'skills', 'carbon-builder');
-    try {
-      await copyDirectory(skillSrc, skillDest);
-    } catch (skillErr) {
-      // Non-fatal — review continues; skill simply won't be available
-      console.warn(
-        '⚠️  Could not copy carbon-builder skill into bundle:',
-        skillErr.message
-      );
-    }
-
-    // Note: carbon-mcp is configured globally via streamable HTTP in ~/.bob/settings.json
-    // No local MCP config is needed in the bundle directory
+    await adapter.prepareBundle(tempDir, { rules, skillSource });
 
     // 6. Create review prompt using the detailed prompt builder
-    const prompt = buildReviewPrompt({ owner, repo });
+    const prompt = buildReviewPrompt({ owner, repo, agent: adapter.id });
 
     // Return bundle object (no settingsPath needed - using global config)
     return {
@@ -413,6 +361,7 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
 module.exports = {
   buildReviewBundle,
   getWorkspaceRoot,
+  copySkill,
   seedBobHome,
   refreshBobMcp,
 };

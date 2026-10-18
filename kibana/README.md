@@ -166,6 +166,7 @@ The Kibana data view `carbon-monitor-events-*` covers all months.
 - `event_type` — `keyword` (no `.keyword` sub-field)
 - `payload.recommendation` — `keyword` (no `.keyword` sub-field)
 - All `payload.*` numeric fields — `long` or `float`
+- `payload.cost_unit`: `keyword`, `bobcoins` or `usd`. `payload.coinsSpent` is in that unit and the root `agent` field says which agent ran, so a panel that sums cost should filter or split on one of them. No panel here sums cost. Events from before the field existed have no `cost_unit` and are Bobcoins; the mapping applies when the next monthly index is created
 
 If you ever modify a panel manually in the Kibana UI and it stops working, run `node scripts/rebuild-dashboard.js` to reset it from the script's source of truth.
 

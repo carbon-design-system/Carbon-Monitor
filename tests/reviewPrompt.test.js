@@ -16,11 +16,15 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const { escapeAtSign } = require('../src/textUtils');
 const {
   formatInlineComment,
   formatSummaryComment,
+  buildReviewPrompt,
 } = require('../src/reviewPrompt');
+const agents = require('../src/agents');
 
 const ZWS = '\u200B'; // zero-width space inserted by escapeAtSign
 
@@ -190,6 +194,71 @@ async function main() {
       result.includes(`@${ZWS}if`),
       'findingsTable row.title: @if must be escaped in table cell'
     );
+  });
+
+  // ── 9. Prompt per agent ─────────────────────────────────────────────────────
+  const target = { owner: 'carbon-design-system', repo: 'carbon' };
+  // Generated from the code at commit d17acc5, before the fragments existed.
+  const snapshot = fs.readFileSync(
+    path.join(__dirname, 'fixtures', 'prompt', 'bob-review-prompt.md'),
+    'utf8'
+  );
+
+  await test('Bob prompt is byte-identical to the committed snapshot', () => {
+    assert.ok(buildReviewPrompt({ ...target, agent: 'bob' }) === snapshot);
+  });
+
+  await test('the prompt defaults to Bob when no agent is passed', () => {
+    assert.ok(buildReviewPrompt(target) === snapshot);
+  });
+
+  await test('an unknown agent throws', () => {
+    assert.throws(() => buildReviewPrompt({ ...target, agent: 'nope' }));
+  });
+
+  await test('Claude prompt carries the four Claude fragments on the expected lines', () => {
+    const f = agents.get('claude').promptFragments;
+    const lines = buildReviewPrompt({ ...target, agent: 'claude' }).split('\n');
+    const at = (needle) => lines.filter((l) => l.includes(needle));
+    const contract = at(`${f.noCompletion} at any point`);
+    assert.strictEqual(contract.length, 1);
+    assert.ok(contract[0].startsWith('2. '));
+    const writes = at(`${f.noFileWrite} at any point.`);
+    assert.strictEqual(writes.length, 1);
+    assert.ok(writes[0].startsWith('5. '));
+    const output = at(`${f.noCompletion}, do not write any prose`);
+    assert.strictEqual(output.length, 1);
+    assert.ok(output[0].startsWith('Your ONLY structured output'));
+    const verified = at(`(any file under ${f.skillPath})`);
+    assert.strictEqual(verified.length, 1);
+    assert.ok(verified[0].indexOf('"carbon-builder"') >= 0);
+    const read = at(
+      `explicit ${f.readTool} call to ${f.skillPath}SKILL.md or another file under ${f.skillPath} visible`
+    );
+    assert.strictEqual(read.length, 1);
+    assert.ok(read[0].startsWith('- "carbon-builder": verified'));
+  });
+
+  await test('Claude prompt names no Bob tool or Bob path', () => {
+    const prompt = buildReviewPrompt({ ...target, agent: 'claude' });
+    for (const banned of [
+      'attempt_completion',
+      'write_to_file',
+      'read_file',
+      '.bob/skills',
+    ]) {
+      assert.ok(!prompt.includes(banned), `${banned} in the Claude prompt`);
+    }
+  });
+
+  await test('Claude and Bob prompts differ only on the fragment lines', () => {
+    const bobLines = snapshot.split('\n');
+    const claudeLines = buildReviewPrompt({ ...target, agent: 'claude' }).split(
+      '\n'
+    );
+    assert.strictEqual(claudeLines.length, bobLines.length);
+    const changed = bobLines.filter((l, i) => l !== claudeLines[i]);
+    assert.strictEqual(changed.length, 5);
   });
 
   // ── Summary ──────────────────────────────────────────────────────────────────

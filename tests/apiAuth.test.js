@@ -95,6 +95,30 @@ async function main() {
     assert(res.statusCode === 200, `expected 200, got ${res.statusCode}`);
   });
 
+  await test('/api/config names the agent for the console', async () => {
+    const saved = process.env.GITHUB_AI_AGENT_CLI;
+    try {
+      const names = {};
+      for (const id of ['bob', 'claude']) {
+        process.env.GITHUB_AI_AGENT_CLI = id;
+        const res = await request('Bearer supersecret', '/api/config');
+        const { config } = JSON.parse(res.body);
+        names[id] = [config.agent, config.agentName, config.agentCli];
+      }
+      assert(
+        JSON.stringify(names) ===
+          JSON.stringify({
+            bob: ['bob', 'IBM Bob', 'Bob Shell CLI'],
+            claude: ['claude', 'Claude', 'Claude Code CLI'],
+          }),
+        `unexpected names: ${JSON.stringify(names)}`
+      );
+    } finally {
+      if (saved === undefined) delete process.env.GITHUB_AI_AGENT_CLI;
+      else process.env.GITHUB_AI_AGENT_CLI = saved;
+    }
+  });
+
   await test('rejects a wrong token of identical length', async () => {
     const res = await request('Bearer supersecreT', '/api/config');
     assert(res.statusCode === 401, `expected 401, got ${res.statusCode}`);

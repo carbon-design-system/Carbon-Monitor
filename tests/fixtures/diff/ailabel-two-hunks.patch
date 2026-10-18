@@ -1,0 +1,24 @@
+diff --git a/packages/react/code-connect/AILabel/AILabel.figma.tsx b/packages/react/code-connect/AILabel/AILabel.figma.tsx
+index 1f2066edafd4..b87470794aee 100644
+--- a/packages/react/code-connect/AILabel/AILabel.figma.tsx
++++ b/packages/react/code-connect/AILabel/AILabel.figma.tsx
+@@ -26,7 +26,7 @@ figma.connect(
+         '64px': 'xl',
+       }),
+     },
+-    example: ({ ...props }) => <AILabel autoAlign {...props} />,
++    example: ({ ...props }) => <AILabel autoAlign aiText={'Text translation'} size={'md'} />
+   }
+ );
+ 
+@@ -46,6 +46,10 @@ figma.connect(
+         '16px': 'lg',
+       }),
+     },
++<<<<<<< HEAD
++    example: ({ ...props }) => <AILabel autoAlign kind={"inline"} aiText={'Text translation'} />,
++=======
+     example: ({ ...props }) => <AILabel autoAlign kind="inline" {...props} />,
++>>>>>>> upstream/main
+   }
+ );

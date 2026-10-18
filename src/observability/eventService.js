@@ -75,7 +75,7 @@ function scrubPayload(payload) {
  * @param {string}  opts.correlation_id  — UUID for the current reviewPRs() run
  * @param {string}  [opts.repo]          — "owner/repo"
  * @param {number}  [opts.pr_number]
- * @param {string}  [opts.agent]         — bob | claude | codex
+ * @param {string}  [opts.agent]         — an id from src/agents
  * @param {string}  [opts.commit_sha]
  * @param {Object}  [opts.payload]       — event-specific fields
  */

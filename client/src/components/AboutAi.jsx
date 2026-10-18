@@ -55,10 +55,10 @@ function AboutAi() {
             AI-assisted pull request review
           </p>
           <p>
-            Carbon Monitor reviews pull requests with an AI agent, Bob Shell.
-            Before it posts anything, every Carbon-specific claim is checked
-            against the Carbon Builder skill and the Carbon MCP server, so
-            guidance quoted in a review comes from Carbon’s own documentation
+            Carbon Monitor reviews pull requests with an AI agent, IBM Bob or
+            Claude. Before it posts anything, every Carbon-specific claim is
+            checked against the Carbon Builder skill and the Carbon MCP server,
+            so guidance quoted in a review comes from Carbon’s own documentation
             rather than the model’s recollection of it.
           </p>
           <p>
@@ -106,7 +106,7 @@ function AboutAi() {
             payload.
           </li>
           <li>
-            <strong>Run the agent.</strong> Bob Shell reads the bundle and
+            <strong>Run the agent.</strong> The agent reads the bundle and
             produces candidate findings.
           </li>
           <li>

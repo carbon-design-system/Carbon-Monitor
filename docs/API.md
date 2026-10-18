@@ -13,28 +13,28 @@ Serves the operator console and the REST API on one port (`PORT`, then
 `API_PORT`, default `3000`). Code Engine injects `PORT`, and exposes a single
 port per app, which is why both share one.
 
-| Method | Path                         | Description                                                                                                                  |
-| ------ | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/health`                | Liveness check — always open                                                                                                 |
-| `GET`  | `/api/ready`                 | Readiness check — always open; see [Readiness](#readiness)                                                                   |
-| `GET`  | `/api/auth/status`           | Whether sign-in is required and satisfied — always open                                                                      |
-| `POST` | `/api/auth/login` / `logout` | Session sign-in — always open                                                                                                |
-| `GET`  | `/api/mcp/callback`          | OAuth redirect target — guarded by one-shot `state` + PKCE                                                                   |
-| `GET`  | `/api/status`                | All dependency checks (Bob, Carbon MCP, GitHub, Elasticsearch, Bobcoins)                                                     |
-| `GET`  | `/api/config`                | Current configuration (sanitised — never returns credentials)                                                                |
-| `GET`  | `/api/mcp/status`            | Carbon MCP connection detail                                                                                                 |
-| `POST` | `/api/mcp/connect`           | Begin the IBMid OAuth bootstrap                                                                                              |
-| `POST` | `/api/mcp/refresh`           | Force a refresh, or store a pasted token / session id                                                                        |
-| `POST` | `/api/mcp/test`              | Live probe — also repairs a session-backed connection                                                                        |
-| `POST` | `/api/mcp/disconnect`        | Forget the stored OAuth state and strip Bob's MCP headers                                                                    |
-| `GET`  | `/api/credits`               | Bobcoins balance and spend summary                                                                                           |
-| `GET`  | `/api/credits/history`       | Per-review spend, plus a cumulative series                                                                                   |
-| `POST` | `/api/review/trigger`        | Trigger a review (202, runs in the background) — see [Triggering a review over HTTP](#triggering-a-review-over-http)         |
-| `GET`  | `/api/review/status`         | Current or most recent run: mode, PR numbers, reviews in flight and queued                                                   |
-| `GET`  | `/api/review/logs`           | Incremental log tail (`?since=` cursor, `?limit=` up to 1000, default 500, `?pr=` / `?worker=` filters); returns `nextSince` |
-| `POST` | `/api/review/logs/clear`     | Empty the log buffer; allowed mid-run, returns the number of lines `cleared`                                                 |
-| `GET`  | `/api/schedule`              | Scheduled-run config (`enabled`, `timeLocal`, `paused`) with the computed `nextRunAt`                                        |
-| `POST` | `/api/schedule`              | Save a partial schedule update; `400` with a message on invalid input                                                        |
+| Method | Path                         | Description                                                                                                                    |
+| ------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `GET`  | `/api/health`                | Liveness check — always open                                                                                                   |
+| `GET`  | `/api/ready`                 | Readiness check — always open; see [Readiness](#readiness)                                                                     |
+| `GET`  | `/api/auth/status`           | Whether sign-in is required and satisfied — always open                                                                        |
+| `POST` | `/api/auth/login` / `logout` | Session sign-in — always open                                                                                                  |
+| `GET`  | `/api/mcp/callback`          | OAuth redirect target — guarded by one-shot `state` + PKCE                                                                     |
+| `GET`  | `/api/status`                | All dependency checks (the agent CLI, its cost tile, Carbon MCP, GitHub, Elasticsearch); see [Agent and cost](#agent-and-cost) |
+| `GET`  | `/api/config`                | Current configuration (sanitised — never returns credentials), including the agent's name                                      |
+| `GET`  | `/api/mcp/status`            | Carbon MCP connection detail                                                                                                   |
+| `POST` | `/api/mcp/connect`           | Begin the IBMid OAuth bootstrap                                                                                                |
+| `POST` | `/api/mcp/refresh`           | Force a refresh, or store a pasted token / session id                                                                          |
+| `POST` | `/api/mcp/test`              | Live probe — also repairs a session-backed connection                                                                          |
+| `POST` | `/api/mcp/disconnect`        | Forget the stored OAuth state and strip Bob's MCP headers                                                                      |
+| `GET`  | `/api/credits`               | The agent's balance or budget and its spend summary, in Bobcoins or USD                                                        |
+| `GET`  | `/api/credits/history`       | Per-review spend in the agent's unit, plus a cumulative series                                                                 |
+| `POST` | `/api/review/trigger`        | Trigger a review (202, runs in the background) — see [Triggering a review over HTTP](#triggering-a-review-over-http)           |
+| `GET`  | `/api/review/status`         | Current or most recent run: mode, PR numbers, reviews in flight and queued                                                     |
+| `GET`  | `/api/review/logs`           | Incremental log tail (`?since=` cursor, `?limit=` up to 1000, default 500, `?pr=` / `?worker=` filters); returns `nextSince`   |
+| `POST` | `/api/review/logs/clear`     | Empty the log buffer; allowed mid-run, returns the number of lines `cleared`                                                   |
+| `GET`  | `/api/schedule`              | Scheduled-run config (`enabled`, `timeLocal`, `paused`) with the computed `nextRunAt`                                          |
+| `POST` | `/api/schedule`              | Save a partial schedule update; `400` with a message on invalid input                                                          |
 
 `POST /api/mcp/disconnect` is the inverse of **Sign in with IBMid**: it deletes
 the stored refresh token and removes the `Authorization` / `X-MCP-Session`
@@ -62,7 +62,57 @@ history comes from the ledger file, the balance from a per-process cache. Review
 write the ledger from their own process, so the server re-reads the balance
 whenever a ledger entry is newer than the balance it holds. That keeps the
 headline and the table from contradicting each other while the 30-second poll
-from open tabs stays cheap.
+from open tabs stays cheap. (That re-read applies to Bob's gateway balance. A
+Claude budget status is cached for 60 seconds.)
+
+### Agent and cost
+
+The agent is `GITHUB_AI_AGENT_CLI`, `bob` or `claude`. Four endpoints show it.
+
+**`GET /api/config`** returns `agent` (the configured id, `bob` when unset),
+`agentName` (`IBM Bob` or `Claude`, the name used in PR comments and in the
+console's "Reviewing pull requests in … with …" sentence) and `agentCli`
+(`Bob Shell CLI` or `Claude Code CLI`), with the owner, repository and limits.
+
+**`GET /api/status`** returns `{ success, checks, overall, timestamp }`. Each
+check is `{ id, label, status, detail, hint }`, where `status` is `succeeded`,
+`caution-major`, `failed` or `unknown`. The tiles:
+
+| `id`                                    | `label`                                            | Shown when                          | What it says                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------- | -------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `agent`                                 | The CLI's name: `Bob Shell CLI`, `Claude Code CLI` | always                              | `v<version> — API key configured` when the binary runs and the key is set. `failed` with `Not found on PATH`, or with `v<version> — not authenticated` and a hint naming the missing key (`BOB_API_KEY`, `ANTHROPIC_API_KEY`). `caution-major` when `--version` is slow (`BOB_CHECK_TIMEOUT_MS`)                                                                   |
+| `bobcoins`                              | `Bobcoins`                                         | the agent is `bob`                  | The gateway balance: `<remaining> of <limit> remaining`, a warning below `BOB_CREDITS_LOW_PCT`                                                                                                                                                                                                                                                                     |
+| `spend`                                 | `Spend`                                            | the agent is not Bob (Claude today) | `$<n> spent this month`, or `$<n> spent this month of $<budget>` with `CLAUDE_MONTHLY_BUDGET_USD` set. The hint reads `No monthly budget set (CLAUDE_MONTHLY_BUDGET_USD).` without a budget, and `<n>% remaining.` with one, as a warning below `CLAUDE_BUDGET_LOW_PCT` and `failed` at zero. It starts `From the local ledger.` when Elasticsearch gave no figure |
+| `carbon-mcp`, `github`, `elasticsearch` |                                                    | always                              | Unchanged                                                                                                                                                                                                                                                                                                                                                          |
+
+The agent tile's `id` was `bob` before agents became pluggable; it is `agent` for
+both.
+
+**`GET /api/credits`** returns `{ success, balance, summary, timestamp }`.
+`summary.costUnit` is `bobcoins` or `usd`, and every total in `summary`
+(`totalSpent`, `averagePerReview`, `last24hSpent`, `last7dSpent`) is in that
+unit and counts only the configured agent's reviews. For Bob, `balance` is the
+gateway balance. For Claude, `balance` is:
+
+- `{ "available": false, "low": false, "reason": "not-metered" }` without
+  `CLAUDE_MONTHLY_BUDGET_USD`;
+- `{ available: true, low, threshold, remaining, percentRemaining, reason: null,
+summary, spent, budget }` with it, where `spent` is the month so far in USD and
+  `low` is `percentRemaining` under `CLAUDE_BUDGET_LOW_PCT`;
+- `{ "available": false, "low": false, "reason": "<message>" }` if the figure
+  could not be computed.
+
+**`GET /api/credits/history`** returns only entries in the agent's unit, so a
+deployment that switched agents does not mix dollars into Bobcoins. An entry
+carries `costUnit` when it has one (rows written before units existed have none
+and read as Bobcoins), and `cumulative` is a running total in the same unit.
+From Elasticsearch the entries come from `pr_review_completed` events of the
+last 90 days, filtered on the root `agent` field.
+
+**Telemetry.** `pr_review_completed` carries `cost_unit` (`bobcoins` or `usd`).
+`coinsSpent` keeps its name and is in that unit. `bob_task_id` holds the agent's
+session or task id, which for Claude is its session id. `token_source` is the
+agent id when the counts are exact and `estimate` otherwise.
 
 ### Reviews in flight
 
@@ -87,12 +137,16 @@ still gets `409`.
 sets it). It answers `200 {"ready": true}` when the process can run reviews at
 all: `GITHUB_AI_AGENT_CLI` names a supported agent and that agent's binary runs
 (the answer is cached and refreshed in the background, so a probe never waits on the agent after the first check). Otherwise it answers
-`503 {"ready": false, "reasons": [...]}`.
+`503 {"ready": false, "reasons": [...]}`. The reasons name the agent id:
+`Invalid GITHUB_AI_AGENT_CLI: codex. Must be one of: bob, claude` for an unknown
+agent, and `Agent CLI 'claude' is not available on PATH` for a missing binary.
 
 A missing credential, Elasticsearch or Carbon MCP never fails readiness, so a
 half-configured instance stays reachable and the console can show what to fix.
 They come back as `warnings` on the `200`, for example
-`{"ready": true, "warnings": ["GITHUB_AI_AGENT_TOKEN is not set: ..."]}`.
+`{"ready": true, "warnings": ["GITHUB_AI_AGENT_TOKEN is not set: ..."]}`. The
+agent's own key is one of them, named for the agent selected:
+`ANTHROPIC_API_KEY is not set: the claude CLI cannot authenticate in a container`.
 `/api/health` stays the cheap liveness check and is used for the liveness probe.
 
 ### Sign-in throttle
@@ -150,7 +204,7 @@ The rest of this section covers the full contract: every accepted body shape,
 the validation rules, and the error responses.
 
 `POST /api/review/trigger` starts a **real** review. It reads live open PRs from
-the configured repository, runs Bob against them, and posts public inline and
+the configured repository, runs the selected agent against them, and posts public inline and
 summary comments on each one, then labels them. There is no dry-run mode — every
 command below writes to GitHub.
 

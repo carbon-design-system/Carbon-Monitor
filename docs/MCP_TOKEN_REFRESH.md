@@ -21,7 +21,10 @@ Carbon MCP rotates its refresh token on every use, so the new one is persisted a
 once: in the Elasticsearch state backend when `MCP_STATE_BACKEND=elasticsearch`
 and an Elasticsearch client is available, otherwise in a state file. `writeBobMcpHeaders` then writes the new
 `Authorization` and `X-MCP-Session` headers into `~/.bob/settings/mcp.json`,
-which is what Bob reads. The manual steps below replace those two values by hand.
+which is what Bob reads. Claude reads a per-review copy of the same credentials
+(`claude-config/claude-mcp.json` in the review bundle, built from that file), so
+this file is the one to fix for either agent. The manual steps below replace
+those two values by hand.
 
 ---
 

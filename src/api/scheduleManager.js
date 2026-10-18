@@ -43,6 +43,7 @@ const os = require('os');
 // Lazy-require so the module loads fine when esClient is unavailable in tests.
 const { esCall } = require('../observability/esClient');
 const { getBalance, isLowBalance } = require('./bobCredits');
+const agents = require('../agents');
 const {
   startProgress,
   applyProgress,
@@ -606,11 +607,23 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   // idempotency token, so the reminder re-fires again on the next scheduled day.
   if (_state.paused) {
     console.log('[schedule] skipped — schedule is paused');
-    const balance = await getBalance();
-    const lowPct = Number(process.env.BOB_CREDITS_LOW_PCT || 10);
+    const adapter = agents.current();
+    const bobcoins = adapter.costUnit === 'bobcoins';
+    const balance = bobcoins ? await getBalance() : await adapter.credits();
+    // An unmetered agent has no budget to remind about.
+    if (!bobcoins && !balance.available) {
+      console.log(
+        `[schedule] low-budget reminder skipped — ${adapter.creditLabel} is not metered (${balance.reason})`
+      );
+      return;
+    }
+    const lowPct = bobcoins
+      ? Number(process.env.BOB_CREDITS_LOW_PCT || 10)
+      : balance.threshold;
     postLowTokenAlert({
       percentRemaining: balance.percentRemaining,
       threshold: lowPct,
+      agent: adapter.id,
       repo: `${process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system'}/${process.env.GITHUB_AI_AGENT_REPO || 'carbon'}`,
       isReminder: true,
     });
@@ -652,17 +665,25 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   // the next scheduled tick re-evaluates and re-notifies.
   // IMPORTANT: balance unavailable (available:false) or null percentRemaining
   // (uncapped plan) must never block a review — only a confirmed low reading pauses.
-  const balance = await getBalance();
-  const { low, threshold: lowPct } = isLowBalance(balance);
+  // Bob keeps its cached gateway balance; any other agent reports through credits().
+  const adapter = agents.current();
+  let balance, low, lowPct;
+  if (adapter.costUnit === 'bobcoins') {
+    balance = await getBalance();
+    ({ low, threshold: lowPct } = isLowBalance(balance));
+  } else {
+    balance = await adapter.credits();
+    ({ low, threshold: lowPct } = balance);
+  }
   if (low) {
     console.warn(
-      `[schedule] auto-pausing — Bobcoins at ${balance.percentRemaining}% (threshold ${lowPct}%)`
+      `[schedule] auto-pausing — ${adapter.creditLabel} at ${balance.percentRemaining}% (threshold ${lowPct}%)`
     );
     const autoPaused = {
       ..._state,
       paused: true,
       lastRunSkipped: true,
-      lastSkipReason: `Auto-paused: Bobcoins at ${balance.percentRemaining}% (below ${lowPct}% threshold)`,
+      lastSkipReason: `Auto-paused: ${adapter.creditLabel} at ${balance.percentRemaining}% (below ${lowPct}% threshold)`,
     };
     await saveSchedule(autoPaused).catch((err) => {
       console.warn(
@@ -672,6 +693,7 @@ async function tick(reviewPRs, reviewState, reviewLog) {
     postLowTokenAlert({
       percentRemaining: balance.percentRemaining,
       threshold: lowPct,
+      agent: adapter.id,
       repo: `${process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system'}/${process.env.GITHUB_AI_AGENT_REPO || 'carbon'}`,
       isReminder: false,
     });
@@ -758,6 +780,7 @@ module.exports = {
   startScheduler,
   stopScheduler,
   // Exported for tests
+  tick,
   currentLocalMinute,
   computeNextRunAt,
   validateTimeLocal,

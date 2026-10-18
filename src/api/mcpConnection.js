@@ -418,6 +418,38 @@ async function writeBobMcpHeaders({ token, sessionId }) {
   };
 }
 
+/**
+ * The URL and headers of the carbon-mcp entry in Bob's mcp.json, for agents that
+ * take their MCP config as a file of their own. That file stays the credential
+ * store the refresh timer writes.
+ * @returns {Promise<{url: string, headers: Object}|null>} null without a bearer
+ */
+async function getCredentials() {
+  let entry;
+  try {
+    entry = (await readBobMcpConfig()).mcpServers?.[SERVER_NAME];
+  } catch (_) {
+    return null;
+  }
+  // Header names are case-insensitive and the file can be hand-edited.
+  const pick = (name) => {
+    const key = Object.keys(entry?.headers || {}).find(
+      (k) => k.toLowerCase() === name.toLowerCase()
+    );
+    return key ? entry.headers[key] : undefined;
+  };
+  const bearer = pick('Authorization');
+  if (!bearer) return null;
+  const session = pick('X-MCP-Session');
+  return {
+    url: entry.url || MCP_URL,
+    headers: {
+      Authorization: bearer,
+      ...(session ? { 'X-MCP-Session': session } : {}),
+    },
+  };
+}
+
 // ── OAuth discovery and registration ────────────────────────────────────────
 
 /**
@@ -1005,6 +1037,7 @@ module.exports = {
   setManualCredentials,
   disconnect,
   writeBobMcpHeaders,
+  getCredentials,
   probe,
   getStatus,
   decodeJwt,

@@ -239,6 +239,123 @@ async function main() {
     assert(/\bruns,/.test(source));
   });
 
+  await test('credit queries filter on the root agent and the summary names its unit', async () => {
+    delete require.cache[require.resolve('../src/api/server')];
+    ({ handleRequest } = require('../src/api/server'));
+    calls.length = 0;
+    searchResponse = { aggregations: { reviewCount: { value: 1 } } };
+    const body = await request('/api/credits');
+    const filters = lastSearch().query.bool.filter;
+    assert(filters.some((filter) => filter.term?.agent === 'bob'));
+    assert(body.summary.costUnit === 'bobcoins');
+
+    calls.length = 0;
+    searchResponse = { hits: { hits: [historyHit()] } };
+    await request('/api/credits/history');
+    assert(lastSearch()._source.includes('payload.cost_unit'));
+    const entry = (await request('/api/credits/history')).entries[0];
+    assert(!('costUnit' in entry), 'an event without cost_unit maps as before');
+  });
+
+  const claude = {
+    restore() {
+      delete process.env.GITHUB_AI_AGENT_CLI;
+      require('../src/constants').CLAUDE_MONTHLY_BUDGET_USD = 0;
+      require('../src/api/bobCredits').getBalance = claude.realBalance;
+    },
+    realBalance: require('../src/api/bobCredits').getBalance,
+  };
+
+  await test('a Claude deployment reads its own agent and unit and never calls the Bob gateway', async () => {
+    process.env.GITHUB_AI_AGENT_CLI = 'claude';
+    delete require.cache[require.resolve('../src/api/server')];
+    ({ handleRequest } = require('../src/api/server'));
+    let gatewayCalls = 0;
+    require('../src/api/bobCredits').getBalance = async () => {
+      gatewayCalls++;
+      return { available: true };
+    };
+    try {
+      calls.length = 0;
+      searchResponse = {
+        aggregations: { reviewCount: { value: 3 }, totalSpent: { value: 0.6 } },
+      };
+      const body = await request('/api/credits');
+      const filters = lastSearch().query.bool.filter;
+      assert(filters.some((filter) => filter.term?.agent === 'claude'));
+      assert(gatewayCalls === 0, 'the Bob balance is for Bob only');
+      assert(
+        JSON.stringify(body.balance) ===
+          JSON.stringify({
+            available: false,
+            low: false,
+            reason: 'not-metered',
+          }),
+        JSON.stringify(body.balance)
+      );
+      assert(body.summary.costUnit === 'usd');
+      assert(body.summary.totalSpent === 0.6);
+
+      searchResponse = {
+        hits: {
+          hits: [
+            {
+              _source: {
+                ...historyHit()._source,
+                payload: { coinsSpent: 0.21, cost_unit: 'usd' },
+              },
+            },
+          ],
+        },
+      };
+      const history = await request('/api/credits/history');
+      assert(history.entries[0].costUnit === 'usd');
+      assert(history.cumulative.length === 1, 'usd rows chart for claude');
+    } finally {
+      claude.restore();
+    }
+  });
+
+  await test('a Claude budget reads month-to-date spend from Elasticsearch', async () => {
+    process.env.GITHUB_AI_AGENT_CLI = 'claude';
+    require('../src/constants').CLAUDE_MONTHLY_BUDGET_USD = 10;
+    delete require.cache[require.resolve('../src/api/server')];
+    ({ handleRequest } = require('../src/api/server'));
+    try {
+      calls.length = 0;
+      searchResponse = {
+        aggregations: {
+          reviewCount: { value: 3 },
+          totalSpent: { value: 12 },
+          spent: { value: 9.5 },
+        },
+      };
+      const body = await request('/api/credits');
+      assert(body.balance.available === true);
+      assert(body.balance.spent === 9.5, `spent ${body.balance.spent}`);
+      assert(body.balance.percentRemaining === 5);
+      assert(body.balance.low === true && body.balance.threshold === 10);
+      const spendQuery = calls.find((call) => call && call.aggs?.spent);
+      const spendFilters = spendQuery.query.bool.filter;
+      assert(spendFilters.some((f) => f.term?.agent === 'claude'));
+      assert(
+        spendFilters.some((f) =>
+          f.terms?.event_type?.includes('pr_review_completed')
+        )
+      );
+      const since = spendFilters.find((f) => f.range?.timestamp).range.timestamp
+        .gte;
+      assert(/^\d{4}-\d{2}-01T00:00:00\.000Z$/.test(since), since);
+    } finally {
+      claude.restore();
+    }
+  });
+
+  await test('completion event source carries the cost unit', async () => {
+    const source = fs.readFileSync('src/index.js', 'utf8');
+    assert(/\bcost_unit:\s*adapter\.costUnit\b/.test(source));
+  });
+
   console.log(`\nResults: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;
 }

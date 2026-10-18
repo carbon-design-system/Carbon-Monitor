@@ -98,6 +98,13 @@ body {
   flex: 0 0 auto;
 }
 
+// The Claude mark is a square glyph, so it takes a smaller box than the Bob mark.
+.cm-claude-mark {
+  block-size: 3rem;
+  inline-size: auto;
+  flex: 0 0 auto;
+}
+
 // Vertical rhythm BETWEEN tile groups. The gap between rows WITHIN a group is
 // Carbon's own `withRowGap` prop on <Grid>: in narrow mode it resolves to half
 // the gutter, i.e. the same 16px this class used to hardcode as `row-gap`, but

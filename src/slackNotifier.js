@@ -123,6 +123,16 @@ function formatEasternTime(ts) {
 
 // ── Low-token alert Block Kit builder ────────────────────────────────────────
 
+// What a human does about a low balance, keyed by the unit the agent spends in.
+const LOW_CREDIT_ACTION = {
+  bobcoins:
+    'increase your Bobcoins token limit, or disable scheduled ' +
+    'reviews in the Carbon Monitor Settings panel. ',
+  usd:
+    'raise CLAUDE_MONTHLY_BUDGET_USD, or disable scheduled ' +
+    'reviews in the Carbon Monitor Settings panel. ',
+};
+
 /**
  * Build the Slack Block Kit payload for a low-token auto-pause alert.
  *
@@ -132,9 +142,10 @@ function formatEasternTime(ts) {
  *
  * @param {Object}       opts
  * @param {number|null}  opts.percentRemaining - Current % of budget remaining, or null
- * @param {number}       opts.threshold        - The BOB_CREDITS_LOW_PCT threshold
+ * @param {number}       opts.threshold        - The agent's low-water mark (e.g. BOB_CREDITS_LOW_PCT)
  * @param {string}       opts.repo             - "owner/repo"
  * @param {boolean}      opts.isReminder       - true on daily reminders after initial pause
+ * @param {string}       [opts.agent]          - Agent id naming the unit and the remedy; defaults to the configured agent
  * @returns {Object} Slack API blocks payload
  */
 function buildLowTokenPayload({
@@ -142,7 +153,10 @@ function buildLowTokenPayload({
   threshold,
   repo,
   isReminder,
+  agent,
 }) {
+  const agents = require('./agents');
+  const adapter = agents.resolve(agent || undefined);
   const blocks = [];
 
   // ── Header ──────────────────────────────────────────────────────────────────
@@ -162,14 +176,13 @@ function buildLowTokenPayload({
   // ── Status section ──────────────────────────────────────────────────────────
   // Build the detail lines, omitting the percentage line when unavailable.
   const detailLines = [`*Repo:* ${repo}`];
+  const unit = adapter.creditLabel;
+  // A metered threshold is always known; an unmetered agent's reminder has none.
+  const limit = threshold == null ? '' : ` (threshold: ${threshold}%)`;
   if (percentRemaining !== null && percentRemaining !== undefined) {
-    detailLines.push(
-      `*Bobcoins remaining:* ${percentRemaining}% (threshold: ${threshold}%)`
-    );
+    detailLines.push(`*${unit} remaining:* ${percentRemaining}%${limit}`);
   } else {
-    detailLines.push(
-      `*Bobcoins remaining:* below threshold (threshold: ${threshold}%)`
-    );
+    detailLines.push(`*${unit} remaining:* below threshold${limit}`);
   }
   if (isReminder) {
     detailLines.push(
@@ -193,8 +206,7 @@ function buildLowTokenPayload({
     text: {
       type: 'mrkdwn',
       text:
-        '*Action required:* increase your Bobcoins token limit, or disable scheduled ' +
-        'reviews in the Carbon Monitor Settings panel. ' +
+        `*Action required:* ${LOW_CREDIT_ACTION[adapter.costUnit] || LOW_CREDIT_ACTION.bobcoins}` +
         'Scheduled reviews will remain paused until a human resumes them.',
     },
   });
@@ -454,6 +466,7 @@ async function postRunDigest({
  * @param {number}       opts.threshold        - The BOB_CREDITS_LOW_PCT threshold value
  * @param {string}       opts.repo             - "owner/repo" string
  * @param {boolean}      opts.isReminder       - true for daily reminders, false for initial alert
+ * @param {string}       [opts.agent]          - Agent id; names the unit and the remedy
  * @param {Function}     [opts.emitEvent]      - optional emitEvent fn for ES observability
  * @returns {Promise<void>}
  */
@@ -462,6 +475,7 @@ async function postLowTokenAlert({
   threshold,
   repo,
   isReminder,
+  agent,
   emitEvent,
 }) {
   if (!_enabled) return;
@@ -471,6 +485,7 @@ async function postLowTokenAlert({
     threshold,
     repo,
     isReminder,
+    agent,
   });
   const eventType = isReminder
     ? 'schedule_low_token_reminder'

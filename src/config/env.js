@@ -40,8 +40,6 @@ function describeCredential(label, value) {
   };
 }
 
-const AGENT_NEEDS_KEY = { bob: 'BOB_API_KEY' };
-
 let startupProblems = [];
 
 /**
@@ -65,10 +63,13 @@ function checkStartup({
     ],
   ];
 
-  const agent = readTrimmedString('GITHUB_AI_AGENT_CLI') || 'bob';
-  if (AGENT_NEEDS_KEY[agent]) {
+  // Lazy: the registry loads constants, which reads the environment at load.
+  const agents = require('../agents');
+  const agent = readTrimmedString('GITHUB_AI_AGENT_CLI') || agents.DEFAULT_ID;
+  const adapter = agents.find(agent);
+  if (adapter && adapter.requiredEnv) {
     required.push([
-      AGENT_NEEDS_KEY[agent],
+      adapter.requiredEnv,
       `the ${agent} CLI cannot authenticate in a container`,
     ]);
   }

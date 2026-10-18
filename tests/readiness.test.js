@@ -10,6 +10,7 @@
  *  5. Missing tokens and Elasticsearch are warnings on a 200, never a 503
  *  6. checkStartup logs one line per missing variable, per mode
  *  7. /api/health is unchanged
+ *  8. claude is probed by its own binary and needs ANTHROPIC_API_KEY
  */
 
 process.env.CARBON_MONITOR_SKIP_DOTENV = '1';
@@ -23,6 +24,7 @@ const path = require('path');
 const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cm-ready-'));
 const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cm-ready-empty-'));
 const fakeBob = path.join(binDir, 'bob');
+const fakeClaude = path.join(binDir, 'claude');
 
 const { handleRequest } = require('../src/api/server');
 const { checkStartup, getStartupProblems } = require('../src/config/env');
@@ -93,6 +95,7 @@ async function main() {
     'GITHUB_AI_AGENT_CLI',
     'GITHUB_AI_AGENT_TOKEN',
     'BOB_API_KEY',
+    'ANTHROPIC_API_KEY',
     'ES_URL',
   ]) {
     saved[k] = process.env[k];
@@ -227,6 +230,65 @@ async function main() {
       const { status, json } = await get('/api/health');
       assert(status === 200 && json.status === 'healthy', 'health unchanged');
       assert(!('ready' in json), 'health must not carry readiness');
+    });
+
+    await test('claude is probed by its own binary, and the reason names claude', async () => {
+      process.env.GITHUB_AI_AGENT_CLI = 'claude';
+      process.env.PATH = emptyDir;
+      const missing = await get('/api/ready');
+      assert(missing.status === 503, `expected 503, got ${missing.status}`);
+      assert(
+        missing.json.reasons.some((r) => r.includes("'claude'")),
+        JSON.stringify(missing.json.reasons)
+      );
+
+      // A bob on PATH must not satisfy a claude deployment.
+      fs.writeFileSync(fakeBob, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+      process.env.PATH = binDir;
+      now += 6_000;
+      let last = await get('/api/ready');
+      for (let i = 0; i < 8 && last.status === 503; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        last = await get('/api/ready');
+      }
+      assert(last.status === 503, `bob alone is not claude: ${last.status}`);
+
+      fs.writeFileSync(fakeClaude, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+      now += 6_000;
+      for (let i = 0; i < 60 && last.status !== 200; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        last = await get('/api/ready');
+      }
+      assert(last.status === 200, `expected 200, got ${last.status}`);
+    });
+
+    await test('claude needs ANTHROPIC_API_KEY, not BOB_API_KEY', async () => {
+      process.env.GITHUB_AI_AGENT_CLI = 'claude';
+      process.env.GITHUB_AI_AGENT_TOKEN = 't';
+      process.env.BOB_API_KEY = 'k';
+      let problems = [];
+      withLogs(() => {
+        problems = checkStartup({ mode: 'cli' });
+      });
+      assert(
+        problems.length === 1 && problems[0].startsWith('ANTHROPIC_API_KEY'),
+        JSON.stringify(problems)
+      );
+      const { status, json } = await get('/api/ready');
+      assert(status === 200, `a missing key is a warning, got ${status}`);
+      assert(
+        json.warnings.some((w) => w.includes('ANTHROPIC_API_KEY')),
+        JSON.stringify(json.warnings)
+      );
+
+      process.env.ANTHROPIC_API_KEY = 'sk-test';
+      delete process.env.BOB_API_KEY;
+      withLogs(() => {
+        problems = checkStartup({ mode: 'cli' });
+      });
+      assert(problems.length === 0, JSON.stringify(problems));
+      delete process.env.ANTHROPIC_API_KEY;
+      delete process.env.GITHUB_AI_AGENT_CLI;
     });
   } finally {
     Date.now = realNow;

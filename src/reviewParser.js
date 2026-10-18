@@ -174,6 +174,9 @@ function filterUnverifiedCarbonFindings(findings, transcriptMetadata = {}) {
   let carbonBuilderVerifiedCount = 0;
   let carbonBuilderRejectedCount = 0;
   const skillFilesRead = transcriptMetadata.skillFilesRead || [];
+  // The agent's own wording for the rejection log; Bob's when not given.
+  const skillDir = transcriptMetadata.skillDir || '.bob/skills/carbon-builder/';
+  const readTool = transcriptMetadata.readTool || 'read_file';
   const hasCarbonBuilderSkillReads = skillFilesRead.length > 0;
 
   const filtered = findings.filter((finding) => {
@@ -202,7 +205,7 @@ function filterUnverifiedCarbonFindings(findings, transcriptMetadata = {}) {
         `❌ FILTERED carbon-builder finding without skill file reads: "${finding.title}"`
       );
       console.log(
-        '   Reason: verificationSource=carbon-builder but no .bob/skills/carbon-builder/ read_file calls were detected in the transcript'
+        `   Reason: verificationSource=carbon-builder but no ${skillDir} ${readTool} calls were detected in the transcript`
       );
       return false;
     }
@@ -922,6 +925,8 @@ function parseReviewOutput(agentOutput, options = {}) {
     // Filter unverified Carbon findings with strict enforcement
     const filterResult = filterUnverifiedCarbonFindings(review.findings, {
       skillFilesRead,
+      skillDir: options.skillDir,
+      readTool: options.readTool,
     });
     review.findings = filterResult.filtered;
 

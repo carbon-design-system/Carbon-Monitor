@@ -1,18 +1,10 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const constants = require('./constants');
+const agents = require('./agents');
+const { CARBON_MCP_SERVER, mcpToolName } = require('./agents/common');
 
 const KILL_GRACE_MS = 10 * 1000;
-const CONTINUATION_NOTICE =
-  /^\s*_\[Continuing response due to length limit\.\.\.\]_\s*$/;
-const CARBON_MCP_TOOLS = [
-  'docs_search',
-  'code_search',
-  'get_charts',
-  'labs_search',
-  'code_audit',
-];
 
 class AgentRunError extends Error {
   constructor(message, { kind, stats = null, stderr = '' } = {}) {
@@ -24,51 +16,8 @@ class AgentRunError extends Error {
   }
 }
 
-function contentToText(content) {
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return '';
-  return content
-    .map((b) =>
-      typeof b === 'string' ? b : b && b.type === 'text' ? b.text : ''
-    )
-    .filter(Boolean)
-    .join('');
-}
-
-// Bob 2.0.5 rejects a cap of 0, so an unset or zero cap omits its flag. Caps do
-// not depend on --format, so the pretty kill switch keeps a spend cap.
-function buildAgentArgs({ agent, prompt, format, caps = {} }) {
-  switch (agent) {
-    case 'bob': {
-      const args = ['run'];
-      if (format !== 'pretty') args.push('--format', 'stream-json');
-      args.push('--trust', '--accept-license');
-      // --team-id breaks Inference keys, so only send it when configured.
-      if (process.env.BOB_TEAM_ID) {
-        args.push('--team-id', process.env.BOB_TEAM_ID);
-      }
-      if (caps.maxCost > 0) args.push('--max-cost', String(caps.maxCost));
-      if (caps.maxTurns > 0) args.push('--max-turns', String(caps.maxTurns));
-      if (caps.disableToolGroups) {
-        args.push('--disable-tool-groups', caps.disableToolGroups);
-      }
-      args.push(prompt);
-      return args;
-    }
-    case 'claude':
-      return [
-        '-p',
-        '--dangerously-skip-permissions',
-        '--output-format',
-        'stream-json',
-        '--verbose',
-        prompt,
-      ];
-    case 'codex':
-      return ['exec', '--full-auto', prompt];
-    default:
-      throw new Error(`Invalid agent type: ${agent}`);
-  }
+function buildAgentArgs({ agent, prompt, format, caps = {}, bundleDir }) {
+  return agents.get(agent).buildArgs({ prompt, format, caps, bundleDir });
 }
 
 function normaliseCost(value) {
@@ -85,104 +34,74 @@ function normaliseCost(value) {
   return value;
 }
 
-// Carbon MCP tool name for a use_mcp_tool call (or a bare MCP tool call), else null.
-function mcpToolName(call) {
-  const params = call.params || {};
-  const candidate =
-    call.name === 'use_mcp_tool' ? params.tool_name || params.name : call.name;
-  if (typeof candidate !== 'string') return null;
-  return (
-    CARBON_MCP_TOOLS.find(
-      (t) =>
-        candidate === t ||
-        candidate.endsWith(`__${t}`) ||
-        candidate.endsWith(`/${t}`)
-    ) || null
-  );
+// The adapter decides what counts as skill evidence; Bob is the default.
+function summarizeToolCalls(toolCalls = [], agent = 'bob') {
+  return agents.get(agent).evidence(toolCalls);
 }
 
-function summarizeToolCalls(toolCalls = []) {
-  const summary = {
-    skillInvoked: false,
-    skillFiles: [],
-    mcpCalls: {},
-    total: toolCalls.length,
-  };
-  for (const call of toolCalls) {
-    const params = call.params || {};
-    if (call.name === 'use_skill' && params.skill_name === 'carbon-builder') {
-      summary.skillInvoked = true;
-    } else if (call.name === 'read_file') {
-      const p = params.path || params.file_path;
-      if (
-        typeof p === 'string' &&
-        p.includes('.bob/skills/carbon-builder/') &&
-        !summary.skillFiles.includes(p)
-      ) {
-        summary.skillFiles.push(p);
-      }
-    }
-    const mcp = mcpToolName(call);
-    if (mcp) summary.mcpCalls[mcp] = (summary.mcpCalls[mcp] || 0) + 1;
-  }
-  return summary;
-}
-
-// Folds Bob's stream-json NDJSON into the run's text, tool calls and stats.
+// Folds an agent's stream-json NDJSON into the run's text, tool calls and stats.
 // A chunk can end mid-line, so the tail is carried into the next push().
-function createStreamCollector({ onProgress } = {}) {
+// adapter.parseEvent turns each vendor event into normalised ones (see src/agents).
+function createStreamCollector({ adapter, onProgress, onInit }) {
   let carry = '';
   const messages = [];
-  let completion = null;
   const calls = [];
   const callsById = new Map();
   const errors = [];
+  const parseState = {};
+  let init = null;
   let result = null;
   let lastWasAssistant = false;
+  let lastTextId = null;
 
   function handle(event) {
     switch (event.type) {
-      case 'message': {
-        if (event.role === 'assistant' && event.isReasoning !== true) {
-          const text = contentToText(event.content);
-          // Bob inserts this notice as its own piece when a long answer continues;
-          // it is not model output and lands inside the review JSON if kept.
-          if (CONTINUATION_NOTICE.test(text)) break;
-          if (text) {
-            // Bob streams assistant text as many small message events with no
-            // delta flag (seen live on 2.0.0), so consecutive assistant pieces
-            // are one message until a tool call, error or other role intervenes.
-            // Known limit: two whole back-to-back messages would also be glued.
-            if (lastWasAssistant && messages.length) {
-              messages[messages.length - 1] += text;
-            } else {
-              messages.push(text);
-            }
-          }
-          lastWasAssistant = true;
-        } else {
-          lastWasAssistant = false;
+      case 'init':
+        if (!init) {
+          init = event;
+          if (onInit) onInit(event);
         }
         break;
+      case 'text': {
+        const id = event.messageId ?? null;
+        if (event.text) {
+          // Without a message id (Bob streams assistant text as many small
+          // events with no delta flag, seen live on 2.0.0) consecutive pieces are
+          // one message until a tool call, error or other role intervenes.
+          // Known limit: two whole back-to-back messages would also be glued.
+          // With one (Claude), blocks of one API response share it.
+          if (lastWasAssistant && messages.length && id === lastTextId) {
+            messages[messages.length - 1] += event.text;
+          } else {
+            messages.push(event.text);
+          }
+        }
+        lastWasAssistant = true;
+        lastTextId = id;
+        break;
       }
+      case 'break':
+        lastWasAssistant = false;
+        break;
       case 'tool_use': {
         const call = {
-          name: event.tool_name,
-          params: event.parameters || {},
+          name: event.name,
+          params: event.params || {},
           status: 'unknown',
         };
-        calls.push(call);
-        if (event.tool_id) callsById.set(event.tool_id, call);
-        if (call.name === 'attempt_completion' && call.params.result != null) {
-          completion = String(call.params.result);
+        if (event.server) {
+          call.server = event.server;
+          call.tool = event.tool;
         }
+        calls.push(call);
+        if (event.id) callsById.set(event.id, call);
         if (onProgress) onProgress(`⚙ ${mcpToolName(call) || call.name}`);
         // Text after a tool call starts a new message even when streamed as a delta.
         lastWasAssistant = false;
         break;
       }
       case 'tool_result': {
-        const call = callsById.get(event.tool_id);
+        const call = callsById.get(event.id);
         if (call && event.status) call.status = event.status;
         lastWasAssistant = false;
         break;
@@ -203,8 +122,11 @@ function createStreamCollector({ onProgress } = {}) {
     const trimmed = raw.trim();
     if (trimmed.startsWith('{')) {
       try {
-        const event = JSON.parse(trimmed);
-        if (event && typeof event.type === 'string') return handle(event);
+        const json = JSON.parse(trimmed);
+        if (json && typeof json.type === 'string') {
+          const out = adapter.parseEvent(json, parseState);
+          for (const event of [].concat(out || [])) handle(event);
+        }
       } catch (_) {
         // fall through: kept as raw in the events file only
       }
@@ -223,16 +145,10 @@ function createStreamCollector({ onProgress } = {}) {
       carry = '';
     },
     summary() {
-      // The notice can also arrive glued to other text; strip it either way.
-      let text = messages
-        .join('\n\n')
-        .replace(
-          /\n*_\[Continuing response due to length limit\.\.\.\]_\n*/g,
-          ''
-        );
-      if (completion !== null) {
-        text += `${text ? '\n\n' : ''}[attempt_completion] Result: ${completion}`;
-      }
+      const joined = messages.join('\n\n');
+      const text = adapter.finalizeText
+        ? adapter.finalizeText(joined, calls)
+        : joined;
       const stats =
         result && result.stats && typeof result.stats === 'object'
           ? { ...result.stats }
@@ -240,46 +156,55 @@ function createStreamCollector({ onProgress } = {}) {
       if (stats && stats.session_costs !== undefined) {
         stats.session_costs = normaliseCost(stats.session_costs);
       }
-      const last = result ? result.last_message : null;
       return {
         hasResult: !!result,
         text,
-        lastMessage:
-          last == null
-            ? null
-            : typeof last === 'string'
-              ? last
-              : contentToText(last) || null,
+        lastMessage: result ? (result.lastMessage ?? null) : null,
         toolCalls: calls,
         stats,
         status: result ? result.status || null : null,
         errors,
+        // An error event that names a limit wins, then the result's own subtype.
+        limit:
+          (errors.find((e) => e.limit) || {}).limit ||
+          (result && result.limit) ||
+          null,
+        denials: result && result.denials ? result.denials : [],
       };
     },
   };
 }
 
-function limitKind(errors) {
-  for (const e of errors) {
-    if (e.severity && e.severity !== 'error') continue;
-    const msg = String(e.message || '');
-    if (/cost limit|max-cost/i.test(msg)) return 'cost-limit';
-    if (/turn limit|max-turns/i.test(msg)) return 'turn-limit';
+function logInit(agent, init) {
+  const servers = init.mcpServers.map((s) => `${s.name}=${s.status}`);
+  console.log(
+    `🧭 ${agent} session: model=${init.model || 'unknown'}, MCP: ${servers.join(', ') || 'none'}, skills: ${init.skills.length}`
+  );
+  // A fresh config dir still lists the CLI's bundled skills; only ours matters.
+  if (!init.skills.includes('carbon-builder')) {
+    console.warn(
+      `⚠️  carbon-builder skill was not discovered by ${agent} — Carbon claims in this review will be unverified by the skill`
+    );
   }
-  return null;
+  const carbon = init.mcpServers.find((s) => s.name === CARBON_MCP_SERVER);
+  if (!carbon || carbon.status !== 'connected') {
+    console.warn(
+      `⚠️  ${CARBON_MCP_SERVER} is ${carbon ? carbon.status : 'not configured'} in the ${agent} session — Carbon MCP checks will fall back to model knowledge`
+    );
+  }
 }
 
 /**
- * Run a CLI agent (bob, claude, or codex) with the given prompt
+ * Run a CLI agent with the given prompt
  *
  * @param {Object} options - Configuration options
- * @param {string} options.agent - Agent type: 'bob', 'claude', or 'codex'
- * @param {string} options.cwd - Working directory for the agent
+ * @param {string} options.agent - Agent id from src/agents ('bob' or 'claude')
+ * @param {string} options.cwd - Working directory for the agent (the review bundle)
  * @param {string} options.prompt - Prompt to send to the agent
  * @param {number} [options.timeout=600000] - Timeout in milliseconds (default: 10 minutes)
- * @param {string} [options.format] - Bob output format; defaults to BOB_OUTPUT_FORMAT
- * @param {Object} [options.caps] - Bob caps { maxCost, maxTurns, disableToolGroups }
- * @param {string} [options.home] - HOME for the child; default is this process's
+ * @param {string} [options.format] - Output format; defaults to the adapter's
+ * @param {Object} [options.caps] - Spend and turn caps; defaults to the adapter's
+ * @param {string} [options.home] - The home seedHome returned; default is this process's
  * @returns {Promise<{text: string, lastMessage: string|null, toolCalls: Array, stats: Object|null, status: string|null, format: string}>}
  * @throws {AgentRunError}
  */
@@ -289,70 +214,46 @@ async function runAgent({
   prompt,
   home,
   timeout = 10 * 60 * 1000,
-  format = constants.BOB_OUTPUT_FORMAT,
-  caps = {
-    maxCost: constants.BOB_MAX_COST,
-    maxTurns: constants.BOB_MAX_TURNS,
-    disableToolGroups: constants.BOB_DISABLE_TOOL_GROUPS,
-  },
+  format,
+  caps,
 }) {
-  // Validate agent type
-  const validAgents = ['bob', 'claude', 'codex'];
-  if (!validAgents.includes(agent)) {
-    throw new Error(
-      `Invalid agent type: ${agent}. Must be one of: ${validAgents.join(', ')}`
-    );
-  }
+  // Throws for an unknown agent, listing the valid ids
+  const adapter = agents.get(agent);
+  const defaults = adapter.defaults();
+  if (format === undefined) format = defaults.format;
+  if (caps === undefined) caps = defaults.caps;
 
-  const streamMode = agent === 'bob' && format !== 'pretty';
+  const streamMode = adapter.streams(format);
 
   return new Promise((resolve, reject) => {
-    // Set up environment
-    const env = {
-      ...process.env,
-      NO_COLOR: '1',
-      FORCE_COLOR: '0',
-      TERM: 'dumb',
-      CI: 'true',
-    };
-
-    if (home) env.HOME = home;
-
-    // Only pass BOB_API_KEY to Bob agent
-    if (agent !== 'bob') {
-      delete env.BOB_API_KEY;
-    }
-
-    // Set config paths for each agent to use the bundle's config
-    // Note: For Bob, we rely on global settings (~/.bob/settings.json) instead of overriding
-    // This ensures MCP servers are consistently available across all workspaces
-    if (agent === 'claude') {
-      env.CLAUDE_MCP_CONFIG = `${cwd}/.claude/mcp_config.json`;
-    } else if (agent === 'codex') {
-      env.CODEX_MCP_CONFIG = `${cwd}/.codex/mcp_config.json`;
-    }
+    const env = adapter.env(
+      {
+        ...process.env,
+        NO_COLOR: '1',
+        FORCE_COLOR: '0',
+        TERM: 'dumb',
+        CI: 'true',
+      },
+      { home, bundleDir: cwd }
+    );
 
     let stdout = '';
     let stderr = '';
 
-    // Bob Shell CLI v2: 'bob run <prompt>' replaces v1's 'bob -p <prompt> --yolo'.
-    // --trust and --accept-license make the run safe in a fresh container (no
-    // trustedFolders.json or licence flag yet) and are no-ops on a trusted Mac.
-    // --format stream-json gives NDJSON with exact stats; BOB_OUTPUT_FORMAT=pretty
-    // restores the legacy text run. carbon-mcp comes from ~/.bob/settings.
-    const command = agent;
-    const args = buildAgentArgs({ agent, prompt, format, caps });
+    const args = adapter.buildArgs({ prompt, format, caps, bundleDir: cwd });
 
     const collector = streamMode
       ? createStreamCollector({
+          adapter,
           onProgress: (l) => process.stdout.write(`${l}\n`),
+          onInit: (init) => logInit(agent, init),
         })
       : null;
 
     // Spawn the process with increased timeout for MCP server startup.
     // stdin is set to 'ignore' so bob run never blocks waiting for interactive
     // input (trust prompts, license confirmations, etc.) in a headless context.
-    const proc = spawn(command, args, {
+    const proc = spawn(adapter.binary, args, {
       cwd,
       env,
       shell: false,
@@ -403,15 +304,8 @@ async function runAgent({
       // Write agent output to bundle directory for inspection (sync so it
       // completes before resolve/reject hands control back to the caller).
       try {
-        let saved = text;
-        if (!streamMode) {
-          // Pretty-mode Bob replays the final turn after a live stream. Keep only
-          // the last '## Step 1' so the saved file is the clean final turn.
-          const step1 = '## Step 1';
-          const firstStep1 = stdout.indexOf(step1);
-          const lastStep1 = stdout.lastIndexOf(step1);
-          if (lastStep1 > firstStep1) saved = stdout.slice(lastStep1);
-        }
+        const saved =
+          !streamMode && adapter.plainText ? adapter.plainText(stdout) : text;
         fs.writeFileSync(path.join(cwd, 'agent-output.txt'), saved);
         if (streamMode) {
           fs.writeFileSync(
@@ -432,6 +326,12 @@ async function runAgent({
 
       if (timedOut) return;
 
+      if (run && run.denials.length) {
+        console.warn(
+          `⚠️  ${agent} was denied ${run.denials.length} tool call(s): ${[...new Set(run.denials)].join(', ')}`
+        );
+      }
+
       const stats = useEvents ? run.stats : null;
       const fail = (kind, message) =>
         finish(reject, new AgentRunError(message, { kind, stats, stderr }));
@@ -439,7 +339,7 @@ async function runAgent({
 
       // A warning that mentions a limit must not fail a run that finished cleanly.
       const clean = useEvents && run.status === 'success' && code === 0;
-      const limit = run && !clean ? limitKind(run.errors) : null;
+      const limit = run && !clean ? run.limit : null;
       if (limit) {
         return fail(
           limit,
@@ -462,11 +362,7 @@ async function runAgent({
         toolCalls: useEvents ? run.toolCalls : [],
         stats,
         status: useEvents ? run.status : null,
-        format: useEvents
-          ? 'stream-json'
-          : agent === 'bob' && !streamMode
-            ? 'pretty'
-            : 'text',
+        format: useEvents ? 'stream-json' : !streamMode ? 'pretty' : 'text',
       });
     });
 
@@ -508,12 +404,13 @@ async function runAgent({
 /**
  * Check if a CLI agent is available in the system PATH
  *
- * @param {string} agent - Agent type: 'bob', 'claude', or 'codex'
+ * @param {string} agent - Agent id from src/agents
  * @returns {Promise<boolean>} - True if agent is available
  */
 async function isAgentAvailable(agent) {
+  const adapter = agents.find(agent);
   return new Promise((resolve) => {
-    const proc = spawn(agent, ['--version'], {
+    const proc = spawn(adapter ? adapter.binary : agent, ['--version'], {
       shell: false,
       stdio: 'ignore',
     });
@@ -539,7 +436,7 @@ async function isAgentAvailable(agent) {
 /**
  * Get the configured agent from environment variables
  *
- * @returns {string} - Agent type: 'bob', 'claude', or 'codex'
+ * @returns {string} - Agent id from src/agents
  * @throws {Error} - If GITHUB_AI_AGENT_CLI is not set or invalid
  */
 function getConfiguredAgent() {
@@ -549,10 +446,9 @@ function getConfiguredAgent() {
     throw new Error('GITHUB_AI_AGENT_CLI environment variable is not set');
   }
 
-  const validAgents = ['bob', 'claude', 'codex'];
-  if (!validAgents.includes(agent)) {
+  if (!agents.find(agent)) {
     throw new Error(
-      `Invalid GITHUB_AI_AGENT_CLI: ${agent}. Must be one of: ${validAgents.join(', ')}`
+      `Invalid GITHUB_AI_AGENT_CLI: ${agent}. Must be one of: ${agents.ids().join(', ')}`
     );
   }
 

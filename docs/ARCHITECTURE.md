@@ -7,19 +7,22 @@ keeps its Carbon MCP connection alive without a human.
 
 ## 1. The problem this design solves
 
-Carbon Monitor drives the **Bob Shell CLI** to review pull requests, and Bob
-reaches Carbon design-system knowledge through the **Carbon MCP** server. Both
+Carbon Monitor drives an AI CLI agent to review pull requests: the **Bob Shell
+CLI** (IBM Bob, the default) or the **Claude Code CLI** (Claude). The agent
+reaches Carbon design-system knowledge through the **Carbon MCP** server. These
 dependencies assume a developer's laptop:
 
-| Dependency       | On a laptop                                      | In a container                        |
-| ---------------- | ------------------------------------------------ | ------------------------------------- |
-| Bob Shell CLI    | Installed globally, authenticated by browser SSO | No browser — SSO cannot complete      |
-| Carbon MCP token | A w3id JWT Bob renews via browser                | Expires in ~2 hours and stays expired |
-| Review workspace | `/private/tmp`, pre-trusted by Bob               | Path does not exist                   |
+| Dependency       | On a laptop                                                                    | In a container                        |
+| ---------------- | ------------------------------------------------------------------------------ | ------------------------------------- |
+| Bob Shell CLI    | Installed globally, authenticated by browser SSO                               | No browser — SSO cannot complete      |
+| Claude Code CLI  | Installed globally; reviews authenticate with `ANTHROPIC_API_KEY`, not a login | The same key, nothing to sign in      |
+| Carbon MCP token | A w3id JWT Bob renews via browser                                              | Expires in ~2 hours and stays expired |
+| Review workspace | `/private/tmp`, pre-trusted by Bob                                             | Path does not exist                   |
 
-The container therefore has to solve three things: **get Bob installed**,
-**authenticate Bob without a browser**, and **keep the Carbon MCP token fresh
-indefinitely**.
+The container therefore has to solve three things: **get the agent CLIs
+installed**, **authenticate the agent without a browser**, and **keep the Carbon
+MCP token fresh indefinitely**. Both CLIs ship in the one image, and
+`GITHUB_AI_AGENT_CLI` picks which reviews.
 
 ---
 
@@ -54,16 +57,16 @@ indefinitely**.
 │  │  │                                       │ read by               │  │  │
 │  │  │                                       ▼                       │  │  │
 │  │  │                      ┌─────────────────────────────────┐      │  │  │
-│  │  │                      │ bob run  (spawned per review)   │      │  │  │
+│  │  │                      │ bob run / claude -p (per run)   │      │  │  │
 │  │  │                      │   cwd = /workspace/<bundle>     │      │  │  │
 │  │  │                      └────────────────┬────────────────┘      │  │  │
 │  │  └───────────────────────────────────────┼───────────────────────┘  │  │
 │  └──────────────────────────────────────────┼──────────────────────────┘  │
 │                                             │                             │
 │  Secret: carbon-monitor-secrets ────────────┘                             │
-│    GITHUB_AI_AGENT_TOKEN · BOB_API_KEY · CONSOLE_USERNAME/PASSWORD        │
-│    ES_URL · ES_USERNAME · ES_PASSWORD · SLACK_WEBHOOK_URL                 │
-│    SESSION_SIGNING_KEY · API_SECRET · …                                   │
+│    GITHUB_AI_AGENT_TOKEN · BOB_API_KEY · ANTHROPIC_API_KEY                │
+│    CONSOLE_USERNAME/PASSWORD · ES_URL · ES_USERNAME · ES_PASSWORD         │
+│    SLACK_WEBHOOK_URL · SESSION_SIGNING_KEY · API_SECRET · …               │
 └───────────────────────────────────────────┬───────────────────────────────┘
                                             │
               ┌─────────────────────────────┼─────────────────────────────┐
@@ -79,7 +82,8 @@ indefinitely**.
 
 ## 3. Container image
 
-Built by [`Dockerfile`](../Dockerfile). Two decisions drive everything else.
+Built by [`Dockerfile`](../Dockerfile). Two decisions drive everything else; a
+third, Claude Code, is covered in 3.3.
 
 ### 3.1 Debian, not Alpine
 
@@ -126,10 +130,33 @@ cannot simply be a `package.json` dependency.
 `deploy_ce.sh` checks that host is reachable before building, and warns
 (without failing) when a newer version has been published.
 
-### 3.3 Image layout
+### 3.3 Claude Code is installed from npm, pinned
+
+Claude Code is on the public registry, so it needs no tarball:
+
+```
+ARG CLAUDE_CODE_VERSION=2.1.302
+npm install -g --registry=https://registry.npmjs.org/ "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+ENV DISABLE_AUTOUPDATER=1
+```
+
+The package's native binary arrives through its `linux-x64` (or `linux-arm64`)
+optional dependency. `DISABLE_AUTOUPDATER=1` keeps a running container on the
+pinned version.
+
+The build does not run `claude --version`. The binary is a Bun executable that
+aborts under qemu, and an amd64 build on an arm64 Mac runs under qemu. Instead
+the build compares the installed package version to the pin exactly, and reads
+the resolved `claude` binary's ELF header to confirm it is for the image's
+architecture. The consequence is local only: running the amd64 image on an
+arm64 Mac, `claude --version` still aborts, so the agent tile and `/api/ready`
+fail there. Amd64 Code Engine is unaffected.
+
+### 3.4 Image layout
 
 ```
 /usr/local/lib/node_modules/bobshell/   Bob Shell 2.0.5 + node-pty-linux-x64
+/usr/local/lib/node_modules/@anthropic-ai/claude-code/   Claude Code 2.1.302 + its linux-x64 binary
 /app/src/                               agent + API server
 /app/dist/client/                       pre-built Carbon React console
 /app/node_modules/                      production dependencies only
@@ -143,7 +170,8 @@ cannot simply be a `package.json` dependency.
 
 The console is built on the **host** (`npm run build:client`) and copied in, so
 the runtime image carries no Vite, Sass or React — the same split the
-`carbon-mcp` exemplar uses. Final image: **~401 MB**.
+`carbon-mcp` exemplar uses. Adding Claude Code grew an arm64 build from 542 MB
+to 982 MB.
 
 ---
 
@@ -266,6 +294,20 @@ does not, and the status tile says so explicitly:
 This behaviour was confirmed against the live server: a cached bearer **24 hours
 past expiry** still authorized, because the session id was present.
 
+### 4.5 The same credentials for Claude
+
+`~/.bob/settings/mcp.json` stays the one credential store for both agents; the
+refresh timer writes nothing else. Claude takes its MCP servers from a file of
+its own, so for each review `mcpConnection.getCredentials()` reads the
+`carbon-mcp` entry (URL, `Authorization` and `X-MCP-Session`, or `null` without
+a bearer) and the Claude adapter's `seedHome` writes
+`<bundle>/claude-config/claude-mcp.json` at mode 0600. Claude is started with
+`--mcp-config` on that file and `--strict-mcp-config`. Before a parse-failure
+retry the adapter's `refresh` reads the credentials again and rewrites the file,
+so a bearer renewed during the first run is used. The single-writer rule above
+is unchanged, because the per-review file is derived, never an input to the
+timer.
+
 ---
 
 ## 5. Authentication model
@@ -350,10 +392,12 @@ end.
         │
         ├─► buildReviewBundle()                  src/reviewBundle.js
         │      creates  $BOB_WORKSPACE_ROOT/<owner>__<repo>__pull-N-XXXX/
-        │      writes   pr.json · files.json · diff.patch · PR_REVIEW_REQUEST.md · .bob/
+        │      writes   pr.json · files.json · diff.patch · PR_REVIEW_REQUEST.md
+        │               + the agent's rules and skill (.bob/ or CLAUDE.md and .claude/)
         │
-        ├─► runAgent()                           src/agentRunner.js
+        ├─► runAgent()                           src/agentRunner.js → src/agents/<agent>.js
         │      bob run --trust --accept-license [--team-id …] "<prompt>"
+        │      claude -p --output-format stream-json … "<prompt>"
         │      cwd = the bundle · stdin ignored · 10-minute cap
         │           │
         │           └─► Carbon MCP tools: code_search · docs_search ·
@@ -366,15 +410,28 @@ end.
 
 **Container portability fixes** that make this work off a Mac:
 
-| Concern      | Laptop                                    | Container                                               |
-| ------------ | ----------------------------------------- | ------------------------------------------------------- |
-| Bundle root  | `/private/tmp` (in Bob's trusted folders) | `$BOB_WORKSPACE_ROOT=/workspace`                        |
-| Folder trust | pre-existing `trustedFolders.json`        | seeded in the image **and** `--trust`                   |
-| License gate | accepted interactively                    | seeded **and** `--accept-license`                       |
-| Bob auth     | browser SSO                               | `BOB_API_KEY` (+ `BOB_TEAM_ID` for `general`-type keys) |
+| Concern      | Laptop                                                 | Container                                               |
+| ------------ | ------------------------------------------------------ | ------------------------------------------------------- |
+| Bundle root  | `/private/tmp` (in Bob's trusted folders)              | `$BOB_WORKSPACE_ROOT=/workspace`                        |
+| Folder trust | pre-existing `trustedFolders.json`                     | seeded in the image **and** `--trust`                   |
+| License gate | accepted interactively                                 | seeded **and** `--accept-license`                       |
+| Bob auth     | browser SSO                                            | `BOB_API_KEY` (+ `BOB_TEAM_ID` for `general`-type keys) |
+| Claude auth  | `ANTHROPIC_API_KEY` (a subscription login is not used) | `ANTHROPIC_API_KEY`, no sign-in                         |
 
 `--trust` and `--accept-license` are idempotent no-ops on a laptop that has
 already trusted the folder, so one code path serves both environments.
+
+**Per-run state.** Two reviews must share no file. Bob gets a private `HOME`
+(`<bundle>/home/.bob/`, seeded from the real `~/.bob`). Claude gets a private
+`CLAUDE_CONFIG_DIR` (`<bundle>/claude-config`) and keeps the real `HOME`; its
+child environment is an allowlist, so the harness's secrets never reach it. The
+details are in [HARNESS.md §1](HARNESS.md#reviews-in-flight) and
+[CONFIGURATION.md](CONFIGURATION.md#claude-code).
+
+**Attribution.** The summary comment names the agent that ran, taken from the
+adapter's `displayName`: `Reviewed by: IBM Bob` or `Reviewed by: Claude`, and
+the same name on the `Agent:` line. Logs, telemetry and readiness reasons use the
+agent id (`bob`, `claude`).
 
 ---
 
@@ -410,6 +467,10 @@ process on one port — Code Engine exposes a single port per app.
   │  └──────────────────────────────────┘                          │
   └────────────────────────────────────────────────────────────────┘
 ```
+
+The first tile is the agent. Its label is the CLI's name from the adapter (Bob
+Shell CLI or Claude Code CLI); the cost tile beside it is Bobcoins for Bob and
+Spend for Claude. The sentence under the heading names the agent too.
 
 Built against Carbon MCP ground truth via the `carbon-builder` skill:
 
@@ -491,6 +552,11 @@ cp .env.example .env   # fill in credentials and the deployment target
 Open the console, sign in, and press **Sign in with
 IBMid** once. After that the container renews its own token.
 
+The script passes `GITHUB_AI_AGENT_CLI` (default `bob`) and the `CLAUDE_*`
+settings from `.env`, and syncs `ANTHROPIC_API_KEY` into the secret with the
+other keys. Its credentials guard follows the agent: it refuses to deploy
+without `BOB_API_KEY` for `bob` and without `ANTHROPIC_API_KEY` for `claude`.
+
 > `SESSION_SIGNING_KEY` should be set explicitly. Without it the server falls
 > back to a per-process random key, and every restart signs all operators out.
 
@@ -524,25 +590,28 @@ npm run test:all
 
 ## 10. Configuration reference
 
-| Variable                                | Purpose                                                          | Default                                     |
-| --------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
-| `PORT`                                  | HTTP port (Code Engine injects this)                             | `API_PORT`, then `3000`                     |
-| `BASE_URL`                              | Public URL; the OAuth `redirect_uri` derives from it             | request headers                             |
-| `ES_USERNAME` / `ES_PASSWORD`           | Elasticsearch                                                    | —                                           |
-| `CONSOLE_USERNAME` / `CONSOLE_PASSWORD` | Console sign-in when `AUTH_REQUIRED` is on                       | —                                           |
-| `AUTH_REQUIRED`                         | **Feature flag** — require a console sign-in                     | `false` (open)                              |
-| `SESSION_SIGNING_KEY`                   | HMAC key for session cookies                                     | `API_SECRET`, else per-process random       |
-| `API_SECRET`                            | Bearer token for machine callers                                 | —                                           |
-| `BOB_API_KEY`                           | Bob Shell headless auth                                          | —                                           |
-| `BOB_TEAM_ID`                           | Adds `--team-id`; only for `general`-type keys                   | unset                                       |
-| `BOB_WORKSPACE_ROOT`                    | Review bundle root                                               | `/private/tmp` on macOS, else `os.tmpdir()` |
-| `BOB_CHECK_TIMEOUT_MS`                  | Health-check budget for `bob --version`                          | `20000`                                     |
-| `MCP_STATE_PATH`                        | Where the rotating refresh token is persisted                    | `~/.config/carbon-monitor/mcp-state.json`   |
-| `MCP_REFRESH_MARGIN_SEC`                | Renew this far before expiry                                     | `900`                                       |
-| `MCP_REFRESH_CHECK_MS`                  | Timer interval                                                   | `60000`                                     |
-| `SCHEDULE_TIMEZONE`                     | Zone of the scheduled run time; the console converts for display | `America/Chicago`                           |
-| `CARBON_MCP_URL`                        | Carbon MCP endpoint                                              | `https://mcp.carbondesignsystem.com/mcp`    |
-| `GITHUB_AI_AGENT_TOKEN`                 | GitHub API access                                                | —                                           |
+| Variable                                | Purpose                                                          | Default                                                          |
+| --------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `PORT`                                  | HTTP port (Code Engine injects this)                             | `API_PORT`, then `3000`                                          |
+| `BASE_URL`                              | Public URL; the OAuth `redirect_uri` derives from it             | request headers                                                  |
+| `ES_USERNAME` / `ES_PASSWORD`           | Elasticsearch                                                    | —                                                                |
+| `CONSOLE_USERNAME` / `CONSOLE_PASSWORD` | Console sign-in when `AUTH_REQUIRED` is on                       | —                                                                |
+| `AUTH_REQUIRED`                         | **Feature flag** — require a console sign-in                     | `false` (open)                                                   |
+| `SESSION_SIGNING_KEY`                   | HMAC key for session cookies                                     | `API_SECRET`, else per-process random                            |
+| `API_SECRET`                            | Bearer token for machine callers                                 | —                                                                |
+| `GITHUB_AI_AGENT_CLI`                   | Which agent reviews: `bob` or `claude`                           | `bob`                                                            |
+| `BOB_API_KEY`                           | Bob Shell headless auth                                          | —                                                                |
+| `ANTHROPIC_API_KEY`                     | Claude Code headless auth                                        | —                                                                |
+| `CLAUDE_*`                              | Claude model, effort, caps, tool lists and budget                | see [CONFIGURATION.md](CONFIGURATION.md#1-environment-variables) |
+| `BOB_TEAM_ID`                           | Adds `--team-id`; only for `general`-type keys                   | unset                                                            |
+| `BOB_WORKSPACE_ROOT`                    | Review bundle root                                               | `/private/tmp` on macOS, else `os.tmpdir()`                      |
+| `BOB_CHECK_TIMEOUT_MS`                  | Health-check budget for the agent's `--version`                  | `20000`                                                          |
+| `MCP_STATE_PATH`                        | Where the rotating refresh token is persisted                    | `~/.config/carbon-monitor/mcp-state.json`                        |
+| `MCP_REFRESH_MARGIN_SEC`                | Renew this far before expiry                                     | `900`                                                            |
+| `MCP_REFRESH_CHECK_MS`                  | Timer interval                                                   | `60000`                                                          |
+| `SCHEDULE_TIMEZONE`                     | Zone of the scheduled run time; the console converts for display | `America/Chicago`                                                |
+| `CARBON_MCP_URL`                        | Carbon MCP endpoint                                              | `https://mcp.carbondesignsystem.com/mcp`                         |
+| `GITHUB_AI_AGENT_TOKEN`                 | GitHub API access                                                | —                                                                |
 
 See [`.env.example`](../.env.example) for the full set.
 
@@ -550,28 +619,28 @@ See [`.env.example`](../.env.example) for the full set.
 
 ## 11. API surface
 
-| Method         | Path                     | Auth         | Purpose                                                         |
-| -------------- | ------------------------ | ------------ | --------------------------------------------------------------- |
-| `GET`          | `/api/health`            | none         | Liveness probe                                                  |
-| `GET`          | `/api/ready`             | none         | Readiness probe (503 if Bob is missing or the agent is invalid) |
-| `GET`          | `/api/auth/status`       | none         | Whether sign-in is required / satisfied                         |
-| `POST`         | `/api/auth/login`        | none         | Exchange credentials for a session cookie                       |
-| `POST`         | `/api/auth/logout`       | none         | Clear the session                                               |
-| `GET`          | `/api/mcp/callback`      | state + PKCE | OAuth redirect target                                           |
-| `GET`          | `/api/status`            | yes          | All dependency checks                                           |
-| `GET`          | `/api/config`            | yes          | Sanitized configuration                                         |
-| `GET`          | `/api/mcp/status`        | yes          | Connection detail, no secrets                                   |
-| `POST`         | `/api/mcp/connect`       | yes          | Begin the OAuth bootstrap                                       |
-| `POST`         | `/api/mcp/refresh`       | yes          | Force refresh, or store pasted credentials                      |
-| `POST`         | `/api/mcp/test`          | yes          | Live probe (also repairs a session connection)                  |
-| `POST`         | `/api/review/trigger`    | yes          | Start a review (202, background)                                |
-| `GET`          | `/api/review/status`     | yes          | Current or last run                                             |
-| `POST`         | `/api/mcp/disconnect`    | yes          | Forget the stored grant and strip Bob's MCP headers             |
-| `GET`          | `/api/credits`           | yes          | Bobcoins balance                                                |
-| `GET`          | `/api/credits/history`   | yes          | Per-review spend                                                |
-| `GET`          | `/api/review/logs`       | yes          | Log tail of the current or last run                             |
-| `POST`         | `/api/review/logs/clear` | yes          | Clear that log                                                  |
-| `GET` / `POST` | `/api/schedule`          | yes          | Read or set the review schedule                                 |
+| Method         | Path                     | Auth         | Purpose                                                        |
+| -------------- | ------------------------ | ------------ | -------------------------------------------------------------- |
+| `GET`          | `/api/health`            | none         | Liveness probe                                                 |
+| `GET`          | `/api/ready`             | none         | Readiness probe (503 if the agent's CLI is missing or invalid) |
+| `GET`          | `/api/auth/status`       | none         | Whether sign-in is required / satisfied                        |
+| `POST`         | `/api/auth/login`        | none         | Exchange credentials for a session cookie                      |
+| `POST`         | `/api/auth/logout`       | none         | Clear the session                                              |
+| `GET`          | `/api/mcp/callback`      | state + PKCE | OAuth redirect target                                          |
+| `GET`          | `/api/status`            | yes          | All dependency checks                                          |
+| `GET`          | `/api/config`            | yes          | Sanitized configuration                                        |
+| `GET`          | `/api/mcp/status`        | yes          | Connection detail, no secrets                                  |
+| `POST`         | `/api/mcp/connect`       | yes          | Begin the OAuth bootstrap                                      |
+| `POST`         | `/api/mcp/refresh`       | yes          | Force refresh, or store pasted credentials                     |
+| `POST`         | `/api/mcp/test`          | yes          | Live probe (also repairs a session connection)                 |
+| `POST`         | `/api/review/trigger`    | yes          | Start a review (202, background)                               |
+| `GET`          | `/api/review/status`     | yes          | Current or last run                                            |
+| `POST`         | `/api/mcp/disconnect`    | yes          | Forget the stored grant and strip Bob's MCP headers            |
+| `GET`          | `/api/credits`           | yes          | Agent budget and spend (Bobcoins or USD)                       |
+| `GET`          | `/api/credits/history`   | yes          | Per-review spend                                               |
+| `GET`          | `/api/review/logs`       | yes          | Log tail of the current or last run                            |
+| `POST`         | `/api/review/logs/clear` | yes          | Clear that log                                                 |
+| `GET` / `POST` | `/api/schedule`          | yes          | Read or set the review schedule                                |
 
 `POST /api/mcp/refresh` keeps its original contract: a body carrying `token`
 and/or `sessionId` stores those credentials, exactly as the existing runbooks in
@@ -587,7 +656,12 @@ src/
 ├── index.js                  review orchestration (also the CLI entrypoint)
 ├── constants.js              env-driven defaults: owner, repo, label, limits
 ├── loadEnv.js                dotenv bootstrap (.env wins over the shell)
-├── agentRunner.js            spawns bob (claude/codex paths exist, unsupported)
+├── agentRunner.js            spawns the selected agent's CLI, folds its event stream
+├── agents/
+│   ├── index.js              the registry: the only list of agents
+│   ├── bob.js                IBM Bob adapter
+│   ├── claude.js             Claude adapter
+│   └── common.js             Carbon MCP names, evidence helper
 ├── reviewBundle.js           builds the agent workspace  [getWorkspaceRoot]
 ├── reviewPrompt.js           review prompt; summary and inline comment text
 ├── githubClient.js           PRs, diffs, comments, labels
@@ -605,6 +679,7 @@ src/
     ├── healthChecks.js       dependency probes for the status panel
     ├── sessionAuth.js        cookie sessions (ported from Carbon Migrate)
     ├── bobCredits.js         Bobcoins balance from the Bob gateway
+    ├── spend.js              month-to-date spend of a dollar-billed agent
     ├── creditLedger.js       per-review spend ledger
     ├── reviewLog.js          log tail for the console
     ├── reviewProgress.js     in-flight and queued reviews into reviewState
@@ -622,7 +697,7 @@ client/src/
     ├── StatusTile.jsx        IconIndicator tile
     ├── ExpiryCountdown.jsx   live token countdown
     ├── McpConnectionPanel.jsx  connect · test · refresh · disconnect · manual entry
-    ├── BobcoinsPanel.jsx     balance and spend history
+    ├── BobcoinsPanel.jsx     Bobcoins or dollar spend, and history
     ├── SchedulePanel.jsx     scheduled reviews settings
     ├── ReviewLog.jsx         live log tail
     ├── AboutAi.jsx           about the AI review
@@ -630,7 +705,8 @@ client/src/
 ```
 
 ★ `mcpConnection.js` is the single writer of `~/.bob/settings/mcp.json`; two
-independent writers would silently clobber each other. `tokenManager.js` is
+independent writers would silently clobber each other. Claude's per-review MCP
+file is derived from it (`getCredentials`, section 4.5). `tokenManager.js` is
 unused and kept for reference only.
 
 ---
@@ -640,6 +716,10 @@ unused and kept for reference only.
 - **Bob Shell cannot be a `package.json` dependency.** It is distributed only as
   a tarball from IBM Cloud Object Storage. Moving versions means updating both
   `BOB_VERSION` and `BOB_SHA256` in the Dockerfile.
+- **Claude Code is pinned too.** Moving versions means updating
+  `CLAUDE_CODE_VERSION` in the Dockerfile. The build checks the version and the
+  binary's architecture but does not run it, so a bad release shows up at the
+  agent tile, not in the build.
 - **One instance only.** See §4.3. Horizontal scaling requires moving refresh
   state to shared storage and electing a single refresher.
 - **OAuth needs one human, once.** Carbon MCP advertises no

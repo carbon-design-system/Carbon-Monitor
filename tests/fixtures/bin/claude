@@ -1,4 +1,168 @@
 #!/usr/bin/env node
-// Fake non-Bob agent: answers --version and otherwise says nothing, so a review
-// fails to parse. Enough to watch the pool's concurrency rule for non-Bob agents.
-if (process.argv.includes('--version')) process.stdout.write('fake-claude\n');
+// Fake Claude Code for offline tests. Its controls are CLAUDE_FAKE_* because the
+// adapter's env allowlist passes the CLAUDE_ prefix and nothing else of ours.
+// It checks the flags the harness must send, then replays a fixture in split chunks, exiting 1 when its result is an error.
+// CLAUDE_FAKE_FIXTURE_DIR picks <dir>/<pr>.ndjson from PR_REVIEW_REQUEST.md in the
+// cwd (fallback CLAUDE_FAKE_FIXTURE). A first line `#fake-claude {json}` is a
+// directive, not stream data: { sleepMs, emptyFirstRuns }.
+// CLAUDE_FAKE_MARKER writes the child's view of its environment (key names only).
+// CLAUDE_FAKE_LOG appends one JSON line per run with pid, config dir, start and end.
+// CLAUDE_FAKE_EXIT overrides the exit code; CLAUDE_FAKE_ARGS=1 echoes argv to stderr.
+const fs = require('fs');
+const path = require('path');
+
+const argv = process.argv.slice(2);
+if (argv.includes('--version')) {
+  process.stdout.write('fake-claude 0.0.0\n');
+  process.exit(0);
+}
+
+const value = (flag) => {
+  const i = argv.indexOf(flag);
+  return i === -1 ? undefined : argv[i + 1];
+};
+const fail = (code, message) => {
+  process.stderr.write(`fake claude: ${message}\n`);
+  process.exit(code);
+};
+
+if (!argv.includes('-p')) fail(97, 'expected -p');
+if (value('--output-format') !== 'stream-json') {
+  fail(97, 'expected --output-format stream-json');
+}
+if (!argv.includes('--verbose')) fail(97, 'expected --verbose');
+const mcpConfig = value('--mcp-config');
+if (!mcpConfig || mcpConfig.startsWith('--'))
+  fail(97, 'expected --mcp-config <path>');
+
+// Compared by real parent directory: the config dir need not exist yet, and
+// macOS temp paths go through a symlink.
+const same = (a, b) =>
+  path.join(fs.realpathSync(path.dirname(a)), path.basename(a)) ===
+  path.join(fs.realpathSync(path.dirname(b)), path.basename(b));
+const configDir = process.env.CLAUDE_CONFIG_DIR;
+if (!configDir || !same(configDir, path.join(process.cwd(), 'claude-config'))) {
+  fail(98, `CLAUDE_CONFIG_DIR is ${configDir}, expected <cwd>/claude-config`);
+}
+
+process.stderr.write(`fake-claude pid=${process.pid}\n`);
+if (process.env.CLAUDE_FAKE_ARGS === '1') {
+  process.stderr.write(`fake-claude args=${JSON.stringify(argv)}\n`);
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function prNumber() {
+  try {
+    const md = fs.readFileSync('PR_REVIEW_REQUEST.md', 'utf8');
+    return Number(/\*\*PR Number:\*\* #(\d+)/.exec(md)[1]);
+  } catch {
+    return null;
+  }
+}
+
+(async () => {
+  const startedAt = Date.now();
+  const pr = prNumber();
+  const dir = process.env.CLAUDE_FAKE_FIXTURE_DIR;
+  const file =
+    dir && pr
+      ? path.join(dir, `${pr}.ndjson`)
+      : process.env.CLAUDE_FAKE_FIXTURE;
+  let data = file ? fs.readFileSync(file) : Buffer.alloc(0);
+
+  let directive = {};
+  if (data.subarray(0, 13).toString() === '#fake-claude ') {
+    const end = data.indexOf('\n');
+    directive = JSON.parse(data.subarray(13, end).toString());
+    data = data.subarray(end + 1);
+  }
+
+  if (process.env.CLAUDE_FAKE_MARKER) {
+    let mcp = null;
+    try {
+      mcp = JSON.parse(fs.readFileSync(mcpConfig, 'utf8'));
+    } catch {
+      // Recorded as null.
+    }
+    const server = mcp && mcp.mcpServers && mcp.mcpServers['carbon-mcp'];
+    fs.writeFileSync(
+      process.env.CLAUDE_FAKE_MARKER,
+      JSON.stringify({
+        claudeConfigDir: configDir,
+        disableAutoupdater: process.env.DISABLE_AUTOUPDATER,
+        hasAnthropicKey: 'ANTHROPIC_API_KEY' in process.env,
+        hasBobKey: 'BOB_API_KEY' in process.env,
+        mcpConfig,
+        mcpType: server ? server.type : null,
+        mcpHasAuthorization: !!(
+          server &&
+          server.headers &&
+          server.headers.Authorization
+        ),
+        envKeys: Object.keys(process.env).sort(),
+        args: argv,
+        pr,
+        pid: process.pid,
+      })
+    );
+  }
+  // Per bundle too, so a concurrent batch can show which review had which dir.
+  fs.writeFileSync(
+    'fake-claude-env.json',
+    JSON.stringify({ home: configDir, pid: process.pid, pr })
+  );
+
+  // The counter lives in the config dir, which both runs of one review share.
+  if (directive.emptyFirstRuns) {
+    const counter = path.join(configDir, `fake-claude-runs-${pr}`);
+    const runs =
+      (Number(fs.existsSync(counter) && fs.readFileSync(counter)) || 0) + 1;
+    fs.writeFileSync(counter, String(runs));
+    if (runs <= directive.emptyFirstRuns) {
+      data = Buffer.from(
+        '{"type":"assistant","message":{"id":"msg_empty","content":[{"type":"text","text":"No review in this run."}]}}\n' +
+          '{"type":"result","subtype":"success","is_error":false,"session_id":"sess-empty","total_cost_usd":0.05,"usage":{"input_tokens":10,"output_tokens":5}}\n'
+      );
+    }
+  }
+
+  await sleep(
+    directive.sleepMs ?? (Number(process.env.CLAUDE_FAKE_SLEEP_MS) || 0)
+  );
+  // 37-byte chunks land mid-line and mid-UTF-8 sequence, exercising the carry.
+  for (let o = 0; o < data.length; o += 37) {
+    process.stdout.write(data.subarray(o, o + 37));
+    await sleep(1);
+  }
+  if (process.env.CLAUDE_FAKE_LOG) {
+    fs.appendFileSync(
+      process.env.CLAUDE_FAKE_LOG,
+      JSON.stringify({
+        pr,
+        pid: process.pid,
+        home: configDir,
+        prompt: argv[argv.length - 1],
+        startedAt,
+        endedAt: Date.now(),
+      }) + '\n'
+    );
+  }
+
+  // The last result line decides the exit code, as the real CLI's does.
+  let isError = false;
+  for (const l of data.toString().split('\n')) {
+    if (!l.startsWith('{"type":"result"')) continue;
+    try {
+      isError = !!JSON.parse(l).is_error;
+    } catch {
+      // Keep the previous answer.
+    }
+  }
+  process.exitCode =
+    process.env.CLAUDE_FAKE_EXIT !== undefined
+      ? Number(process.env.CLAUDE_FAKE_EXIT)
+      : isError
+        ? 1
+        : 0;
+})();

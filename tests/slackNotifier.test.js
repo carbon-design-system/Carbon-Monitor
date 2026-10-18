@@ -360,6 +360,96 @@ async function main() {
     assert.ok(!allText.includes('`@media`'), 'Backtick span must be stripped');
   });
 
+  // ── Low-balance alert names the agent's unit ─────────────────────────────────
+  const lowBlocks = (opts) => _buildLowTokenPayload(opts).blocks;
+  const REPO = 'carbon-design-system/carbon';
+
+  await test('low-balance alert for Bob is word for word what it was', () => {
+    const header = {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: '⚠️  Carbon Monitor — Scheduled Review Paused',
+        emoji: true,
+      },
+    };
+    const action = {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text:
+          '*Action required:* increase your Bobcoins token limit, or disable scheduled reviews in the Carbon Monitor Settings panel. ' +
+          'Scheduled reviews will remain paused until a human resumes them.',
+      },
+    };
+    assert.deepStrictEqual(
+      lowBlocks({
+        percentRemaining: 8,
+        threshold: 10,
+        repo: REPO,
+        isReminder: false,
+        agent: 'bob',
+      }),
+      [
+        header,
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Repo:* ${REPO}\n*Bobcoins remaining:* 8% (threshold: 10%)`,
+          },
+        },
+        { type: 'divider' },
+        action,
+      ]
+    );
+    // No agent given: the configured one, which is Bob here.
+    assert.deepStrictEqual(
+      lowBlocks({
+        percentRemaining: null,
+        threshold: 10,
+        repo: REPO,
+        isReminder: true,
+      })[1].text.text,
+      `*Repo:* ${REPO}\n*Bobcoins remaining:* below threshold (threshold: 10%)\n` +
+        '_This is a daily reminder — the schedule remains paused._'
+    );
+  });
+
+  await test('low-balance alert for Claude names the budget and the variable to raise', () => {
+    const blocks = lowBlocks({
+      percentRemaining: 6.5,
+      threshold: 10,
+      repo: REPO,
+      isReminder: false,
+      agent: 'claude',
+    });
+    assert.strictEqual(
+      blocks[1].text.text,
+      `*Repo:* ${REPO}\n*Claude budget remaining:* 6.5% (threshold: 10%)`
+    );
+    assert.strictEqual(
+      blocks[3].text.text,
+      '*Action required:* raise CLAUDE_MONTHLY_BUDGET_USD, or disable scheduled reviews in the Carbon Monitor Settings panel. ' +
+        'Scheduled reviews will remain paused until a human resumes them.'
+    );
+    const text = JSON.stringify(blocks);
+    assert.ok(!/Bobcoins/.test(text), 'no Bobcoins in a Claude alert');
+
+    const reminder = lowBlocks({
+      percentRemaining: null,
+      threshold: undefined,
+      repo: REPO,
+      isReminder: true,
+      agent: 'claude',
+    });
+    assert.strictEqual(
+      reminder[1].text.text,
+      `*Repo:* ${REPO}\n*Claude budget remaining:* below threshold\n` +
+        '_This is a daily reminder — the schedule remains paused._'
+    );
+  });
+
   // ── Summary ──────────────────────────────────────────────────────────────────
   console.log(`\n  ${passed} passed, ${failed} failed\n`);
   process.exit(failed > 0 ? 1 : 0);

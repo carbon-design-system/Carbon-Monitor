@@ -41,6 +41,7 @@ const {
 const scheduleManager = require('./scheduleManager');
 const { reviewPRs, parsePrNumbers, resolveReviewTargets } = require('../index');
 const { isAgentAvailable, getConfiguredAgent } = require('../agentRunner');
+const agents = require('../agents');
 const { checkStartup, getStartupProblems } = require('../config/env');
 const {
   MAX_PRS_PER_RUN,
@@ -412,6 +413,7 @@ const READY_PROBE_TTL_MS = 60_000;
 // A miss is retried soon: a cold Bob can overrun the probe timeout once.
 const READY_PROBE_MISS_TTL_MS = 5_000;
 const agentProbe = {
+  agent: null,
   at: 0,
   pending: null,
   available: false,
@@ -426,6 +428,15 @@ const agentProbe = {
  * readiness never drops mid-review and takes the console offline.
  */
 function agentOnPath(agent) {
+  // What was seen for one agent says nothing about another.
+  if (agentProbe.agent !== agent) {
+    Object.assign(agentProbe, {
+      agent,
+      at: 0,
+      available: false,
+      everAvailable: false,
+    });
+  }
   const ttl = agentProbe.available
     ? READY_PROBE_TTL_MS
     : READY_PROBE_MISS_TTL_MS;
@@ -448,7 +459,9 @@ function agentOnPath(agent) {
 
 /** The agent GITHUB_AI_AGENT_CLI selects, defaulting to bob as constants.js does. */
 function resolveAgent() {
-  return process.env.GITHUB_AI_AGENT_CLI ? getConfiguredAgent() : 'bob';
+  return process.env.GITHUB_AI_AGENT_CLI
+    ? getConfiguredAgent()
+    : agents.DEFAULT_ID;
 }
 
 /**
@@ -498,10 +511,13 @@ function esHost() {
 
 /** GET /api/config — sanitized runtime configuration. */
 function handleConfig(req, res) {
+  const adapter = agents.resolve();
   sendJSON(res, 200, {
     success: true,
     config: {
-      agent: process.env.GITHUB_AI_AGENT_CLI || 'bob',
+      agent: process.env.GITHUB_AI_AGENT_CLI || agents.DEFAULT_ID,
+      agentName: adapter.displayName,
+      agentCli: adapter.cliName,
       owner: process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system',
       repo: process.env.GITHUB_AI_AGENT_REPO || 'carbon',
       label: process.env.GITHUB_AI_AGENT_REVIEW_LABEL || 'AIReviewed',
@@ -527,21 +543,25 @@ function handleConfig(req, res) {
 // ── Bobcoins ────────────────────────────────────────────────────────────────
 
 const CREDIT_EVENTS_INDEX = 'carbon-monitor-events-*';
-const CREDIT_EVENT_FILTER = [
+// The root agent term keeps a deployment that switched agents from adding one
+// agent's unit to the other's.
+const creditEventFilter = (adapter) => [
   { term: { event_type: 'pr_review_completed' } },
+  { term: { agent: adapter.id } },
   { range: { timestamp: { gte: 'now-90d' } } },
 ];
 const CREDIT_SUMMARY_TTL_MS = 60_000;
 
 let creditSummaryCache = null;
 let creditSummaryInFlight = null;
+let agentCreditsCache = null;
 
-function creditSearchQuery(size, sort) {
+function creditSearchQuery(adapter, size, sort) {
   return {
     index: CREDIT_EVENTS_INDEX,
     size,
     ...(sort ? { sort } : {}),
-    query: { bool: { filter: CREDIT_EVENT_FILTER } },
+    query: { bool: { filter: creditEventFilter(adapter) } },
   };
 }
 
@@ -561,13 +581,17 @@ function mapCreditEvent(hit) {
     coinsSpent: numberOrNull(payload.coinsSpent),
     remainingAfter: numberOrNull(payload.remainingAfter),
     durationMs: numberOrNull(payload.durationMs),
+    // Absent on events from before units existed; the ledger helpers read that as Bobcoins.
+    ...(typeof payload.cost_unit === 'string'
+      ? { costUnit: payload.cost_unit }
+      : {}),
   };
 }
 
-async function readCreditsHistoryFromEs(limit) {
+async function readCreditsHistoryFromEs(adapter, limit) {
   const result = await esCall((client) =>
     client.search({
-      ...creditSearchQuery(Math.min(limit, 100), [
+      ...creditSearchQuery(adapter, Math.min(limit, 100), [
         { timestamp: { order: 'desc' } },
       ]),
       _source: [
@@ -578,6 +602,7 @@ async function readCreditsHistoryFromEs(limit) {
         'payload.coinsSpent',
         'payload.remainingAfter',
         'payload.durationMs',
+        'payload.cost_unit',
       ],
     })
   );
@@ -629,10 +654,10 @@ function mapCreditSummary(result) {
   };
 }
 
-async function readCreditsSummaryFromEs() {
+async function readCreditsSummaryFromEs(adapter) {
   const result = await esCall((client) =>
     client.search({
-      ...creditSearchQuery(0),
+      ...creditSearchQuery(adapter, 0),
       aggs: {
         reviewCount: { value_count: { field: 'event_id' } },
         totalSpent: { sum: { field: 'payload.coinsSpent' } },
@@ -657,27 +682,47 @@ async function readCreditsSummaryFromEs() {
   return mapCreditSummary(result);
 }
 
-async function getCreditsSummary() {
+async function getCreditsSummary(adapter) {
   const now = Date.now();
   if (
     creditSummaryCache &&
+    creditSummaryCache.agent === adapter.id &&
     now - creditSummaryCache.at < CREDIT_SUMMARY_TTL_MS
   ) {
     return creditSummaryCache.value;
   }
   if (!creditSummaryInFlight) {
     creditSummaryInFlight = (async () => {
-      const summary = await readCreditsSummaryFromEs();
+      const summary = await readCreditsSummaryFromEs(adapter);
       if (summary !== null) {
-        creditSummaryCache = { at: Date.now(), value: summary };
+        creditSummaryCache = {
+          at: Date.now(),
+          value: summary,
+          agent: adapter.id,
+        };
         return summary;
       }
-      return creditLedger.summary();
+      return creditLedger.summary({ unit: adapter.costUnit });
     })().finally(() => {
       creditSummaryInFlight = null;
     });
   }
   return creditSummaryInFlight;
+}
+
+/** A non-gateway agent's budget status, cached like the Bob balance. */
+async function getAgentCredits(adapter) {
+  const now = Date.now();
+  if (
+    agentCreditsCache &&
+    agentCreditsCache.agent === adapter.id &&
+    now - agentCreditsCache.at < CREDIT_SUMMARY_TTL_MS
+  ) {
+    return agentCreditsCache.value;
+  }
+  const value = await adapter.credits();
+  agentCreditsCache = { at: Date.now(), value, agent: adapter.id };
+  return value;
 }
 
 /**
@@ -691,29 +736,32 @@ async function getCreditsSummary() {
  * tinguishable from a live one at the resolution anyone reads it.
  */
 async function handleCredits(req, res) {
+  const adapter = agents.resolve();
+  const gateway = adapter.costUnit === 'bobcoins';
+
   // Independent sources — a slow gateway must not also delay the local ledger.
   let [balance, summary] = await Promise.all([
-    bobCredits.getBalance(),
-    getCreditsSummary(),
+    gateway ? bobCredits.getBalance() : getAgentCredits(adapter),
+    getCreditsSummary(adapter),
   ]);
 
   // Reviews write the ledger from their own process, so this process's cached
   // balance can predate it; a newer ledger entry is the only cross-process
   // signal, so force a re-read on that alone (see docs/API.md).
-  if (summary.lastRecordedAt && balance.fetchedAt) {
+  if (gateway && summary.lastRecordedAt && balance.fetchedAt) {
     const ledgerNewer =
       new Date(summary.lastRecordedAt).getTime() >
       new Date(balance.fetchedAt).getTime();
     if (ledgerNewer) {
       balance = await bobCredits.getBalance({ force: true });
-      summary = await getCreditsSummary();
+      summary = await getCreditsSummary(adapter);
     }
   }
 
   sendJSON(res, 200, {
     success: true,
     balance,
-    summary,
+    summary: { ...summary, costUnit: adapter.costUnit },
     timestamp: new Date().toISOString(),
   });
 }
@@ -739,16 +787,21 @@ async function handleCreditsHistory(req, res) {
       ? Math.min(Math.floor(requested), 100)
       : 100;
 
+  const adapter = agents.resolve();
   const esEntries = process.env.ES_URL
-    ? await readCreditsHistoryFromEs(limit)
+    ? await readCreditsHistoryFromEs(adapter, limit)
     : null;
   const entries =
-    esEntries === null ? await creditLedger.readRecent(limit) : esEntries;
+    esEntries === null
+      ? await creditLedger.readRecent(limit, { unit: adapter.costUnit })
+      : esEntries;
 
   sendJSON(res, 200, {
     success: true,
     entries,
-    cumulative: creditLedger.buildCumulative(entries),
+    cumulative: creditLedger.buildCumulative(entries, {
+      unit: adapter.costUnit,
+    }),
     timestamp: new Date().toISOString(),
   });
 }

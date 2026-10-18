@@ -2,7 +2,7 @@
  * Carbon PR Review Agent
  *
  * Simplified PR review agent for carbon-design-system/carbon repository
- * Uses modular architecture with CLI agents (bob/claude/codex)
+ * Uses modular architecture with CLI agents (see src/agents)
  *
  * Based on the original agent_prs.js but streamlined for Carbon's needs:
  * - Single repository only (no multi-repo loop)
@@ -48,17 +48,13 @@ if (_rawTargetPR != null) {
 const { randomUUID } = require('crypto');
 const { checkStartup } = require('./config/env');
 const { createGitHubClient, createOctokit } = require('./githubClient');
-const {
-  buildReviewBundle,
-  seedBobHome,
-  refreshBobMcp,
-} = require('./reviewBundle');
+const { buildReviewBundle } = require('./reviewBundle');
 const {
   runAgent,
-  summarizeToolCalls,
   getConfiguredAgent,
   isAgentAvailable,
 } = require('./agentRunner');
+const agents = require('./agents');
 const {
   parseReviewOutput,
   extractCarbonBuilderSkillReads,
@@ -96,9 +92,9 @@ function reportedCost(stats) {
     : null;
 }
 
-// Exact counts from Bob's result record, or null so the caller falls back to
-// the character estimate.
-function tokensFromStats(stats) {
+// Exact counts from the agent's result record, or null so the caller falls back
+// to the character estimate.
+function tokensFromStats(stats, adapter = agents.get(agents.DEFAULT_ID)) {
   if (!stats) return null;
   const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   const input = num(stats.input_tokens);
@@ -110,16 +106,37 @@ function tokensFromStats(stats) {
     total: num(stats.total_tokens) ?? input + output,
     cacheRead: num(stats.cache_read_tokens),
     cacheWrite: num(stats.cache_write_tokens),
-    source: 'bob',
+    source: adapter.id,
   };
 }
 
 // Bob's own figure is the cost of record; the balance delta is the permanent
 // fallback and the cross-check. `ledgerSource` keeps the ledger's old label
 // when neither figure exists.
-function resolveSpend({ stats, delta, tracked, after, label = '' }) {
+function resolveSpend({
+  stats,
+  delta,
+  tracked,
+  after,
+  label = '',
+  adapter = agents.get(agents.DEFAULT_ID),
+}) {
   const reported = reportedCost(stats);
   const suffix = label ? ` (${label})` : '';
+  if (adapter.costUnit !== 'bobcoins') {
+    // No balance to bracket: the result record is the only figure.
+    if (reported === null) {
+      return { coinsSpent: null, source: 'unknown', ledgerSource: 'unknown' };
+    }
+    console.log(
+      `\n💲 ${adapter.displayName} cost${suffix}: ${reported} ${adapter.costUnit}`
+    );
+    return {
+      coinsSpent: reported,
+      source: adapter.resultSource,
+      ledgerSource: adapter.resultSource,
+    };
+  }
   if (reported !== null) {
     if (delta !== null && Math.abs(reported - delta) > 0.01) {
       console.warn(
@@ -163,22 +180,25 @@ function reviewTextFor(run) {
 // Observed tool calls beat the transcript regex. With no recognised event
 // evidence the regex runs over the raw tool calls, then the text, so an event
 // shape this code does not know about cannot silently drop every Carbon finding.
-function skillReadsFor(run, text, evidence) {
-  if (evidence.skillInvoked) return ['use_skill:carbon-builder'];
+function skillReadsFor(
+  run,
+  text,
+  evidence,
+  adapter = agents.get(agents.DEFAULT_ID)
+) {
+  if (evidence.skillInvoked) return [adapter.skill.sentinel];
   if (evidence.skillFiles.length > 0) return evidence.skillFiles;
   if (run.format !== 'stream-json') return extractCarbonBuilderSkillReads(text);
 
-  // Matched per call so a use_skill for another skill cannot pair with a later
+  // Matched per call so a skill call for another skill cannot pair with a later
   // mention of carbon-builder.
   const calls = run.toolCalls || [];
   let reads = extractCarbonBuilderSkillReads(JSON.stringify(calls));
   if (
     reads.length === 0 &&
-    calls.some((c) =>
-      /use_skill[\s\S]{0,300}carbon-builder/i.test(JSON.stringify(c))
-    )
+    calls.some((c) => adapter.skill.pattern.test(JSON.stringify(c)))
   ) {
-    reads = ['use_skill:carbon-builder'];
+    reads = [adapter.skill.sentinel];
   }
   if (reads.length === 0) reads = extractCarbonBuilderSkillReads(text);
   if (reads.length > 0) {
@@ -190,7 +210,8 @@ function skillReadsFor(run, text, evidence) {
 }
 
 // Sum of the first run's and the retry's spend. The source is the retry's when
-// the first run has none, and bob-result only when both runs reported one.
+// the first run has none, and the agent's result source only when both runs
+// reported one.
 function addSpend(first, retry) {
   if (retry.coinsSpent === null) return first;
   if (first.coinsSpent === null) {
@@ -199,8 +220,8 @@ function addSpend(first, retry) {
   return {
     coinsSpent: Math.round((first.coinsSpent + retry.coinsSpent) * 1e6) / 1e6,
     source:
-      first.source === 'bob-result' && retry.source === 'bob-result'
-        ? 'bob-result'
+      first.source === retry.source && first.source.endsWith('-result')
+        ? first.source
         : 'balance-delta',
   };
 }
@@ -227,8 +248,9 @@ function sumCalls(calls) {
  * @param {number|null} opts.coinsSpent
  * @param {number} opts.durationMs
  * @param {string} [opts.source='balance-delta'] - How coinsSpent was derived
- * @param {Object|null} [opts.stats] - Bob's result stats, when the run had them
+ * @param {Object|null} [opts.stats] - The agent's result stats, when the run had them
  * @param {number|null} [opts.toolCalls]
+ * @param {Object} [opts.adapter] - Whose unit the spend is in; defaults to Bob
  */
 async function recordReviewCost({
   correlationId,
@@ -239,6 +261,7 @@ async function recordReviewCost({
   source = 'balance-delta',
   stats = null,
   toolCalls = null,
+  adapter = agents.get(agents.DEFAULT_ID),
 }) {
   try {
     const balance = after && after.available ? after : null;
@@ -252,8 +275,9 @@ async function recordReviewCost({
       remainingAfter: balance ? balance.remaining : null,
       durationMs,
       source,
+      costUnit: adapter.costUnit,
       taskId: stats && stats.task_id ? String(stats.task_id) : null,
-      tokens: tokensFromStats(stats),
+      tokens: tokensFromStats(stats, adapter),
       toolCalls,
     });
   } catch (error) {
@@ -515,10 +539,10 @@ async function reviewPRs(options = {}) {
   const agent = REVIEW_AGENT;
 
   // Validate agent
-  const validAgents = ['bob', 'claude', 'codex'];
-  if (!validAgents.includes(agent)) {
+  const adapter = agents.find(agent);
+  if (!adapter) {
     console.error(
-      `❌ Invalid agent: ${agent}. Must be one of: ${validAgents.join(', ')}`
+      `❌ Invalid agent: ${agent}. Must be one of: ${agents.ids().join(', ')}`
     );
     return;
   }
@@ -531,14 +555,10 @@ async function reviewPRs(options = {}) {
     return;
   }
 
-  // Bobcoins are Bob's currency, and BOB_API_KEY stays configured whichever CLI
-  // is selected (checkBob and the MCP config both need it). Bracketing the Bob
-  // gateway around a claude or codex run would therefore attribute whatever
-  // else touched the account in that window to this review — and, with nothing
-  // else touching it, record a hard 0 that drags averagePerReview toward zero
-  // for every review. Two gateway round-trips on the review's critical path for
-  // a figure that is structurally always zero, at that.
-  const tracksBobcoins = agent === 'bob';
+  // Only the bobcoins unit brackets the Bob gateway: around another agent's run it
+  // would attribute unrelated account activity, or a hard 0, to this review.
+  const tracksBobcoins = adapter.costUnit === 'bobcoins';
+  const spendWord = tracksBobcoins ? 'Bobcoins' : 'Spend';
   if (!tracksBobcoins) {
     console.log(
       `ℹ️  Bobcoins accounting skipped — '${agent}' does not spend them\n`
@@ -655,18 +675,15 @@ async function reviewPRs(options = {}) {
       try {
         // Scheduled batches stop spending once the balance is confirmed low,
         // the same rule the scheduler applies before it starts one.
-        if (options.triggeredBy === 'schedule' && tracksBobcoins) {
-          const balance = await bobCredits.getBalance();
-          const { low, threshold } = bobCredits.isLowBalance(balance);
-          if (low) {
-            console.warn(
-              `⏭️  PR #${pr.number} skipped — Bobcoins at ${balance.percentRemaining}% (below ${threshold}% threshold)`
-            );
+        if (options.triggeredBy === 'schedule') {
+          const credits = await adapter.credits();
+          if (credits.available && credits.low) {
+            console.warn(`⏭️  PR #${pr.number} skipped — ${credits.summary}`);
             prResults.push({
               prNumber: pr.number,
               prUrl: pr.html_url,
               skipped: true,
-              reason: `Bobcoins at ${balance.percentRemaining}% (below ${threshold}% threshold)`,
+              reason: credits.summary,
             });
             return prResults;
           }
@@ -822,12 +839,19 @@ async function reviewPRs(options = {}) {
           diff,
           files,
           client,
+          agent,
         });
         console.log(`✅ Bundle: ${bundle.dir}`);
 
-        // Two Bob processes must share no file, so each review gets its own HOME.
-        const home =
-          agent === 'bob' ? await seedBobHome(bundle.dir) : undefined;
+        // Two agent processes must share no file, so each review gets its own
+        // HOME (Bob) or config directory (Claude).
+        const creds = await require('./api/mcpConnection')
+          .getCredentials()
+          .catch(() => null);
+        const { home, refresh: refreshHome } = await adapter.seedHome(
+          bundle.dir,
+          creds
+        );
 
         // Run agent review
         console.log(`\n🤖 Running ${agent} review...`);
@@ -927,6 +951,7 @@ async function reviewPRs(options = {}) {
               delta,
               tracked: tracksBobcoins && !shared,
               after: coinsAfter,
+              adapter,
             });
             coinsSpent = spend.coinsSpent;
             coinsSource = spend.source;
@@ -940,33 +965,41 @@ async function reviewPRs(options = {}) {
               source: spend.ledgerSource,
               stats: runStats,
               toolCalls: runStats ? (runStats.tool_calls ?? null) : null,
+              adapter,
             });
           } catch (costErr) {
-            console.warn(`⚠️  Bobcoins accounting failed: ${costErr.message}`);
+            console.warn(
+              `⚠️  ${spendWord} accounting failed: ${costErr.message}`
+            );
           }
         }
 
         console.log(`\n✅ ${agent} review received`);
 
         // ── Carbon Builder skill activation observability ─────────────────
-        // Evidence is the tool calls seen in Bob's event stream (a use_skill
-        // call, or reads of .bob/skills/carbon-builder/); runs without an event
-        // stream fall back to the shared transcript extractor.
-        let evidence = summarizeToolCalls(agentRun.toolCalls);
-        let skillFilesRead = skillReadsFor(agentRun, agentOutput, evidence);
+        // Evidence is the tool calls seen in the agent's event stream (a skill
+        // call, or reads of the bundle's carbon-builder files); runs without an
+        // event stream fall back to the shared transcript extractor.
+        let evidence = adapter.evidence(agentRun.toolCalls);
+        let skillFilesRead = skillReadsFor(
+          agentRun,
+          agentOutput,
+          evidence,
+          adapter
+        );
         if (skillFilesRead.length > 0) {
-          // The skill invocation leaves a single "use_skill:carbon-builder"
-          // signal; file reads leave one entry per skill file. Either form means
-          // the agent loaded the skill before reviewing.
-          const how = skillFilesRead.includes('use_skill:carbon-builder')
-            ? 'invoked it via the use_skill tool'
+          // The skill invocation leaves a single sentinel entry; file reads leave
+          // one entry per skill file. Either form means the agent loaded the
+          // skill before reviewing.
+          const how = skillFilesRead.includes(adapter.skill.sentinel)
+            ? `invoked it via the ${adapter.skill.tool} tool`
             : `read ${skillFilesRead.length} skill file(s): ${skillFilesRead.join(', ')}`;
           console.log(
             `\n🔬 Carbon Builder skill: ✅ loaded and used by the agent — ${how}`
           );
         } else {
           console.log(
-            '\n🔬 Carbon Builder skill: ⚠️  NOT loaded — the agent transcript shows no use_skill call and no read of .bob/skills/carbon-builder/. Carbon claims in this review are unverified by the skill.'
+            `\n🔬 Carbon Builder skill: ⚠️  NOT loaded — the agent transcript shows no ${adapter.skill.tool} call and no read of ${adapter.skill.dir}. Carbon claims in this review are unverified by the skill.`
           );
         }
         if (agentRun.format === 'stream-json') {
@@ -980,6 +1013,8 @@ async function reviewPRs(options = {}) {
         // Parse review output
         let review = parseReviewOutput(agentOutput, {
           skillReads: skillFilesRead,
+          skillDir: adapter.skill.dir,
+          readTool: adapter.promptFragments.readTool,
         });
 
         // Run of record: the first run, or the retry when it produced the review.
@@ -995,14 +1030,14 @@ async function reviewPRs(options = {}) {
         // Re-run the agent once and re-parse before skipping the PR entirely.
         if (!review) {
           console.warn(
-            '⚠️  Parse failed — retrying bob review once (output is non-deterministic)'
+            `⚠️  Parse failed — retrying ${agent} review once (output is non-deterministic)`
           );
           try {
             runs = 2;
             let retryCoinsBefore = null;
             let retryMark = markNow();
             // A bearer refreshed during the first run is picked up here.
-            if (home) await refreshBobMcp(home).catch(() => {});
+            await refreshHome?.().catch(() => {});
             if (tracksBobcoins) {
               retryMark = markNow();
               retryCoinsBefore = await bobCredits
@@ -1030,58 +1065,67 @@ async function reviewPRs(options = {}) {
               // Mirror the first run's billing: the retry burns coins too, so record
               // its spend. Guarded so an accounting failure never masks the retry.
               try {
+                let retryCoinsAfter = null;
+                let retryDelta = null;
+                let retryShared = false;
                 if (tracksBobcoins) {
-                  const retryCoinsAfter = await bobCredits.getBalance({
+                  retryCoinsAfter = await bobCredits.getBalance({
                     force: true,
                   });
-                  const retryShared = overlapped(retryMark);
-                  const retrySpend = resolveSpend({
-                    stats: retryStats,
-                    delta: retryShared
-                      ? null
-                      : bobCredits.computeSpend(
-                          retryCoinsBefore,
-                          retryCoinsAfter
-                        ),
-                    tracked: !retryShared,
-                    after: retryCoinsAfter,
-                    label: 'retry',
-                  });
+                  retryShared = overlapped(retryMark);
+                  retryDelta = retryShared
+                    ? null
+                    : bobCredits.computeSpend(
+                        retryCoinsBefore,
+                        retryCoinsAfter
+                      );
                   balanceAfter = retryCoinsAfter;
-                  const sum = addSpend(
-                    { coinsSpent, source: coinsSource },
-                    retrySpend
-                  );
-                  totalSpent = sum.coinsSpent;
-                  totalSource = sum.source;
-                  await recordReviewCost({
-                    correlationId,
-                    pr,
-                    after: retryCoinsAfter,
-                    coinsSpent: retrySpend.coinsSpent,
-                    durationMs: Date.now() - prStartedAt,
-                    source: retrySpend.ledgerSource,
-                    stats: retryStats,
-                    toolCalls: retryStats
-                      ? (retryStats.tool_calls ?? null)
-                      : null,
-                  });
                 }
+                const retrySpend = resolveSpend({
+                  stats: retryStats,
+                  delta: retryDelta,
+                  tracked: tracksBobcoins && !retryShared,
+                  after: retryCoinsAfter,
+                  label: 'retry',
+                  adapter,
+                });
+                const sum = addSpend(
+                  { coinsSpent, source: coinsSource },
+                  retrySpend
+                );
+                totalSpent = sum.coinsSpent;
+                totalSource = sum.source;
+                await recordReviewCost({
+                  correlationId,
+                  pr,
+                  after: retryCoinsAfter,
+                  coinsSpent: retrySpend.coinsSpent,
+                  durationMs: Date.now() - prStartedAt,
+                  source: retrySpend.ledgerSource,
+                  stats: retryStats,
+                  toolCalls: retryStats
+                    ? (retryStats.tool_calls ?? null)
+                    : null,
+                  adapter,
+                });
               } catch (costErr) {
                 console.warn(
-                  `⚠️  Bobcoins accounting failed (retry): ${costErr.message}`
+                  `⚠️  ${spendWord} accounting failed (retry): ${costErr.message}`
                 );
               }
             }
             if (retryOutput) {
-              const retryEvidence = summarizeToolCalls(retryRun.toolCalls);
+              const retryEvidence = adapter.evidence(retryRun.toolCalls);
               const retrySkillReads = skillReadsFor(
                 retryRun,
                 retryOutput,
-                retryEvidence
+                retryEvidence,
+                adapter
               );
               review = parseReviewOutput(retryOutput, {
                 skillReads: retrySkillReads,
+                skillDir: adapter.skill.dir,
+                readTool: adapter.promptFragments.readTool,
               });
               if (review) {
                 // Adopt the successful retry as the run of record so the token
@@ -1212,8 +1256,8 @@ async function reviewPRs(options = {}) {
           }
         }
 
-        // Exact counts from Bob's result record, else the character estimate.
-        const tokenUsage = tokensFromStats(finalRun.stats) || {
+        // Exact counts from the agent's result record, else the character estimate.
+        const tokenUsage = tokensFromStats(finalRun.stats, adapter) || {
           ...estimateTokenUsage({
             prompt: bundle.prompt,
             diff: diff,
@@ -1221,7 +1265,7 @@ async function reviewPRs(options = {}) {
           }),
           source: 'estimate',
         };
-        if (tokenUsage.source === 'bob') {
+        if (tokenUsage.source !== 'estimate') {
           console.log(
             `✅ Tokens: ${tokenUsage.total.toLocaleString()} (input: ${tokenUsage.input.toLocaleString()}, output: ${tokenUsage.output.toLocaleString()})`
           );
@@ -1269,6 +1313,7 @@ async function reviewPRs(options = {}) {
             token_cache_read: tokenUsage.cacheRead ?? null,
             token_cache_write: tokenUsage.cacheWrite ?? null,
             token_source: tokenUsage.source,
+            cost_unit: adapter.costUnit,
             coins_source: totalSpent === null ? 'unknown' : totalSource,
             bob_task_id: finalRun.stats
               ? (finalRun.stats.task_id ?? null)
@@ -1294,6 +1339,7 @@ async function reviewPRs(options = {}) {
         if (postSummary) {
           const commentBody = formatSummaryComment({
             agent,
+            agentName: adapter.displayName,
             summaryMarkdown: review.summaryMarkdown,
             prNumber: pr.number,
             commitSha: pr.head.sha,
@@ -1374,9 +1420,9 @@ async function reviewPRs(options = {}) {
       1,
       Math.floor(options.concurrency) || REVIEW_CONCURRENCY
     );
-    // Only Bob gets a private HOME; the other CLIs keep per-user state in the
-    // real one (Claude Code rewrites ~/.claude.json on every run).
-    const concurrency = agent === 'bob' ? requested : 1;
+    // Only an isolated agent gets a private HOME or config directory; any other
+    // keeps per-user state in the real one and so runs alone.
+    const concurrency = agents.effectiveConcurrency(adapter, requested);
     if (concurrency < requested) {
       console.log(
         `ℹ️  REVIEW_CONCURRENCY=${requested} ignored — '${agent}' shares one HOME, so reviews run one at a time`

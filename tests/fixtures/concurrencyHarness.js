@@ -105,20 +105,33 @@ function startMockGithub() {
 }
 
 // spec: { [pr]: { source: 'review-ok' | 'review-cost-limit', cost, sleepMs, emptyFirstRuns } }
-function writeFixtures(dir, spec) {
+// For agent 'claude' the sources are tests/fixtures/claude/*.ndjson.
+function writeFixtures(dir, spec, agent = 'bob') {
   for (const [pr, s] of Object.entries(spec)) {
     let body = fs.readFileSync(
-      path.join(fixtures, 'bob', `${s.source || 'review-ok'}.ndjson`),
+      path.join(fixtures, agent, `${s.source || 'review-ok'}.ndjson`),
       'utf8'
     );
-    body = body.replace(/"task_id":"[^"]+"/, `"task_id":"task-${pr}"`);
-    if (s.cost === null) {
-      body = body.replace(/"session_costs":[^,}]+,/, '');
-    } else if (s.cost !== undefined) {
-      body = body.replace(
-        /"session_costs":[^,}]+/,
-        `"session_costs":${s.cost}`
-      );
+    if (agent === 'claude') {
+      body = body.replace(/sess-[a-z]+-\d+/g, `sess-${pr}`);
+      if (s.cost === null) {
+        body = body.replace(/"total_cost_usd":[^,}]+,/, '');
+      } else if (s.cost !== undefined) {
+        body = body.replace(
+          /"total_cost_usd":[^,}]+/,
+          `"total_cost_usd":${s.cost}`
+        );
+      }
+    } else {
+      body = body.replace(/"task_id":"[^"]+"/, `"task_id":"task-${pr}"`);
+      if (s.cost === null) {
+        body = body.replace(/"session_costs":[^,}]+,/, '');
+      } else if (s.cost !== undefined) {
+        body = body.replace(
+          /"session_costs":[^,}]+/,
+          `"session_costs":${s.cost}`
+        );
+      }
     }
     const directive = {};
     for (const k of ['sleepMs', 'emptyFirstRuns']) {
@@ -126,7 +139,7 @@ function writeFixtures(dir, spec) {
     }
     fs.writeFileSync(
       path.join(dir, `${pr}.ndjson`),
-      `#fake-bob ${JSON.stringify(directive)}\n${body}`
+      `#fake-${agent} ${JSON.stringify(directive)}\n${body}`
     );
   }
 }
@@ -175,6 +188,7 @@ function install() {
  * @param {number} o.concurrency - REVIEW_CONCURRENCY
  * @param {number} [o.bobTimeoutMs] - override runAgent's 10 minute timeout
  * @param {Object|Function} [o.balance] - fake getBalance() result, or a function of its options
+ * @param {Object[]} [o.ledgerSeed] - ledger entries present before the run
  * @param {Function} fn - async ({ reviewPRs, reviewLog }) => value
  */
 async function sandbox(o, fn) {
@@ -182,7 +196,7 @@ async function sandbox(o, fn) {
   const mock = await startMockGithub();
   const fixtureDir = path.join(tmp, 'fixtures');
   fs.mkdirSync(fixtureDir);
-  writeFixtures(fixtureDir, o.fixtures);
+  writeFixtures(fixtureDir, o.fixtures, o.agent || 'bob');
 
   // A stand-in for the real ~/.bob, which the per-review HOME is seeded from.
   const realHome = path.join(tmp, 'real-home');
@@ -214,6 +228,11 @@ async function sandbox(o, fn) {
     CREDIT_LEDGER_PATH: path.join(tmp, 'ledger.jsonl'),
     FAKE_BOB_FIXTURE_DIR: fixtureDir,
     FAKE_BOB_LOG: path.join(tmp, 'bob-runs.jsonl'),
+    CLAUDE_FAKE_FIXTURE_DIR: fixtureDir,
+    CLAUDE_FAKE_LOG: path.join(tmp, 'claude-runs.jsonl'),
+    ...(o.agent === 'claude'
+      ? { ANTHROPIC_API_KEY: 'sk-ant-test-not-real' }
+      : {}),
     REVIEW_CONCURRENCY: String(o.concurrency),
     GITHUB_AI_AGENT_KEEP_ARTIFACTS: 'true',
     NO_COLOR: '1',
@@ -230,11 +249,29 @@ async function sandbox(o, fn) {
     'GITHUB_AI_AGENT_PR_NUMBER',
     'FAKE_BOB_FIXTURE',
     'FAKE_BOB_SLEEP_MS',
+    'CLAUDE_FAKE_FIXTURE',
+    'CLAUDE_FAKE_SLEEP_MS',
+    'CLAUDE_FAKE_EXIT',
+    'CLAUDE_MODEL',
+    'CLAUDE_EFFORT',
+    'CLAUDE_MAX_BUDGET_USD',
+    'CLAUDE_MAX_TURNS',
+    'CLAUDE_ALLOWED_TOOLS',
+    'CLAUDE_DISALLOWED_TOOLS',
+    'CLAUDE_MONTHLY_BUDGET_USD',
+    ...(o.agent === 'claude' ? [] : ['ANTHROPIC_API_KEY']),
   ];
   const saved = {};
   for (const k of [...Object.keys(env), ...unset]) saved[k] = process.env[k];
   Object.assign(process.env, env);
   for (const k of unset) delete process.env[k];
+
+  if (o.ledgerSeed) {
+    fs.writeFileSync(
+      env.CREDIT_LEDGER_PATH,
+      o.ledgerSeed.map((e) => `${JSON.stringify(e)}\n`).join('')
+    );
+  }
 
   state.digest = null;
   state.timeoutMs = o.bobTimeoutMs || 0;
@@ -271,12 +308,12 @@ async function sandbox(o, fn) {
   for (const name of fs.existsSync(ws) ? fs.readdirSync(ws) : []) {
     const pr = Number(/pull-(\d+)-/.exec(name)[1]);
     const dir = path.join(ws, name);
-    const envFile = path.join(dir, 'fake-bob-env.json');
+    const envFile = ['fake-bob-env.json', 'fake-claude-env.json']
+      .map((f) => path.join(dir, f))
+      .find((f) => fs.existsSync(f));
     bundles[pr] = {
       dir,
-      env: fs.existsSync(envFile)
-        ? JSON.parse(fs.readFileSync(envFile, 'utf8'))
-        : null,
+      env: envFile ? JSON.parse(fs.readFileSync(envFile, 'utf8')) : null,
     };
   }
 
@@ -297,6 +334,7 @@ async function sandbox(o, fn) {
     labels,
     ledger: readJsonl(env.CREDIT_LEDGER_PATH),
     bobRuns: readJsonl(env.FAKE_BOB_LOG),
+    claudeRuns: readJsonl(env.CLAUDE_FAKE_LOG),
     bundles,
     cleanup: async () => {
       await mock.close();

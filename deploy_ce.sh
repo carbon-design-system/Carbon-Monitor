@@ -58,8 +58,8 @@ export NODE_ENV=production
 # the Bob gateway, so the container is I/O- and latency-bound, not CPU-bound: 1 vCPU
 # is enough. Memory is 4 GB because Bob Shell documents 4 GB as its minimum per
 # process (https://bob.ibm.com/docs/shell/getting-started/install-and-setup); 1 vCPU
-# / 4 GB is a valid Code Engine pairing. REVIEW_CONCURRENCY (default 2) runs that many Bob processes
-# at once, each wanting 4 GB: at 4G a large PR may OOM one review, so pair 2 with
+# / 4 GB is a valid Code Engine pairing. REVIEW_CONCURRENCY (default 2) runs that many agent processes
+# (Bob or Claude) at once, each budgeted at Bob's 4 GB: at 4G a large PR may OOM one review, so pair 2 with
 # MEMORY=8G in the best case, or set REVIEW_CONCURRENCY=1.
 : "${CPU:=1}"
 : "${MEMORY:=4G}"
@@ -279,7 +279,7 @@ fi
 # and the running app has no use for it. Shipping it would hand every reviewer
 # process a credential that can redeploy the app.
 # Space separated; another job sets SECRET_KEYS in .env instead of editing this.
-: "${SECRET_KEYS:=GITHUB_AI_AGENT_TOKEN BOB_API_KEY BOB_TEAM_ID BOB_INSTANCE_ID ES_URL ES_USERNAME ES_PASSWORD ES_CA_CERT_PATH CONSOLE_USERNAME CONSOLE_PASSWORD SESSION_SIGNING_KEY API_SECRET SLACK_WEBHOOK_URL}"
+: "${SECRET_KEYS:=GITHUB_AI_AGENT_TOKEN BOB_API_KEY ANTHROPIC_API_KEY BOB_TEAM_ID BOB_INSTANCE_ID ES_URL ES_USERNAME ES_PASSWORD ES_CA_CERT_PATH CONSOLE_USERNAME CONSOLE_PASSWORD SESSION_SIGNING_KEY API_SECRET SLACK_WEBHOOK_URL}"
 typeset -a SECRET_KEY_LIST
 SECRET_KEY_LIST=(${=SECRET_KEYS})
 
@@ -287,7 +287,8 @@ log "Syncing secret '${SECRET_NAME}' from .env…"
 
 # Credentials without which the app starts, looks healthy, and fails every review.
 [ -n "${GITHUB_AI_AGENT_TOKEN:-}" ] || die "GITHUB_AI_AGENT_TOKEN is not set (.env or environment)."
-[ -n "${BOB_API_KEY:-}" ] || die "BOB_API_KEY is not set (.env or environment). Bob cannot authenticate headlessly without it — SSO is interactive-only."
+[ "${GITHUB_AI_AGENT_CLI:-bob}" != "bob" ] || [ -n "${BOB_API_KEY:-}" ] || die "BOB_API_KEY is not set (.env or environment). Bob cannot authenticate headlessly without it — SSO is interactive-only."
+[ "${GITHUB_AI_AGENT_CLI:-bob}" != "claude" ] || [ -n "${ANTHROPIC_API_KEY:-}" ] || die "ANTHROPIC_API_KEY is not set (.env or environment). Claude Code cannot authenticate headlessly without it."
 
 if [ "${AUTH_REQUIRED}" = "true" ]; then
   { [ -n "${CONSOLE_USERNAME:-}" ] && [ -n "${CONSOLE_PASSWORD:-}" ]; } \
@@ -447,7 +448,7 @@ COMMON_FLAGS=(
   --env "SCHEDULE_TIMEZONE=${SCHEDULE_TIMEZONE:-America/Chicago}"
   --env "AUTH_REQUIRED=${AUTH_REQUIRED}"
   --env "CONSOLE_CONTACT_EMAIL=${CONSOLE_CONTACT_EMAIL:-}"
-  --env GITHUB_AI_AGENT_CLI=bob
+  --env GITHUB_AI_AGENT_CLI="${GITHUB_AI_AGENT_CLI:-bob}"
   --env GITHUB_AI_AGENT_OWNER="${GITHUB_AI_AGENT_OWNER:-carbon-design-system}"
   --env GITHUB_AI_AGENT_REPO="${GITHUB_AI_AGENT_REPO:-carbon}"
   --env GITHUB_AI_AGENT_MAX_PRS="${GITHUB_AI_AGENT_MAX_PRS:-10}"
@@ -458,6 +459,14 @@ COMMON_FLAGS=(
   --env "BOB_MAX_COST=${BOB_MAX_COST:-}"
   --env "BOB_MAX_TURNS=${BOB_MAX_TURNS:-}"
   --env "BOB_DISABLE_TOOL_GROUPS=${BOB_DISABLE_TOOL_GROUPS:-}"
+  --env "CLAUDE_MODEL=${CLAUDE_MODEL:-}"
+  --env "CLAUDE_EFFORT=${CLAUDE_EFFORT:-}"
+  --env "CLAUDE_MAX_BUDGET_USD=${CLAUDE_MAX_BUDGET_USD:-}"
+  --env "CLAUDE_MAX_TURNS=${CLAUDE_MAX_TURNS:-}"
+  --env "CLAUDE_ALLOWED_TOOLS=${CLAUDE_ALLOWED_TOOLS:-}"
+  --env "CLAUDE_DISALLOWED_TOOLS=${CLAUDE_DISALLOWED_TOOLS:-}"
+  --env "CLAUDE_MONTHLY_BUDGET_USD=${CLAUDE_MONTHLY_BUDGET_USD:-}"
+  --env "CLAUDE_BUDGET_LOW_PCT=${CLAUDE_BUDGET_LOW_PCT:-}"
   --env "REVIEW_CONCURRENCY=${REVIEW_CONCURRENCY:-}"
   --env MCP_STATE_PATH=/workspace/.mcp-state.json
   # Durable Carbon MCP state lives in Elasticsearch

@@ -1,0 +1,2 @@
+# The byte-identity test reads this snapshot as-is; a CRLF checkout would break it.
+tests/fixtures/prompt/** -text

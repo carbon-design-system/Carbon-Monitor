@@ -203,16 +203,18 @@ const cat2Secondary = mapFindingToDiffPosition(
 console.log(`  Cat1 secondary result: ${JSON.stringify(cat1Secondary)}`);
 console.log(`  Cat2 secondary result: ${JSON.stringify(cat2Secondary)}`);
 
-// Expected: stories new-file line 67 → position 68; banner new-file line 42 → position 43
-if (!cat1Secondary || cat1Secondary.position !== 68) {
+// Expected: stories new-file line 67 → position 67; banner new-file line 42 → position 42
+// (position 1 is the first line below a file's first @@ header, so a single-hunk
+// file maps new-file line N of a hunk starting at 1 to position N).
+if (!cat1Secondary || cat1Secondary.position !== 67) {
   console.error(
-    `❌ Test 4 failed: Cat1 expected position 68, got ${cat1Secondary?.position}`
+    `❌ Test 4 failed: Cat1 expected position 67, got ${cat1Secondary?.position}`
   );
   process.exit(1);
 }
-if (!cat2Secondary || cat2Secondary.position !== 43) {
+if (!cat2Secondary || cat2Secondary.position !== 42) {
   console.error(
-    `❌ Test 4 failed: Cat2 expected position 43, got ${cat2Secondary?.position}`
+    `❌ Test 4 failed: Cat2 expected position 42, got ${cat2Secondary?.position}`
   );
   process.exit(1);
 }
@@ -232,6 +234,56 @@ if (cat1NoBridge !== null) {
 }
 
 console.log('✅ Test 4 passed (secondary lookup + backward compat)\n');
+
+// Test 5: positions match what GitHub resolves. The first @@ header of a file is
+// not a position; a later header is. Pairs confirmed on carbon#22971 (Oct 18,
+// 2026): GitHub placed position 6 on line 30 and position 14 on line 50 of
+// this two-hunk file.
+console.log('Test 5: GitHub-confirmed positions on a two-hunk file');
+const twoHunkDiff = require('fs').readFileSync(
+  require('path').join(
+    __dirname,
+    'fixtures',
+    'diff',
+    'ailabel-two-hunks.patch'
+  ),
+  'utf8'
+);
+const twoHunkFiles = [
+  { filename: 'packages/react/code-connect/AILabel/AILabel.figma.tsx' },
+];
+const at = (line) =>
+  mapFindingToDiffPosition(
+    { file: twoHunkFiles[0].filename, line },
+    twoHunkDiff,
+    twoHunkFiles
+  )?.position;
+const expectedPositions = { 29: 5, 30: 6, 49: 13, 50: 14 };
+for (const [line, position] of Object.entries(expectedPositions)) {
+  if (at(Number(line)) !== position) {
+    console.error(
+      `❌ Test 5 failed: line ${line} expected position ${position}, got ${at(Number(line))}`
+    );
+    process.exit(1);
+  }
+}
+// The sample diff above: line 13 sits in hunk 1, line 29 in hunk 2 (its header counts).
+if (
+  mapFindingToDiffPosition(
+    { file: 'src/components/Button.js', line: 13 },
+    sampleDiff,
+    sampleFiles
+  ).position !== 5 ||
+  mapFindingToDiffPosition(
+    { file: 'src/components/Button.js', line: 29 },
+    sampleDiff,
+    sampleFiles
+  ).position !== 14
+) {
+  console.error('❌ Test 5 failed: sample diff positions');
+  process.exit(1);
+}
+console.log('✅ Test 5 passed (GitHub-confirmed positions)\n');
 
 // Validation
 const expectedInline = 2; // Lines 13 and 29 should be mappable
