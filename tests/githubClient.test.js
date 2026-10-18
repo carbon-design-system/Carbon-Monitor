@@ -150,10 +150,7 @@ async function main() {
     nodeAssert.strictEqual(call.event, 'COMMENT');
     nodeAssert.strictEqual(call.commit_id, 'abc123');
     nodeAssert.strictEqual(call.pull_number, 9);
-    nodeAssert.strictEqual(
-      call.body,
-      'Carbon Monitor inline findings (2). The summary and recommendation follow in a separate comment.'
-    );
+    nodeAssert.strictEqual(call.body, undefined);
     nodeAssert.deepStrictEqual(call.comments, [
       { path: 'a.js', position: 3, body: 'on a.js' },
       { path: 'b.js', position: 7, body: 'on b.js' },
@@ -181,7 +178,6 @@ async function main() {
       })
     );
     nodeAssert.strictEqual(calls.reviews[0].comments.length, 1);
-    nodeAssert.ok(calls.reviews[0].body.includes('(1)'));
     nodeAssert.strictEqual(result.comments.length, 1);
 
     const none = stub();

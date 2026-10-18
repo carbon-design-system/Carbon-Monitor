@@ -175,8 +175,9 @@ function createGitHubClient(octokit) {
           return null;
         }
 
-        // One review is one event and one notification, however many comments it carries
-        const body = `Carbon Monitor inline findings (${validComments.length}). The summary and recommendation follow in a separate comment.`;
+        // One review is one event and one notification, however many comments it
+        // carries. No body: GitHub accepts a COMMENT review without one when it has
+        // comments, and the summary comment carries the text.
         try {
           const { data: review } = await octokit.rest.pulls.createReview({
             owner,
@@ -184,7 +185,6 @@ function createGitHubClient(octokit) {
             pull_number: pullNumber,
             commit_id: commitId,
             event: 'COMMENT',
-            body,
             comments: validComments.map((c) => ({
               path: c.path,
               position: c.position,

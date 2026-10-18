@@ -8,7 +8,7 @@ Carbon Monitor posts three kinds of comment: a review of inline comments, a summ
 
 ### Inline comments (on specific diff lines)
 
-All inline comments arrive in one GitHub review (event `COMMENT`, never an approval or a change request), so the PR author gets one notification. The review body is one line: `Carbon Monitor inline findings (N). The summary and recommendation follow in a separate comment.` The summary comment follows as a separate PR comment. If GitHub rejects the review with a 422, it does not say which comment was bad, so the comments are posted one by one instead; any other error is not retried, because the review may already exist, and those findings go to the summary comment.
+All inline comments arrive in one GitHub review (event `COMMENT`, never an approval or a change request), so the PR author gets one notification. The review has no body of its own; the summary comment follows as a separate PR comment. If GitHub rejects the review with a 422, it does not say which comment was bad, so the comments are posted one by one instead; any other error is not retried, because the review may already exist, and those findings go to the summary comment.
 
 ```
 **Missing aria-label on time picker select**

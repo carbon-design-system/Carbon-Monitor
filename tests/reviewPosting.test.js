@@ -30,9 +30,6 @@ async function test(description, fn) {
   }
 }
 
-const REVIEW_BODY =
-  'Carbon Monitor inline findings (1). The summary and recommendation follow in a separate comment.';
-
 async function main() {
   console.log('\nReview posting tests\n');
 
@@ -80,7 +77,7 @@ async function main() {
     const review = batch.reviews(2)[0].body;
     assert.strictEqual(review.event, 'COMMENT');
     assert.strictEqual(review.commit_id, 'sha2');
-    assert.strictEqual(review.body, REVIEW_BODY);
+    assert.strictEqual(review.body, undefined, 'no review body');
     assert.deepStrictEqual(
       review.comments.map(({ path, position }) => ({ path, position })),
       [{ path: 'Button.stories.js', position: 3 }]
@@ -103,7 +100,7 @@ async function main() {
     const review = batch.reviews(3)[0].body;
     assert.strictEqual(review.event, 'COMMENT');
     assert.strictEqual(review.commit_id, 'sha3');
-    assert.strictEqual(review.body, REVIEW_BODY);
+    assert.strictEqual(review.body, undefined, 'no review body');
     assert.deepStrictEqual(
       review.comments.map(({ path, position }) => ({ path, position })),
       [{ path: 'Button.stories.js', position: 3 }]

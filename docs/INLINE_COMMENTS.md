@@ -42,7 +42,7 @@ Each finding is classified as either:
 
 According to the spec (lines 328-336), the bot follows this strategy:
 
-1. **Post one review** (`pulls.createReview`, event `COMMENT`) with every mappable finding of `minor` severity or above as an inline comment. The review body is one line, because GitHub requires a body on a `COMMENT` review. A PR with no such finding gets no review, which includes every `Looks Good` PR
+1. **Post one review** (`pulls.createReview`, event `COMMENT`) with every mappable finding of `minor` severity or above as an inline comment. The review has no body: GitHub accepts a `COMMENT` review without one when it carries comments, and the summary comment holds the text. A PR with no such finding gets no review, which includes every `Looks Good` PR
 2. **Post summary comment** (a clean PR gets the short Looks Good comment instead) with:
    - Agent's overall summary
    - Findings that couldn't be mapped inline
