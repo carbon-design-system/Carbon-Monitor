@@ -1,8 +1,8 @@
 /**
  * Unit tests for hasCatalogue detection in parseReviewOutput.
  *
- * These tests run the actual regex extracted from reviewParser.js so that
- * any future change to the regex is validated before the test is updated.
+ * These tests import the live regex from reviewParser.js so that any future
+ * change to it is validated before the test is updated.
  *
  * Test cases are derived from:
  *   - bhdUHX artifact: bare NO-FINDINGS lines (old prompt, no findings)
@@ -12,27 +12,10 @@
 
 'use strict';
 
-// ---------------------------------------------------------------------------
-// Extract the hasCatalogue regex directly from the parser source so this test
-// always validates the live pattern, not a stale copy.
-// ---------------------------------------------------------------------------
-const fs = require('fs');
-const parserSrc = fs.readFileSync(
-  require.resolve('../src/reviewParser.js'),
-  'utf8'
-);
-const { parseReviewOutput } = require('../src/reviewParser');
+const { parseReviewOutput, CATALOGUE_LINE_RE } = require('../src/reviewParser');
 
-// Pull the regex literal from the source: hasCatalogue = /<regex>/m.test(...)
-const regexMatch = parserSrc.match(
-  /hasCatalogue\s*=\s*(\/.*?\/[gimsuy]*)\s*\.test/
-);
-if (!regexMatch) {
-  console.error('❌ Could not extract hasCatalogue regex from reviewParser.js');
-  process.exit(1);
-}
-const hasCatalogueRegex = eval(regexMatch[1]); // eslint-disable-line no-eval
-console.log(`🔍 Extracted regex: ${hasCatalogueRegex}\n`);
+const hasCatalogueRegex = CATALOGUE_LINE_RE;
+console.log(`🔍 Live regex: ${hasCatalogueRegex}\n`);
 
 // ---------------------------------------------------------------------------
 // Test runner

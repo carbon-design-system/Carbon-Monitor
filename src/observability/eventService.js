@@ -20,6 +20,7 @@
  *   pr_review_completed — review posted, label added
  *   pr_review_failed    — per-PR catch block fired
  *   agent_timeout       — agent process killed by timeout
+ *   agent_limit_reached — agent stopped at its cost or turn cap
  *   parse_failed        — parseReviewOutput returned null
  */
 
@@ -33,6 +34,7 @@ const ERROR_EVENTS = new Set([
   'run_failed',
   'pr_review_failed',
   'agent_timeout',
+  'agent_limit_reached',
   'parse_failed',
 ]);
 const WARN_EVENTS = new Set(['skill_unavailable', 'inline_post_failed']);

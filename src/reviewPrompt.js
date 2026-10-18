@@ -232,12 +232,17 @@ function formatSummaryComment({
 
   // ── Token usage ─────────────────────────────────────────────────────────
   if (tokenUsage) {
+    // Counts from Bob's result record are exact; anything else is an estimate.
+    const exact = tokenUsage.source === 'bob';
+    const approx = exact ? '' : '~';
     comment += `\n---\n\n`;
-    comment += `**Estimated Token Usage:**\n`;
-    comment += `- Input tokens: ~${tokenUsage.input.toLocaleString()}\n`;
-    comment += `- Output tokens: ~${tokenUsage.output.toLocaleString()}\n`;
-    comment += `- Total tokens: ~${tokenUsage.total.toLocaleString()}\n`;
-    comment += `\n*Note: Token estimates are approximate and based on character count (1 token ≈ 4 characters).*\n`;
+    comment += `**${exact ? 'Token Usage' : 'Estimated Token Usage'}:**\n`;
+    comment += `- Input tokens: ${approx}${tokenUsage.input.toLocaleString()}\n`;
+    comment += `- Output tokens: ${approx}${tokenUsage.output.toLocaleString()}\n`;
+    comment += `- Total tokens: ${approx}${tokenUsage.total.toLocaleString()}\n`;
+    if (!exact) {
+      comment += `\n*Note: Token estimates are approximate and based on character count (1 token ≈ 4 characters).*\n`;
+    }
   }
 
   // ── Details dropdown — close (unconditional, outside all conditionals) ───

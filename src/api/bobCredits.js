@@ -6,11 +6,10 @@
  * the month's budget is left.
  *
  * ── Why the numbers come from here ──────────────────────────────────────────
- * Bob only reports a run's own cost in `-f stream-json` output, and this app
- * deliberately runs Bob in its default `pretty` format because src/reviewParser
- * parses that text. Switching formats to get a cost figure would break parsing
- * for every review. The gateway's running `usage` total is therefore the only
- * cost signal available, and a single review's spend is inferred by diffing two
+ * A review's cost comes from Bob's result record (`stats.session_costs`). The
+ * gateway's running `usage` total is the fallback for runs with no result
+ * record, the cross-check on the reported figure, and the source of the
+ * remaining balance. A single review's spend is inferred by diffing two
  * snapshots taken around the run (see computeSpend).
  *
  * ── Why nothing here ever throws ────────────────────────────────────────────
@@ -537,8 +536,28 @@ function computeSpend(before, after) {
   return Math.round(delta * 1e6) / 1e6;
 }
 
+/**
+ * Is the balance confirmed low? Shared by the scheduler's auto-pause and the
+ * per-review check. Unavailable (available:false) or uncapped (null
+ * percentRemaining) never counts: only a confirmed low reading pauses.
+ *
+ * @param {Object} balance - A getBalance() result
+ * @returns {{low: boolean, threshold: number}}
+ */
+function isLowBalance(balance) {
+  const threshold = Number(process.env.BOB_CREDITS_LOW_PCT || 10);
+  const low = Boolean(
+    balance &&
+    balance.available &&
+    balance.percentRemaining !== null &&
+    balance.percentRemaining < threshold
+  );
+  return { low, threshold };
+}
+
 module.exports = {
   getBalance,
+  isLowBalance,
   computeSpend,
   resetCache,
   pickProfile,

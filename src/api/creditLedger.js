@@ -191,6 +191,20 @@ function normalize(entry = {}) {
     remainingAfter: numberOrNull(entry.remainingAfter),
     durationMs: numberOrNull(entry.durationMs),
     source: entry.source || 'unknown',
+    taskId: typeof entry.taskId === 'string' ? entry.taskId : null,
+    tokens: normalizeTokens(entry.tokens),
+    toolCalls: numberOrNull(entry.toolCalls),
+  };
+}
+
+function normalizeTokens(tokens) {
+  if (!tokens || typeof tokens !== 'object') return null;
+  return {
+    input: numberOrNull(tokens.input),
+    output: numberOrNull(tokens.output),
+    cacheRead: numberOrNull(tokens.cacheRead),
+    cacheWrite: numberOrNull(tokens.cacheWrite),
+    total: numberOrNull(tokens.total),
   };
 }
 
@@ -243,10 +257,11 @@ async function endsWithNewline(ledgerPath) {
  * exception would replace the agent's real failure with a bookkeeping one.
  *
  * @param {Object} entry - { at, prNumber, repo, correlationId, coinsSpent,
- *                           remainingAfter, durationMs, source }
+ *                           remainingAfter, durationMs, source, taskId,
+ *                           tokens, toolCalls }
  * @returns {Promise<boolean>} Whether the entry was persisted
  */
-async function record(entry) {
+async function appendEntry(entry) {
   const ledgerPath = getLedgerPath();
   try {
     await fs.mkdir(path.dirname(ledgerPath), { recursive: true });
@@ -278,6 +293,15 @@ async function record(entry) {
     console.warn(`[creditLedger] could not record spend: ${error.message}`);
     return false;
   }
+}
+
+// Concurrent reviews call record(); the prune's read-modify-write must not
+// interleave, so writes run one after another.
+let writes = Promise.resolve();
+function record(entry) {
+  const done = writes.then(() => appendEntry(entry));
+  writes = done.catch(() => {});
+  return done;
 }
 
 // ── Derived views ───────────────────────────────────────────────────────────

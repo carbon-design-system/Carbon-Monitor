@@ -42,7 +42,12 @@ const os = require('os');
 
 // Lazy-require so the module loads fine when esClient is unavailable in tests.
 const { esCall } = require('../observability/esClient');
-const { getBalance } = require('./bobCredits');
+const { getBalance, isLowBalance } = require('./bobCredits');
+const {
+  startProgress,
+  applyProgress,
+  endProgress,
+} = require('./reviewProgress');
 const { postLowTokenAlert } = require('../slackNotifier');
 
 // ── State file location ──────────────────────────────────────────────────────
@@ -648,12 +653,8 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   // IMPORTANT: balance unavailable (available:false) or null percentRemaining
   // (uncapped plan) must never block a review — only a confirmed low reading pauses.
   const balance = await getBalance();
-  const lowPct = Number(process.env.BOB_CREDITS_LOW_PCT || 10);
-  if (
-    balance.available &&
-    balance.percentRemaining !== null &&
-    balance.percentRemaining < lowPct
-  ) {
+  const { low, threshold: lowPct } = isLowBalance(balance);
+  if (low) {
     console.warn(
       `[schedule] auto-pausing — Bobcoins at ${balance.percentRemaining}% (threshold ${lowPct}%)`
     );
@@ -706,6 +707,7 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   reviewState.error = null;
   reviewState.mode = 'auto';
   reviewState.prNumbers = null;
+  startProgress(reviewState);
 
   console.log(
     `[schedule] triggering scheduled review at ${current} ${SCHEDULE_TIMEZONE}`
@@ -716,7 +718,10 @@ async function tick(reviewPRs, reviewState, reviewLog) {
 
   // 9. Fire the review in the background. Do not await — the tick must return
   //    promptly so the interval does not stack up.
-  reviewPRs({ triggeredBy: 'schedule' })
+  reviewPRs({
+    triggeredBy: 'schedule',
+    onProgress: (snapshot) => applyProgress(reviewState, snapshot),
+  })
     .then(() => {
       reviewState.error = null;
     })
@@ -727,6 +732,7 @@ async function tick(reviewPRs, reviewState, reviewLog) {
     .finally(async () => {
       reviewState.running = false;
       reviewState.finishedAt = new Date().toISOString();
+      endProgress(reviewState);
       reviewLog.stop();
 
       // Update lastRunAt now that the run is complete.

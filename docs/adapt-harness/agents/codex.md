@@ -55,8 +55,10 @@ case 'codex':
 ```
 
 Delete the `env.CODEX_MCP_CONFIG = ...` line near the top of `runAgent`; it is
-not a Codex variable. Where `runAgent` resolves, read `<cwd>/agent-result.md`
-as the agent text.
+not a Codex variable. Use the object `runAgent` resolves (`text`, `toolCalls`,
+`stats`): read `<cwd>/agent-result.md` into `text` and leave `stats` as `null`,
+which keeps the character estimate for tokens. Bobcoins tracking is Bob-only,
+so the cost for this agent is `null` with source `unknown`.
 
 ## 3. src/api/healthChecks.js
 
@@ -70,6 +72,10 @@ label `Codex CLI` and `id: 'agent'`.
 - The preflight `verify_bob_source` function and its call go.
 - `--env GITHUB_AI_AGENT_CLI=bob` becomes `codex` (or the renamed variable from SPEC section 6).
 - `.env.example`: replace the Bob block with `OPENAI_API_KEY=` and a one-line comment, and add `AGENT_MONTHLY_BUDGET_USD=` for the budget in section 7. Drop the `BOB_GATEWAY_BASE_URL`, `BOB_CREDITS_*` and `BOB_CHECK_TIMEOUT_MS` entries with the Bobcoins tile.
+
+`REVIEW_CONCURRENCY` stays at 1 for this agent: the harness gives only Bob a
+private `HOME` per review, and Codex keeps per-user state under the real home directory. Raising it takes a per-review home like
+`seedBobHome`, with the agent's own state seeded into it.
 
 ## 5. MCP configuration
 

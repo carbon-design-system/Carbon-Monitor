@@ -46,10 +46,16 @@ if (_rawTargetPR != null) {
 }
 
 const { randomUUID } = require('crypto');
-const { createGitHubClient } = require('./githubClient');
-const { buildReviewBundle } = require('./reviewBundle');
+const { checkStartup } = require('./config/env');
+const { createGitHubClient, createOctokit } = require('./githubClient');
+const {
+  buildReviewBundle,
+  seedBobHome,
+  refreshBobMcp,
+} = require('./reviewBundle');
 const {
   runAgent,
+  summarizeToolCalls,
   getConfiguredAgent,
   isAgentAvailable,
 } = require('./agentRunner');
@@ -66,6 +72,7 @@ const { splitFindings } = require('./diffMapper');
 const { emitEvent } = require('./observability/eventService');
 const bobCredits = require('./api/bobCredits');
 const creditLedger = require('./api/creditLedger');
+const reviewLog = require('./api/reviewLog');
 const { postRunDigest } = require('./slackNotifier');
 const {
   GITHUB_OWNER,
@@ -75,10 +82,132 @@ const {
   N_DAYS_SINCE_PR_CREATED,
   MAX_PRS_PER_RUN,
   MAX_FILES_PER_PR,
+  REVIEW_CONCURRENCY,
 } = require('./constants');
 
 // Load GitHub token from environment
 const GITHUB_TOKEN = process.env.GITHUB_AI_AGENT_TOKEN;
+
+function reportedCost(stats) {
+  const c = stats && stats.session_costs;
+  // Same 1e-6 rounding as computeSpend, so the log and ledger never show float noise.
+  return typeof c === 'number' && Number.isFinite(c)
+    ? Math.round(c * 1e6) / 1e6
+    : null;
+}
+
+// Exact counts from Bob's result record, or null so the caller falls back to
+// the character estimate.
+function tokensFromStats(stats) {
+  if (!stats) return null;
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const input = num(stats.input_tokens);
+  const output = num(stats.output_tokens);
+  if (input === null || output === null) return null;
+  return {
+    input,
+    output,
+    total: num(stats.total_tokens) ?? input + output,
+    cacheRead: num(stats.cache_read_tokens),
+    cacheWrite: num(stats.cache_write_tokens),
+    source: 'bob',
+  };
+}
+
+// Bob's own figure is the cost of record; the balance delta is the permanent
+// fallback and the cross-check. `ledgerSource` keeps the ledger's old label
+// when neither figure exists.
+function resolveSpend({ stats, delta, tracked, after, label = '' }) {
+  const reported = reportedCost(stats);
+  const suffix = label ? ` (${label})` : '';
+  if (reported !== null) {
+    if (delta !== null && Math.abs(reported - delta) > 0.01) {
+      console.warn(
+        `\n🪙 Bobcoins${suffix}: result=${reported} delta=${delta} (mismatch)`
+      );
+    } else {
+      console.log(`\n🪙 Bobcoins spent${suffix}: ${reported}`);
+    }
+    return {
+      coinsSpent: reported,
+      source: 'bob-result',
+      ledgerSource: 'bob-result',
+    };
+  }
+  if (delta !== null) {
+    console.log(`\n🪙 Bobcoins spent${suffix}: ${delta}`);
+  } else if (tracked && after && !after.available && !label) {
+    console.log(`\n🪙 Bobcoins: balance unavailable (${after.reason})`);
+  }
+  return {
+    coinsSpent: delta,
+    source: delta !== null ? 'balance-delta' : 'unknown',
+    ledgerSource: tracked ? 'balance-delta' : 'unknown',
+  };
+}
+
+// The review JSON can arrive only in Bob's final message. The earlier messages
+// stay in front of it so the catalogue check still sees the catalogue.
+function reviewTextFor(run) {
+  const marker = 'BEGIN_REVIEW_JSON';
+  if (
+    !run.text.includes(marker) &&
+    run.lastMessage &&
+    run.lastMessage.includes(marker)
+  ) {
+    return `${run.text}\n\n${run.lastMessage}`;
+  }
+  return run.text;
+}
+
+// Observed tool calls beat the transcript regex. With no recognised event
+// evidence the regex runs over the raw tool calls, then the text, so an event
+// shape this code does not know about cannot silently drop every Carbon finding.
+function skillReadsFor(run, text, evidence) {
+  if (evidence.skillInvoked) return ['use_skill:carbon-builder'];
+  if (evidence.skillFiles.length > 0) return evidence.skillFiles;
+  if (run.format !== 'stream-json') return extractCarbonBuilderSkillReads(text);
+
+  // Matched per call so a use_skill for another skill cannot pair with a later
+  // mention of carbon-builder.
+  const calls = run.toolCalls || [];
+  let reads = extractCarbonBuilderSkillReads(JSON.stringify(calls));
+  if (
+    reads.length === 0 &&
+    calls.some((c) =>
+      /use_skill[\s\S]{0,300}carbon-builder/i.test(JSON.stringify(c))
+    )
+  ) {
+    reads = ['use_skill:carbon-builder'];
+  }
+  if (reads.length === 0) reads = extractCarbonBuilderSkillReads(text);
+  if (reads.length > 0) {
+    console.warn(
+      '⚠️  Carbon Builder skill detected from the transcript, not from tool events — the event shape may differ from what summarizeToolCalls expects'
+    );
+  }
+  return reads;
+}
+
+// Sum of the first run's and the retry's spend. The source is the retry's when
+// the first run has none, and bob-result only when both runs reported one.
+function addSpend(first, retry) {
+  if (retry.coinsSpent === null) return first;
+  if (first.coinsSpent === null) {
+    return { coinsSpent: retry.coinsSpent, source: retry.source };
+  }
+  return {
+    coinsSpent: Math.round((first.coinsSpent + retry.coinsSpent) * 1e6) / 1e6,
+    source:
+      first.source === 'bob-result' && retry.source === 'bob-result'
+        ? 'bob-result'
+        : 'balance-delta',
+  };
+}
+
+function sumCalls(calls) {
+  return Object.values(calls).reduce((a, b) => a + b, 0);
+}
 
 /**
  * Record what a single review cost to the local ledger.
@@ -98,6 +227,8 @@ const GITHUB_TOKEN = process.env.GITHUB_AI_AGENT_TOKEN;
  * @param {number|null} opts.coinsSpent
  * @param {number} opts.durationMs
  * @param {string} [opts.source='balance-delta'] - How coinsSpent was derived
+ * @param {Object|null} [opts.stats] - Bob's result stats, when the run had them
+ * @param {number|null} [opts.toolCalls]
  */
 async function recordReviewCost({
   correlationId,
@@ -106,6 +237,8 @@ async function recordReviewCost({
   coinsSpent,
   durationMs,
   source = 'balance-delta',
+  stats = null,
+  toolCalls = null,
 }) {
   try {
     const balance = after && after.available ? after : null;
@@ -119,6 +252,9 @@ async function recordReviewCost({
       remainingAfter: balance ? balance.remaining : null,
       durationMs,
       source,
+      taskId: stats && stats.task_id ? String(stats.task_id) : null,
+      tokens: tokensFromStats(stats),
+      toolCalls,
     });
   } catch (error) {
     console.warn(`⚠️  Could not record review cost: ${error.message}`);
@@ -410,8 +546,7 @@ async function reviewPRs(options = {}) {
   }
 
   // Create GitHub client
-  const { Octokit } = await import('@octokit/rest');
-  const octokit = new Octokit({
+  const octokit = await createOctokit({
     auth: GITHUB_TOKEN,
     baseUrl: process.env.GITHUB_API_BASE_URL || 'https://api.github.com',
   });
@@ -500,13 +635,43 @@ async function reviewPRs(options = {}) {
       }
     }
 
+    // Pool state, read by reviewOne's balance brackets as well as the workers.
+    const inFlight = [];
+    let started = 0;
+    // A balance bracket that overlaps a sibling's run includes the sibling's
+    // spend, so it proves nothing about this review's cost.
+    const overlapped = (mark) =>
+      mark.inFlight > 1 || inFlight.length > 1 || mark.starts !== started;
+    const markNow = () => ({ inFlight: inFlight.length, starts: started });
+
     // Review each PR
-    for (const pr of prs) {
+    const reviewOne = async (pr) => {
+      // This review's outcomes; the pool joins them back in list order.
+      const prResults = [];
       const prStartedAt = Date.now();
       // Declared outside the try so the `finally` below can remove it however
       // the review ends — the bundle holds a plaintext copy of BOB_API_KEY.
       let bundle = null;
       try {
+        // Scheduled batches stop spending once the balance is confirmed low,
+        // the same rule the scheduler applies before it starts one.
+        if (options.triggeredBy === 'schedule' && tracksBobcoins) {
+          const balance = await bobCredits.getBalance();
+          const { low, threshold } = bobCredits.isLowBalance(balance);
+          if (low) {
+            console.warn(
+              `⏭️  PR #${pr.number} skipped — Bobcoins at ${balance.percentRemaining}% (below ${threshold}% threshold)`
+            );
+            prResults.push({
+              prNumber: pr.number,
+              prUrl: pr.html_url,
+              skipped: true,
+              reason: `Bobcoins at ${balance.percentRemaining}% (below ${threshold}% threshold)`,
+            });
+            return prResults;
+          }
+        }
+
         console.log(`\n${'='.repeat(80)}`);
         console.log(`📌 Reviewing PR #${pr.number}: ${pr.title}`);
         console.log(`   Author: @${pr.user.login}`);
@@ -605,14 +770,14 @@ async function reviewPRs(options = {}) {
             }
           }
 
-          runResults.push({
+          prResults.push({
             prNumber: pr.number,
             prUrl: pr.html_url,
             skipped: true,
             reason: `${files.length} files exceeds limit of ${MAX_FILES_PER_PR}`,
           });
 
-          continue; // bundle is still null — cleanupBundle(null) is a no-op
+          return prResults; // bundle is still null — cleanupBundle(null) is a no-op
         }
 
         // pr_review_started is emitted here, after the size gate, so it only
@@ -660,37 +825,71 @@ async function reviewPRs(options = {}) {
         });
         console.log(`✅ Bundle: ${bundle.dir}`);
 
+        // Two Bob processes must share no file, so each review gets its own HOME.
+        const home =
+          agent === 'bob' ? await seedBobHome(bundle.dir) : undefined;
+
         // Run agent review
         console.log(`\n🤖 Running ${agent} review...`);
         console.log('This may take a few minutes...\n');
 
         // ── Bobcoins accounting ─────────────────────────────────────────────
-        // Bob only reports a run's own cost in stream-json output, and this app
-        // must keep the pretty format that reviewParser reads. The account's
-        // running usage total is bracketed around the run instead. Both reads
-        // bypass the cache: a stale "before" would silently report zero spend.
+        // Cost comes from Bob's result record (stats.session_costs). The
+        // account's running usage total is still bracketed around the run as the
+        // fallback when no result arrived, as the cross-check, and for the
+        // remaining balance. Both reads bypass the cache: a stale "before" would
+        // silently report zero spend.
         let coinsBefore = null;
+        let coinsMark = markNow();
         let coinsAfter = null;
         let coinsSpent = null;
+        let coinsSource = 'unknown';
         let agentSucceeded = false;
 
         if (tracksBobcoins) {
+          coinsMark = markNow();
           coinsBefore = await bobCredits
             .getBalance({ force: true })
             .catch(() => null);
         }
 
+        const emitLimitReached = async (err, stats) => {
+          if (err.kind !== 'cost-limit' && err.kind !== 'turn-limit') return;
+          await emitEvent({
+            event_type: 'agent_limit_reached',
+            correlation_id: correlationId,
+            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            pr_number: pr.number,
+            agent: REVIEW_AGENT,
+            commit_sha: pr.head.sha,
+            payload: {
+              kind: err.kind,
+              error: err.message,
+              coinsSpent: reportedCost(stats),
+            },
+          });
+        };
+
         let agentOutput;
+        let agentRun; // full runner result, kept for cost and token accounting
+        let runStats = null;
         try {
-          agentOutput = await runAgent({
+          agentRun = await runAgent({
             agent,
             cwd: bundle.dir,
+            home,
             prompt: bundle.prompt,
             timeout: 10 * 60 * 1000, // 10 minutes
           });
+          runStats = agentRun.stats;
+          agentOutput = reviewTextFor(agentRun);
           agentSucceeded = true;
         } catch (agentErr) {
-          const isTimeout = /timeout/i.test(agentErr.message);
+          runStats = agentErr.stats || null;
+          // Non-AgentRunError failures keep the old message test.
+          const isTimeout = agentErr.kind
+            ? agentErr.kind === 'timeout'
+            : /timeout/i.test(agentErr.message);
           if (isTimeout) {
             await emitEvent({
               event_type: 'agent_timeout',
@@ -701,6 +900,8 @@ async function reviewPRs(options = {}) {
               commit_sha: pr.head.sha,
               payload: { error: agentErr.message },
             });
+          } else {
+            await emitLimitReached(agentErr, runStats);
           }
           throw agentErr;
         } finally {
@@ -712,18 +913,23 @@ async function reviewPRs(options = {}) {
           // REPLACES the in-flight error, so an unguarded billing failure would
           // erase the reason the review actually failed.
           try {
+            let delta = null;
+            let shared = false;
             if (tracksBobcoins) {
               coinsAfter = await bobCredits.getBalance({ force: true });
-              coinsSpent = bobCredits.computeSpend(coinsBefore, coinsAfter);
-
-              if (coinsSpent !== null) {
-                console.log(`\n🪙 Bobcoins spent: ${coinsSpent}`);
-              } else if (coinsAfter && !coinsAfter.available) {
-                console.log(
-                  `\n🪙 Bobcoins: balance unavailable (${coinsAfter.reason})`
-                );
+              shared = overlapped(coinsMark);
+              if (!shared) {
+                delta = bobCredits.computeSpend(coinsBefore, coinsAfter);
               }
             }
+            const spend = resolveSpend({
+              stats: runStats,
+              delta,
+              tracked: tracksBobcoins && !shared,
+              after: coinsAfter,
+            });
+            coinsSpent = spend.coinsSpent;
+            coinsSource = spend.source;
 
             await recordReviewCost({
               correlationId,
@@ -731,7 +937,9 @@ async function reviewPRs(options = {}) {
               after: coinsAfter,
               coinsSpent,
               durationMs: Date.now() - prStartedAt,
-              source: tracksBobcoins ? 'balance-delta' : 'unknown',
+              source: spend.ledgerSource,
+              stats: runStats,
+              toolCalls: runStats ? (runStats.tool_calls ?? null) : null,
             });
           } catch (costErr) {
             console.warn(`⚠️  Bobcoins accounting failed: ${costErr.message}`);
@@ -741,14 +949,15 @@ async function reviewPRs(options = {}) {
         console.log(`\n✅ ${agent} review received`);
 
         // ── Carbon Builder skill activation observability ─────────────────
-        // Reuse the shared extractor from reviewParser — handles both v1
-        // (read_file calls to .bob/skills/carbon-builder/) and v2 (use_skill
-        // tool with skill_name: carbon-builder).
-        let skillFilesRead = extractCarbonBuilderSkillReads(agentOutput);
+        // Evidence is the tool calls seen in Bob's event stream (a use_skill
+        // call, or reads of .bob/skills/carbon-builder/); runs without an event
+        // stream fall back to the shared transcript extractor.
+        let evidence = summarizeToolCalls(agentRun.toolCalls);
+        let skillFilesRead = skillReadsFor(agentRun, agentOutput, evidence);
         if (skillFilesRead.length > 0) {
-          // v2 leaves a single "use_skill:carbon-builder" signal; v1 leaves one
-          // entry per skill file the agent read. Either form means the agent
-          // loaded the skill before reviewing.
+          // The skill invocation leaves a single "use_skill:carbon-builder"
+          // signal; file reads leave one entry per skill file. Either form means
+          // the agent loaded the skill before reviewing.
           const how = skillFilesRead.includes('use_skill:carbon-builder')
             ? 'invoked it via the use_skill tool'
             : `read ${skillFilesRead.length} skill file(s): ${skillFilesRead.join(', ')}`;
@@ -760,10 +969,25 @@ async function reviewPRs(options = {}) {
             '\n🔬 Carbon Builder skill: ⚠️  NOT loaded — the agent transcript shows no use_skill call and no read of .bob/skills/carbon-builder/. Carbon claims in this review are unverified by the skill.'
           );
         }
+        if (agentRun.format === 'stream-json') {
+          const mcp = Object.entries(evidence.mcpCalls)
+            .map(([name, n]) => `${name}=${n}`)
+            .join(' ');
+          console.log(`🔎 Carbon MCP calls: ${mcp || 'none'}`);
+        }
         // ─────────────────────────────────────────────────────────────────
 
         // Parse review output
-        let review = parseReviewOutput(agentOutput);
+        let review = parseReviewOutput(agentOutput, {
+          skillReads: skillFilesRead,
+        });
+
+        // Run of record: the first run, or the retry when it produced the review.
+        let finalRun = agentRun;
+        let runs = 1;
+        let totalSpent = coinsSpent;
+        let totalSource = coinsSource;
+        let balanceAfter = coinsAfter;
 
         // Retry once on parse failure. Bob's JSON block is a fresh, non-deterministic
         // generation each run: a malformed-output parse failure (an escape/quote
@@ -774,20 +998,34 @@ async function reviewPRs(options = {}) {
             '⚠️  Parse failed — retrying bob review once (output is non-deterministic)'
           );
           try {
+            runs = 2;
             let retryCoinsBefore = null;
+            let retryMark = markNow();
+            // A bearer refreshed during the first run is picked up here.
+            if (home) await refreshBobMcp(home).catch(() => {});
             if (tracksBobcoins) {
+              retryMark = markNow();
               retryCoinsBefore = await bobCredits
                 .getBalance({ force: true })
                 .catch(() => null);
             }
             let retryOutput;
+            let retryRun;
+            let retryStats = null;
             try {
-              retryOutput = await runAgent({
+              retryRun = await runAgent({
                 agent,
                 cwd: bundle.dir,
+                home,
                 prompt: bundle.prompt,
                 timeout: 10 * 60 * 1000,
               });
+              retryStats = retryRun.stats;
+              retryOutput = reviewTextFor(retryRun);
+            } catch (retryRunErr) {
+              retryStats = retryRunErr.stats || null;
+              await emitLimitReached(retryRunErr, retryStats);
+              throw retryRunErr;
             } finally {
               // Mirror the first run's billing: the retry burns coins too, so record
               // its spend. Guarded so an accounting failure never masks the retry.
@@ -796,20 +1034,37 @@ async function reviewPRs(options = {}) {
                   const retryCoinsAfter = await bobCredits.getBalance({
                     force: true,
                   });
-                  const retrySpent = bobCredits.computeSpend(
-                    retryCoinsBefore,
-                    retryCoinsAfter
+                  const retryShared = overlapped(retryMark);
+                  const retrySpend = resolveSpend({
+                    stats: retryStats,
+                    delta: retryShared
+                      ? null
+                      : bobCredits.computeSpend(
+                          retryCoinsBefore,
+                          retryCoinsAfter
+                        ),
+                    tracked: !retryShared,
+                    after: retryCoinsAfter,
+                    label: 'retry',
+                  });
+                  balanceAfter = retryCoinsAfter;
+                  const sum = addSpend(
+                    { coinsSpent, source: coinsSource },
+                    retrySpend
                   );
-                  if (retrySpent !== null) {
-                    console.log(`\n🪙 Bobcoins spent (retry): ${retrySpent}`);
-                  }
+                  totalSpent = sum.coinsSpent;
+                  totalSource = sum.source;
                   await recordReviewCost({
                     correlationId,
                     pr,
                     after: retryCoinsAfter,
-                    coinsSpent: retrySpent,
+                    coinsSpent: retrySpend.coinsSpent,
                     durationMs: Date.now() - prStartedAt,
-                    source: 'balance-delta',
+                    source: retrySpend.ledgerSource,
+                    stats: retryStats,
+                    toolCalls: retryStats
+                      ? (retryStats.tool_calls ?? null)
+                      : null,
                   });
                 }
               } catch (costErr) {
@@ -819,13 +1074,23 @@ async function reviewPRs(options = {}) {
               }
             }
             if (retryOutput) {
-              review = parseReviewOutput(retryOutput);
+              const retryEvidence = summarizeToolCalls(retryRun.toolCalls);
+              const retrySkillReads = skillReadsFor(
+                retryRun,
+                retryOutput,
+                retryEvidence
+              );
+              review = parseReviewOutput(retryOutput, {
+                skillReads: retrySkillReads,
+              });
               if (review) {
                 // Adopt the successful retry as the run of record so the token
-                // estimate and skill_unavailable metric below reflect the output
+                // figures and skill_unavailable metric below reflect the output
                 // actually used.
                 agentOutput = retryOutput;
-                skillFilesRead = extractCarbonBuilderSkillReads(retryOutput);
+                skillFilesRead = retrySkillReads;
+                evidence = retryEvidence;
+                finalRun = retryRun;
                 console.log(
                   '✅ Retry succeeded — parsed review from second attempt'
                 );
@@ -848,7 +1113,7 @@ async function reviewPRs(options = {}) {
             commit_sha: pr.head.sha,
           });
           // The `finally` below removes the bundle on the way out.
-          continue;
+          return prResults;
         }
 
         console.log(`✅ Parsed: ${review.findings.length} findings`);
@@ -947,15 +1212,25 @@ async function reviewPRs(options = {}) {
           }
         }
 
-        // Calculate token usage estimate
-        const tokenUsage = estimateTokenUsage({
-          prompt: bundle.prompt,
-          diff: diff,
-          agentOutput: agentOutput,
-        });
-        console.log(
-          `✅ Estimated tokens: ~${tokenUsage.total.toLocaleString()} (input: ~${tokenUsage.input.toLocaleString()}, output: ~${tokenUsage.output.toLocaleString()})`
-        );
+        // Exact counts from Bob's result record, else the character estimate.
+        const tokenUsage = tokensFromStats(finalRun.stats) || {
+          ...estimateTokenUsage({
+            prompt: bundle.prompt,
+            diff: diff,
+            agentOutput: agentOutput,
+          }),
+          source: 'estimate',
+        };
+        if (tokenUsage.source === 'bob') {
+          console.log(
+            `✅ Tokens: ${tokenUsage.total.toLocaleString()} (input: ${tokenUsage.input.toLocaleString()}, output: ${tokenUsage.output.toLocaleString()})`
+          );
+        } else {
+          console.log(
+            `✅ Estimated tokens: ~${tokenUsage.total.toLocaleString()} (input: ~${tokenUsage.input.toLocaleString()}, output: ~${tokenUsage.output.toLocaleString()})`
+          );
+        }
+        const observed = finalRun.format === 'stream-json';
 
         // ── Emit metrics event for this review ──────────────────────────────
         await emitEvent({
@@ -991,9 +1266,21 @@ async function reviewPRs(options = {}) {
             token_input: tokenUsage.input,
             token_output: tokenUsage.output,
             token_total: tokenUsage.total,
-            coinsSpent,
+            token_cache_read: tokenUsage.cacheRead ?? null,
+            token_cache_write: tokenUsage.cacheWrite ?? null,
+            token_source: tokenUsage.source,
+            coins_source: totalSpent === null ? 'unknown' : totalSource,
+            bob_task_id: finalRun.stats
+              ? (finalRun.stats.task_id ?? null)
+              : null,
+            tool_calls: observed ? evidence.total : null,
+            mcp_tool_calls: observed ? sumCalls(evidence.mcpCalls) : null,
+            runs,
+            coinsSpent: totalSpent,
             remainingAfter:
-              coinsAfter && coinsAfter.available ? coinsAfter.remaining : null,
+              balanceAfter && balanceAfter.available
+                ? balanceAfter.remaining
+                : null,
             durationMs: Date.now() - prStartedAt,
           },
         });
@@ -1042,7 +1329,7 @@ async function reviewPRs(options = {}) {
         console.log(`\n✅ PR #${pr.number} review complete`);
 
         // Record success for the Slack digest
-        runResults.push({
+        prResults.push({
           prNumber: pr.number,
           prUrl: pr.html_url,
           findingsCount: review.findings.length,
@@ -1065,7 +1352,7 @@ async function reviewPRs(options = {}) {
         });
         // Record failure for the Slack digest so it appears as a ⚠️ entry
         // rather than silently vanishing from the summary.
-        runResults.push({
+        prResults.push({
           prNumber: pr.number,
           failed: true,
           error: prError.message,
@@ -1076,7 +1363,68 @@ async function reviewPRs(options = {}) {
         // BOB_API_KEY, is ever left behind.
         await cleanupBundle(bundle);
       }
+      return prResults;
+    };
+
+    // REVIEW_CONCURRENCY workers, numbered from 1, each take the next PR in
+    // list order and take another when it finishes. `options.concurrency` is a
+    // test hook. One review's failure never reaches another; the batch waits
+    // for all of them.
+    const requested = Math.max(
+      1,
+      Math.floor(options.concurrency) || REVIEW_CONCURRENCY
+    );
+    // Only Bob gets a private HOME; the other CLIs keep per-user state in the
+    // real one (Claude Code rewrites ~/.claude.json on every run).
+    const concurrency = agent === 'bob' ? requested : 1;
+    if (concurrency < requested) {
+      console.log(
+        `ℹ️  REVIEW_CONCURRENCY=${requested} ignored — '${agent}' shares one HOME, so reviews run one at a time`
+      );
     }
+    const pending = prs.map((pr, index) => ({ pr, index }));
+    const perPr = [];
+    const report = () =>
+      options.onProgress?.({
+        inFlight: inFlight.map((entry) => ({ ...entry })),
+        queued: pending.map(({ pr }) => pr.number),
+        concurrency,
+      });
+    report();
+
+    const work = async (slot) => {
+      while (pending.length > 0) {
+        const { pr, index } = pending.shift();
+        const entry = {
+          worker: slot,
+          pr: pr.number,
+          startedAt: new Date().toISOString(),
+        };
+        inFlight.push(entry);
+        started++;
+        report();
+        try {
+          perPr[index] = await reviewLog.runWithContext(
+            { worker: slot, pr: pr.number },
+            () => reviewOne(pr)
+          );
+        } catch (error) {
+          // reviewOne handles its own errors; this is a failure in its handler.
+          perPr[index] = [
+            { prNumber: pr.number, failed: true, error: error.message },
+          ];
+        } finally {
+          inFlight.splice(inFlight.indexOf(entry), 1);
+          report();
+        }
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, prs.length) }, (_, i) =>
+        work(i + 1)
+      )
+    );
+    for (const outcomes of perPr) runResults.push(...outcomes);
 
     const runDurationMs = Date.now() - runStartedAt;
     await emitEvent({
@@ -1137,12 +1485,26 @@ function _countBy(arr, field) {
 //
 // parsePrNumbers and resolveReviewTargets are exported so the API server enforces
 // exactly the rules this module obeys, rather than a second copy of them.
-module.exports = { reviewPRs, parsePrNumbers, resolveReviewTargets };
+module.exports = {
+  reviewPRs,
+  parsePrNumbers,
+  resolveReviewTargets,
+  resolveSpend,
+  tokensFromStats,
+  reviewTextFor,
+  skillReadsFor,
+  addSpend,
+};
 
 // Run if executed directly
 if (require.main === module) {
-  reviewPRs().catch((error) => {
-    console.error('Fatal error:', error);
-    process.exit(1);
-  });
+  checkStartup({ mode: 'cli' });
+  // Capture tags terminal lines with their worker and PR, as the console does.
+  reviewLog.start(`cli-${Date.now()}`);
+  reviewPRs()
+    .catch((error) => {
+      console.error('Fatal error:', error);
+      process.exitCode = 1;
+    })
+    .finally(() => reviewLog.stop());
 }

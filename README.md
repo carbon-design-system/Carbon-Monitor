@@ -34,7 +34,7 @@ repository or your own job.
 | **Fetch**  | Queries GitHub for open PRs, excluding drafts, bot-authored PRs (Dependabot, Renovate), PRs older than 21 days and PRs already labelled `AIReviewed`. Up to 10 PRs per run. Both limits are configurable.                                                                                                                                                                         |
 | **Bundle** | Builds a temporary workspace per PR: `PR_REVIEW_REQUEST.md` (description, changed files, full unified diff), `pr.json` / `files.json` / `diff.patch`, the agent rules in `.bob/rules/01-output.md`, and the Carbon Builder skill. A `Closes #N`, `Fixes #N` or `Resolves #N` reference pulls in the linked issue (and its parent) as acceptance criteria, capped at 5,000 tokens. |
 | **Review** | Runs `bob run --trust --accept-license [--team-id …] "<prompt>"` in the bundle. Bob writes a visible catalogue of every suspicious item per file, classified as Category 1 (Carbon API, needs MCP) or Category 2 (visible in the diff).                                                                                                                                           |
-| **Verify** | Resolves every catalogue item. Category 1 items are checked with the Carbon Builder skill and Carbon MCP tools (`code_search`, `docs_search`, `get_charts`); Category 2 items from the diff alone. The parser flags runs that skipped the catalogue or hid their resolutions.                                                                                                     |
+| **Verify** | Resolves every catalogue item. Category 1 items are checked with the Carbon Builder skill and Carbon MCP tools (`code_search`, `docs_search`, `get_charts`, `labs_search`, `code_audit`); Category 2 items from the diff alone. The parser flags runs that skipped the catalogue or hid their resolutions.                                                                        |
 | **Post**   | Findings that map to a diff line become inline review comments. The rest, plus the summary and recommendation, go in one PR comment. The `AIReviewed` label is added.                                                                                                                                                                                                             |
 | **Report** | Scheduled runs post a digest to Slack when `SLACK_WEBHOOK_URL` is set. Review events are written to Elasticsearch for the Kibana dashboard.                                                                                                                                                                                                                                       |
 
@@ -135,7 +135,7 @@ recommendation, are in [docs/REVIEW_OUTPUT.md](docs/REVIEW_OUTPUT.md).
 
 ## Who can run this
 
-> Reading, testing and adapting the code needs nothing special: `npm install` and
+> Reading, testing and adapting the code needs nothing special: `npm ci` and
 > `npm run test:all` run anywhere with Node 22.15 or later. Running a review does
 > need IBM access. Bob Shell requires the IBM office network or VPN; outside it,
 > requests fail with Cloudflare errors. Carbon MCP authenticates with an IBMid,
@@ -145,17 +145,17 @@ recommendation, are in [docs/REVIEW_OUTPUT.md](docs/REVIEW_OUTPUT.md).
 
 ## Quick start
 
-| Prerequisite       | Notes                                                                                                                                                                                                                |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node.js >= 22.15.0 | Required by Bob Shell                                                                                                                                                                                                |
-| GitHub token       | For the reviewing GitHub account (i.e. machine user), which needs the **Triage role on the target repo**, plus Pull requests and Issues write and Contents read. See [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md). |
-| Bob Shell CLI      | Installed and on `PATH`                                                                                                                                                                                              |
-| Carbon MCP         | Configured in Bob as a streamable-HTTP connection                                                                                                                                                                    |
+| Prerequisite        | Notes                                                                                                                                                                                                                |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node.js 24 or later | Required by Bob Shell; the code itself runs on >= 22.15.0                                                                                                                                                            |
+| GitHub token        | For the reviewing GitHub account (i.e. machine user), which needs the **Triage role on the target repo**, plus Pull requests and Issues write and Contents read. See [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md). |
+| Bob Shell CLI       | Installed and on `PATH`                                                                                                                                                                                              |
+| Carbon MCP          | Configured in Bob as a streamable-HTTP connection                                                                                                                                                                    |
 
 ```bash
 git clone https://github.com/carbon-design-system/Carbon-Monitor.git
 cd Carbon-Monitor
-npm install
+npm ci
 cp .env.example .env
 ```
 
@@ -200,7 +200,7 @@ so Bob can use MCP tools in the review bundles.
 `https://mcp.carbondesignsystem.com/mcp` to `~/.bob/settings/mcp.json`, then
 check that `/mcp list` inside `bob` reports `carbon-mcp - Ready`.
 
-**Carbon Builder skill.** `npm install` places it in `.bob/skills/carbon-builder/`
+**Carbon Builder skill.** `npm ci` (or `npm install`) places it in `.bob/skills/carbon-builder/`
 if it is missing. Otherwise follow the
 [Carbon Builder skill setup guide](https://carbondesignsystem.com/developing/carbon-mcp/onboarding-and-setup/#step-4:-adding-the-carbon-builder-skill).
 
@@ -218,15 +218,16 @@ POST /api/review/trigger          202 Accepted at once
         ├─► buildReviewBundle()   src/reviewBundle.js
         ├─► runAgent()            src/agentRunner.js
         │     bob run --trust --accept-license [--team-id …] "<prompt>"
-        │     └─► Carbon MCP: code_search · docs_search · get_charts · labs_search
+        │     └─► Carbon MCP: code_search · docs_search · get_charts · labs_search · code_audit
         ├─► parseReviewOutput()   src/reviewParser.js
         ├─► post inline + summary comments, apply the AIReviewed label
         └─► Slack digest (scheduled runs only, when SLACK_WEBHOOK_URL is set)
 ```
 
-Only one review runs at a time. Two agents reviewing the same PR would post the
+Only one batch runs at a time, with up to `REVIEW_CONCURRENCY` reviews (default 2)
+in flight inside it. Two agents reviewing the same PR would post the
 same findings twice, so a second trigger while one is in flight gets `409` with
-the running review's details. The guard is in-process, and the Code Engine app
+the running batch's details. The guard is in-process, and the Code Engine app
 is pinned to one instance, so one lock covers the deployment. A review takes
 minutes, longer than Code Engine's 300-second request ceiling, so the trigger
 returns `202` straight away and callers poll `GET /api/review/status`. The full
@@ -297,8 +298,8 @@ IBMid from the console, or call `POST /api/mcp/refresh`.
 label, or none was opened within the `DAYS_BACK` window.
 
 **Keep artifacts for debugging.** Run `GITHUB_AI_AGENT_KEEP_ARTIFACTS=true npm start`.
-The bundle path is printed; it holds `agent-output.txt` (Bob's full response) and
-`agent-stderr.txt`.
+The bundle path is printed; it holds `agent-output.txt` (Bob's full response), `agent-events.ndjson`
+(Bob's raw event stream) and `agent-stderr.txt`.
 
 ## Development
 

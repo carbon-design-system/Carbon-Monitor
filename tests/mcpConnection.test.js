@@ -147,7 +147,7 @@ async function main() {
   await test('preserves operator-tuned fields across a token write', async () => {
     const config = readConfig();
     config.mcpServers['carbon-mcp'].timeout = 999000;
-    config.mcpServers['carbon-mcp'].alwaysAllow = ['code_search'];
+    config.mcpServers['carbon-mcp'].alwaysAllow = ['code_search', 'my_tool'];
     config.mcpServers['other-server'] = { type: 'stdio', command: 'echo' };
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
@@ -158,9 +158,15 @@ async function main() {
       after.mcpServers['carbon-mcp'].timeout === 999000,
       'a custom timeout must survive'
     );
+    const allow = after.mcpServers['carbon-mcp'].alwaysAllow;
+    assert(allow.includes('my_tool'), 'an operator-added tool must survive');
     assert(
-      after.mcpServers['carbon-mcp'].alwaysAllow.length === 1,
-      'a customised allow-list must survive'
+      allow.includes('code_audit') && allow.includes('labs_search'),
+      'every built-in tool must be present after the write'
+    );
+    assert(
+      new Set(allow).size === allow.length,
+      'the allow-list must not contain duplicates'
     );
     assert(
       after.mcpServers['other-server'],

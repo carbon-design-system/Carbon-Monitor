@@ -8,6 +8,12 @@
 // output that already parses, so it cannot alter a currently-passing review.
 const { jsonrepair } = require('jsonrepair');
 
+// A catalogue line before BEGIN_REVIEW_JSON: SKIP, NO-FINDINGS, [file:line] or
+// file.ext entries, bare, bulleted or backtick-wrapped. Exported so the test
+// checks the live pattern.
+const CATALOGUE_LINE_RE =
+  /^`?(-\s+)?(SKIP |NO-FINDINGS |\[.+?\]\s*—|\S+\.\S*\s*—)/m;
+
 /**
  * Check if a finding appears to be Carbon Design System specific
  *
@@ -485,8 +491,11 @@ function escapeInvalidJsonEscapes(str) {
  * @param {string} agentOutput - Raw output from AI agent
  * @returns {Object|null} - Parsed review object or null if invalid
  */
-function parseReviewOutput(agentOutput) {
-  const skillFilesRead = extractCarbonBuilderSkillReads(agentOutput);
+function parseReviewOutput(agentOutput, options = {}) {
+  // Structured runs pass the skill evidence seen in the event stream; the
+  // transcript regex stays the fallback for runs that have no events.
+  const skillFilesRead =
+    options.skillReads ?? extractCarbonBuilderSkillReads(agentOutput);
 
   // Holds the exact JSON string handed to JSON.parse, so a SyntaxError's byte
   // position can be shown against the real JSON rather than the raw transcript.
@@ -520,8 +529,7 @@ function parseReviewOutput(agentOutput) {
     //   - SKIP:          SKIP file.ts — fixture
     const preJson =
       jsonStart !== -1 ? agentOutput.slice(0, jsonStart) : agentOutput;
-    const hasCatalogue =
-      /^`?(-\s+)?(SKIP |NO-FINDINGS |\[.+?\]\s*—|\S+\.\S*\s*—)/m.test(preJson);
+    const hasCatalogue = CATALOGUE_LINE_RE.test(preJson);
 
     // Detect whether Step 2 resolutions were written visibly.
     // hasPendingItems: true when any catalogue line ends with "— Category N — pending"
@@ -1125,6 +1133,7 @@ function countBySeverity(findings) {
 
 module.exports = {
   parseReviewOutput,
+  CATALOGUE_LINE_RE,
   filterUnverifiedCarbonFindings,
   extractCarbonBuilderSkillReads,
   escapeInvalidJsonEscapes,

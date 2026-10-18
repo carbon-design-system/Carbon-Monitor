@@ -9,6 +9,9 @@
  * Otherwise it downloads the official zip from the Carbon Design System site,
  * extracts it using the central directory (handles data-descriptor entries),
  * and writes the files to .bob/skills/carbon-builder/.
+ *
+ * Never throws and never exits non-zero: it prints one line saying what it did
+ * or why it skipped, so postinstall cannot fail an install.
  */
 
 const https = require('https');
@@ -105,7 +108,7 @@ function download(url) {
     const chunks = [];
     const request = (targetUrl) => {
       https
-        .get(targetUrl, (res) => {
+        .get(targetUrl, { timeout: 30_000 }, (res) => {
           if (
             res.statusCode >= 300 &&
             res.statusCode < 400 &&
@@ -122,6 +125,9 @@ function download(url) {
           res.on('end', () => resolve(Buffer.concat(chunks)));
           res.on('error', reject);
         })
+        .on('timeout', function () {
+          this.destroy(new Error('timed out'));
+        })
         .on('error', reject);
     };
     request(url);
@@ -130,40 +136,26 @@ function download(url) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-async function main() {
-  if (fs.existsSync(SKILL_MARKER)) {
-    console.log('✅ carbon-builder skill already present — skipping download');
-    return;
-  }
+const MANUAL = 'https://carbondesignsystem.com/developing/carbon-mcp/';
 
-  console.log(
-    '📥 carbon-builder skill not found — downloading from Carbon Design System...'
-  );
-  console.log(`   ${SKILL_URL}`);
+/** Install the skill and return the one line to print. */
+async function install() {
+  if (fs.existsSync(SKILL_MARKER)) {
+    return 'carbon-builder skill: already present, nothing to download';
+  }
 
   let zipBuffer;
   try {
     zipBuffer = await download(SKILL_URL);
   } catch (err) {
-    console.warn(`⚠️  Could not download carbon-builder skill: ${err.message}`);
-    console.warn('   The skill will be unavailable until installed.');
-    console.warn(
-      `   Manual install: https://carbondesignsystem.com/developing/carbon-mcp/`
-    );
-    process.exit(0); // non-fatal — don't block npm install
+    return `carbon-builder skill: skipped, download failed (${err.message}); install manually from ${MANUAL}`;
   }
-
-  console.log(`   Downloaded ${zipBuffer.length} bytes`);
 
   let entries;
   try {
     entries = parseCentralDirectory(zipBuffer);
   } catch (err) {
-    console.warn(`⚠️  Failed to parse skill zip: ${err.message}`);
-    console.warn(
-      `   Manual install: https://carbondesignsystem.com/developing/carbon-mcp/`
-    );
-    process.exit(0);
+    return `carbon-builder skill: skipped, could not read the zip (${err.message}); install manually from ${MANUAL}`;
   }
 
   // Determine the common prefix to strip (zip may wrap files in carbon-builder/)
@@ -171,17 +163,15 @@ async function main() {
     (e) => !e.name.endsWith('/') && !e.name.startsWith('__MACOSX/')
   );
   if (fileEntries.length === 0) {
-    console.warn('⚠️  Zip contained no usable files — skipping extraction');
-    process.exit(0);
+    return 'carbon-builder skill: skipped, the zip held no usable files';
   }
 
   const firstSegments = new Set(fileEntries.map((e) => e.name.split('/')[0]));
   const stripPrefix =
     firstSegments.size === 1 ? [...firstSegments][0] + '/' : '';
 
-  fs.mkdirSync(DEST_DIR, { recursive: true });
-
   let written = 0;
+  let unreadable = 0;
   for (const entry of fileEntries) {
     const relativeName = stripPrefix
       ? entry.name.slice(stripPrefix.length)
@@ -189,42 +179,26 @@ async function main() {
     if (!relativeName) continue;
 
     const destPath = path.join(DEST_DIR, 'carbon-builder', relativeName);
-    fs.mkdirSync(path.dirname(destPath), { recursive: true });
-
-    let data;
     try {
-      data = extractEntry(zipBuffer, entry);
-    } catch (err) {
-      console.warn(
-        `⚠️  Could not decompress ${entry.name}: ${err.message} — skipping`
-      );
-      continue;
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, extractEntry(zipBuffer, entry));
+      written++;
+    } catch {
+      unreadable++;
     }
-
-    fs.writeFileSync(destPath, data);
-    written++;
   }
 
-  if (fs.existsSync(SKILL_MARKER)) {
-    console.log(
-      `✅ carbon-builder skill installed (${written} files) at .bob/skills/carbon-builder/`
-    );
-    console.log(
-      '   Commit this directory to share the skill across your team.'
-    );
-  } else {
-    console.warn(
-      `⚠️  Extracted ${written} file(s) but SKILL.md not found — zip layout may have changed.`
-    );
-    console.warn(
-      `   Manual install: https://carbondesignsystem.com/developing/carbon-mcp/`
-    );
+  if (!fs.existsSync(SKILL_MARKER)) {
+    return `carbon-builder skill: wrote ${written} file(s) but SKILL.md is missing, the zip layout may have changed; install manually from ${MANUAL}`;
   }
+  return (
+    `carbon-builder skill: installed ${written} files at .bob/skills/carbon-builder/` +
+    (unreadable ? ` (${unreadable} could not be extracted)` : '')
+  );
 }
 
-main().catch((err) => {
-  console.warn(
-    `⚠️  install-carbon-builder-skill: unexpected error: ${err.message}`
-  );
-  process.exit(0); // always non-fatal
-});
+install()
+  .catch(
+    (err) => `carbon-builder skill: skipped, unexpected error (${err.message})`
+  )
+  .then((line) => console.log(line));

@@ -29,7 +29,7 @@ RUN npm install -g --registry=https://registry.npmjs.org/ --no-audit --no-fund \
   && claude --version
 ```
 
-Keep the Debian base, Node 22, the `curl ca-certificates git` install, the
+Keep the Debian base, Node 24, the `curl ca-certificates git` install, the
 non-root `app` user and `/workspace`. If the job uses a skill, keep the skill
 copy but target `.claude/skills/` (section 6).
 
@@ -53,9 +53,12 @@ case 'claude':
 ```
 
 Delete the `env.CLAUDE_MCP_CONFIG = ...` line near the top of `runAgent`; the
-flag above replaces it. Where `runAgent` resolves, parse `stdout` as JSON and
-return `parsed.result` as the agent text, keeping `parsed.total_cost_usd` for
-the ledger (section 7).
+flag above replaces it. Use the object `runAgent` resolves (`text`,
+`toolCalls`, `stats`): set `text` to `parsed.result` and keep
+`parsed.total_cost_usd` for the ledger (section 7). It is dollars, so do not
+put it in `stats.session_costs`, which `index.js` reads as Bobcoins. A `stats`
+of `null` keeps the character estimate for tokens. Bobcoins tracking is
+Bob-only, so the cost for this agent is `null` with source `unknown`.
 
 ## 3. src/api/healthChecks.js
 
@@ -124,6 +127,10 @@ Update the `Promise.all` list and the console tile that renders `id: 'bob'`.
   # Health-check budget for `claude --version`; replaces BOB_CHECK_TIMEOUT_MS.
   # AGENT_CHECK_TIMEOUT_MS=20000
   ```
+
+`REVIEW_CONCURRENCY` stays at 1 for this agent: the harness gives only Bob a
+private `HOME` per review, and Claude Code rewrites `~/.claude.json` on every run. Raising it takes a per-review home like
+`seedBobHome`, with the agent's own state seeded into it.
 
 ## 5. MCP configuration
 

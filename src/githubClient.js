@@ -5,6 +5,55 @@
 
 const { SKIP_LABELS } = require('./constants');
 
+const RATE_LIMIT_RETRIES = 2;
+// A longer wait would hold the single-flight review loop; give up instead.
+const RATE_LIMIT_MAX_WAIT_SECONDS = 60;
+
+function rateLimitHandler(kind) {
+  return (retryAfter, options, _octokit, retryCount) => {
+    const again =
+      retryCount < RATE_LIMIT_RETRIES &&
+      retryAfter <= RATE_LIMIT_MAX_WAIT_SECONDS;
+    console.warn(
+      `[github] ${kind} on ${options.method} ${options.url}: ` +
+        (again
+          ? `retrying in ${retryAfter}s (${retryCount + 1}/${RATE_LIMIT_RETRIES})`
+          : `giving up (wait ${retryAfter}s, attempt ${retryCount + 1})`)
+    );
+    return again;
+  };
+}
+
+/**
+ * Build an Octokit that retries transient errors and waits out short rate limits.
+ * Only GET and HEAD are retried on 5xx: a retried POST after a 502 can post a
+ * comment or review twice.
+ * @param {Object} options - { auth, baseUrl, ...extra Octokit options }
+ * @returns {Promise<Object>} Octokit instance
+ */
+async function createOctokit({ auth, baseUrl, ...extra }) {
+  // The Octokit packages are ESM-only, so they load by dynamic import.
+  const { Octokit } = await import('@octokit/rest');
+  const { retry } = await import('@octokit/plugin-retry');
+  const { throttling } = await import('@octokit/plugin-throttling');
+  const ThrottledOctokit = Octokit.plugin(retry, throttling);
+  const octokit = new ThrottledOctokit({
+    auth,
+    baseUrl,
+    throttle: {
+      onRateLimit: rateLimitHandler('primary rate limit'),
+      onSecondaryRateLimit: rateLimitHandler('secondary rate limit'),
+    },
+    ...extra,
+  });
+  octokit.hook.before('request', (options) => {
+    if (options.method !== 'GET' && options.method !== 'HEAD') {
+      options.request = { ...options.request, retries: 0 };
+    }
+  });
+  return octokit;
+}
+
 /**
  * Create a GitHub client for PR review operations
  * @param {Object} octokit - Initialized Octokit instance
@@ -22,29 +71,45 @@ function createGitHubClient(octokit) {
         const since = new Date();
         since.setDate(since.getDate() - daysBack);
 
-        // Newest-created first, so the PRs we want are at the front of the page.
-        const { data: prs } = await octokit.rest.pulls.list({
-          owner,
-          repo,
-          state: 'open',
-          sort: 'created',
-          direction: 'desc',
-          per_page: 100,
-        });
-
-        // Filter out PRs that should not be reviewed
-        const filtered = prs.filter((pr) => {
-          if (pr.draft) return false;
-          if (new Date(pr.created_at) < since) return false;
-          if (
-            pr.labels.some(
-              (l) => l.name === label || SKIP_LABELS.includes(l.name)
+        // Newest-created first, so every page after the cutoff can be skipped.
+        // The map callback filters as it goes and stops paging once a page
+        // reaches PRs older than the window, or already holds enough.
+        let kept = 0;
+        const filtered = await octokit.paginate(
+          octokit.rest.pulls.list,
+          {
+            owner,
+            repo,
+            state: 'open',
+            sort: 'created',
+            direction: 'desc',
+            per_page: 100,
+          },
+          (response, done) => {
+            const page = response.data;
+            const matches = page.filter((pr) => {
+              if (pr.draft) return false;
+              if (new Date(pr.created_at) < since) return false;
+              if (
+                pr.labels.some(
+                  (l) => l.name === label || SKIP_LABELS.includes(l.name)
+                )
+              )
+                return false;
+              if (pr.user.type === 'Bot') return false;
+              return true;
+            });
+            kept += matches.length;
+            const last = page[page.length - 1];
+            if (
+              !last ||
+              new Date(last.created_at) < since ||
+              (maxPRs && kept >= maxPRs)
             )
-          )
-            return false;
-          if (pr.user.type === 'Bot') return false;
-          return true;
-        });
+              done();
+            return matches;
+          }
+        );
 
         // Sort newest-first in code so the top-N slice is deterministic rather
         // than dependent on response order. Ties break by PR number (higher = newer).
@@ -332,4 +397,4 @@ function createGitHubClient(octokit) {
   };
 }
 
-module.exports = { createGitHubClient };
+module.exports = { createGitHubClient, createOctokit, rateLimitHandler };

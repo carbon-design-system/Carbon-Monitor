@@ -1,0 +1,1190 @@
+{"type": "message", "timestamp": "2026-10-17T23:14:18.298Z", "role": "user", "content": "[prompt omitted from fixture]"}
+{"type": "tool_use", "timestamp": "2026-10-17T23:14:19.754Z", "tool_name": "read_file", "tool_id": "tooluse_fSGWV3NnbzuUDOHcGKQxlD", "parameters": {"path": "PR_REVIEW_REQUEST.md"}}
+{"type": "tool_result", "timestamp": "2026-10-17T23:14:19.754Z", "tool_id": "tooluse_fSGWV3NnbzuUDOHcGKQxlD", "status": "success", "output": "Contents of file PR_REVIEW_REQUEST.md:\n\n1 | # PR Review Request\n2 | \n3 | **Repository:** carbon-design-system/carbon\n4 | **PR Number:** #22971\n5 | **Title:** Test PR for Carbon Monitor (disregard)\n6 |…[truncated in fixture]"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.244Z", "role": "assistant", "content": "C"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.245Z", "role": "assistant", "content": "ata"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.245Z", "role": "assistant", "content": "loguing and resolving every"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.245Z", "role": "assistant", "content": " item in one"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.246Z", "role": "assistant", "content": " pass."}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.248Z", "role": "assistant", "content": " The repo is"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.248Z", "role": "assistant", "content": "n't checked out, so only"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.248Z", "role": "assistant", "content": " the diff was"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.248Z", "role": "assistant", "content": " reviewed. No `code"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.249Z", "role": "assistant", "content": "_search`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.249Z", "role": "assistant", "content": "/`docs_search` M"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.249Z", "role": "assistant", "content": "CP tools"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.250Z", "role": "assistant", "content": " exist in this session, so"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.250Z", "role": "assistant", "content": " Category 1 items"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.250Z", "role": "assistant", "content": " can"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.250Z", "role": "assistant", "content": "'t be ver"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.251Z", "role": "assistant", "content": "ified and are dropped."}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.251Z", "role": "assistant", "content": "\n\n`AILabel.figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.252Z", "role": "assistant", "content": ".tsx:29 —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.252Z", "role": "assistant", "content": " example replaces {"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.252Z", "role": "assistant", "content": "...props} with hardco"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.253Z", "role": "assistant", "content": "ded aiText and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.253Z", "role": "assistant", "content": " size='"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.253Z", "role": "assistant", "content": "md' — Category 2 "}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.253Z", "role": "assistant", "content": "— pending`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.253Z", "role": "assistant", "content": "\n`AILabel.fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.253Z", "role": "assistant", "content": "ma.tsx:49"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.254Z", "role": "assistant", "content": " — mer"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.254Z", "role": "assistant", "content": "ge conflict markers <"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.254Z", "role": "assistant", "content": "<<<<<< HEA"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.254Z", "role": "assistant", "content": "D / "}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.254Z", "role": "assistant", "content": "======= / >>>>>"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.255Z", "role": "assistant", "content": ">> up"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.255Z", "role": "assistant", "content": "stream/main committ"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.255Z", "role": "assistant", "content": "ed (lines 49, "}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.255Z", "role": "assistant", "content": "51, 53) — Category"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.255Z", "role": "assistant", "content": " 2 — pending`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.255Z", "role": "assistant", "content": "\n`AILabel.figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.256Z", "role": "assistant", "content": ".tsx:50 —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.256Z", "role": "assistant", "content": " example hardcod"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.256Z", "role": "assistant", "content": "es kind and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.256Z", "role": "assistant", "content": " aiText, drops {"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.256Z", "role": "assistant", "content": "...props} — Category 2"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.257Z", "role": "assistant", "content": " — pending`\n`A"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.257Z", "role": "assistant", "content": "ILabel.figma.t"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.257Z", "role": "assistant", "content": "sx:29 — ai"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.257Z", "role": "assistant", "content": "Text prop ex"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.257Z", "role": "assistant", "content": "ists on AILabel —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.257Z", "role": "assistant", "content": " Category 1 — pending`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.258Z", "role": "assistant", "content": "\n`ContainedList."}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.258Z", "role": "assistant", "content": "figma.tsx:68"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.258Z", "role": "assistant", "content": " — label"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.258Z", "role": "assistant", "content": "/kind/size hardc"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.258Z", "role": "assistant", "content": "oded instead of Figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.258Z", "role": "assistant", "content": " props titleIt"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.258Z", "role": "assistant", "content": "em/k"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.259Z", "role": "assistant", "content": "ind/rowItem —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.259Z", "role": "assistant", "content": " Category 2 — pending`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.260Z", "role": "assistant", "content": "\n`ContainedList."}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.260Z", "role": "assistant", "content": "figma.tsx:71"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.260Z", "role": "assistant", "content": " — action given"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.260Z", "role": "assistant", "content": " an"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.261Z", "role": "assistant", "content": " arrow function;"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.261Z", "role": "assistant", "content": " "}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.261Z", "role": "assistant", "content": "ContainedList action prop type"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.261Z", "role": "assistant", "content": " — Category 1 — p"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.261Z", "role": "assistant", "content": "ending`\n`Contained"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.261Z", "role": "assistant", "content": "ListItem.figma.t"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.262Z", "role": "assistant", "content": "sx:31 — render"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.262Z", "role": "assistant", "content": "Icon={null}, h"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.262Z", "role": "assistant", "content": "ardcoded \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.262Z", "role": "assistant", "content": "text\", r"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.263Z", "role": "assistant", "content": "owC"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.263Z", "role": "assistant", "content": "ellIt"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.264Z", "role": "assistant", "content": "em dropped — Category "}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.264Z", "role": "assistant", "content": "2 — pending`\n`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.264Z", "role": "assistant", "content": "ContainedListItem."}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.264Z", "role": "assistant", "content": "figma.tsx:31"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.264Z", "role": "assistant", "content": " — action given an arrow"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.279Z", "role": "assistant", "content": " function — Category 1 —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.279Z", "role": "assistant", "content": " pending`\n`DataT"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.280Z", "role": "assistant", "content": "able.figma.tsx"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.280Z", "role": "assistant", "content": ":234 — new"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.280Z", "role": "assistant", "content": "line at"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.282Z", "role": "assistant", "content": " E"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.282Z", "role": "assistant", "content": "OF removed — Category "}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.283Z", "role": "assistant", "content": "2 — pending`\n`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.284Z", "role": "assistant", "content": "Dropdown.figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.284Z", "role": "assistant", "content": ".tsx:65 —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.284Z", "role": "assistant", "content": " items={items} /"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.284Z", "role": "assistant", "content": " titleText={\"text\"}"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.285Z", "role": "assistant", "content": " added"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.285Z", "role": "assistant", "content": " after {...props} — Category"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.285Z", "role": "assistant", "content": " 2 — pending`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.285Z", "role": "assistant", "content": "\nN"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.286Z", "role": "assistant", "content": "O-FINDINGS"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.286Z", "role": "assistant", "content": " `Header.figma.t"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.287Z", "role": "assistant", "content": "sx` — aria-lab"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.288Z", "role": "assistant", "content": "els present"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.288Z", "role": "assistant", "content": " on Header and Header"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.288Z", "role": "assistant", "content": "Navigation,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.289Z", "role": "assistant", "content": " figma imported,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.289Z", "role": "assistant", "content": " props"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.290Z", "role": "assistant", "content": " m"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.290Z", "role": "assistant", "content": "apped.\n`Hea"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.290Z", "role": "assistant", "content": "derGlobalAction."}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.290Z", "role": "assistant", "content": "figma.tsx:25"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.292Z", "role": "assistant", "content": " — HeaderGl"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.292Z", "role": "assistant", "content": "obalAction ic"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.292Z", "role": "assistant", "content": "on-only button with no aria"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.292Z", "role": "assistant", "content": "-label — Category 2 "}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.292Z", "role": "assistant", "content": "— pending`\n`He"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.292Z", "role": "assistant", "content": "aderMenuButton."}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.293Z", "role": "assistant", "content": "figma.tsx:22"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.293Z", "role": "assistant", "content": " — a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.293Z", "role": "assistant", "content": "ria-label references"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.293Z", "role": "assistant", "content": " undefined isSideNav"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.293Z", "role": "assistant", "content": "Expanded — Category "}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.293Z", "role": "assistant", "content": "2 — pending`\n`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.294Z", "role": "assistant", "content": "HeaderMenuIt"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.294Z", "role": "assistant", "content": "em.figma.tsx"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.297Z", "role": "assistant", "content": ":12 — figma.conn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.297Z", "role": "assistant", "content": "ect used,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.299Z", "role": "assistant", "content": " no"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.299Z", "role": "assistant", "content": " import of fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.299Z", "role": "assistant", "content": "ma —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.300Z", "role": "assistant", "content": " Category 2 — pending"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.300Z", "role": "assistant", "content": "`\n`HeaderP"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.300Z", "role": "assistant", "content": "anel.figma.ts"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.300Z", "role": "assistant", "content": "x:12 — figma."}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.300Z", "role": "assistant", "content": "connect used, no import of fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.303Z", "role": "assistant", "content": "ma — Category 2 —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.303Z", "role": "assistant", "content": " pending`\n`SideN"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.303Z", "role": "assistant", "content": "av.figma.tsx"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.304Z", "role": "assistant", "content": ":12 — figma.conn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.304Z", "role": "assistant", "content": "ect used, no import of figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.304Z", "role": "assistant", "content": " — Category 2 — p"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.304Z", "role": "assistant", "content": "ending`\n`SideNav"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.304Z", "role": "assistant", "content": ".figma.tsx:"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.476Z", "role": "assistant", "content": "24 — href on"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.477Z", "role": "assistant", "content": " SideNav val"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.478Z", "role": "assistant", "content": "id?"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.478Z", "role": "assistant", "content": " — Category 1 — p"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.478Z", "role": "assistant", "content": "ending`\n`SideNav"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.479Z", "role": "assistant", "content": "MenuItem.figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.480Z", "role": "assistant", "content": ".tsx:25 —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.480Z", "role": "assistant", "content": " renderIcon={Icon"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.771Z", "role": "assistant", "content": "Name} undeclared identif"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.771Z", "role": "assistant", "content": "ier — Category 2 —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.772Z", "role": "assistant", "content": " pending`\n`St"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.773Z", "role": "assistant", "content": "ructuredList.figma."}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.774Z", "role": "assistant", "content": "tsx:39 — sel"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.774Z", "role": "assistant", "content": "ectable list"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.775Z", "role": "assistant", "content": ", row, header"}
+{"type": "message", "timestamp": "2026-10-17T23:16:34.776Z", "role": "assistant", "content": "-row and cell mappings"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.024Z", "role": "assistant", "content": " deleted — Category 2"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.025Z", "role": "assistant", "content": " — pending`\nS"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.025Z", "role": "assistant", "content": "KIP `Tab."}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.029Z", "role": "assistant", "content": "figma.tsx` —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.029Z", "role": "assistant", "content": " rename only"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.031Z", "role": "assistant", "content": " (100% similarity, no"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.031Z", "role": "assistant", "content": " content change"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.031Z", "role": "assistant", "content": ").\n`TableCell."}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.276Z", "role": "assistant", "content": "figma.tsx:18"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.276Z", "role": "assistant", "content": " — figma.instance('"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.276Z", "role": "assistant", "content": "Swap slot', {..."}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.277Z", "role": "assistant", "content": "}) called with a m"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.277Z", "role": "assistant", "content": "apping object;"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.277Z", "role": "assistant", "content": " figma.boolean should"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.277Z", "role": "assistant", "content": " w"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.278Z", "role": "assistant", "content": "rap fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.573Z", "role": "assistant", "content": "ma.instance — Category "}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.573Z", "role": "assistant", "content": "2 — pending`\nN"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.574Z", "role": "assistant", "content": "O-FINDINGS"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.574Z", "role": "assistant", "content": " `TableHeader.fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.575Z", "role": "assistant", "content": "ma.tsx` — stra"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.575Z", "role": "assistant", "content": "ightforward string"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.576Z", "role": "assistant", "content": "/boolean mapping,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.576Z", "role": "assistant", "content": " no iss"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.822Z", "role": "assistant", "content": "ues vis"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.823Z", "role": "assistant", "content": "ible.\n`TableRow"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.825Z", "role": "assistant", "content": ".figma.tsx:"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.825Z", "role": "assistant", "content": "57 — TableExpand"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.825Z", "role": "assistant", "content": "Row / TableSelect"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.825Z", "role": "assistant", "content": "Row (lines 57,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.825Z", "role": "assistant", "content": " 76, 77"}
+{"type": "message", "timestamp": "2026-10-17T23:16:35.825Z", "role": "assistant", "content": ", 98, 115) with"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.129Z", "role": "assistant", "content": " no aria-label — Category"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.129Z", "role": "assistant", "content": " 2 — pending`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.129Z", "role": "assistant", "content": "\n`TableRow.figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.132Z", "role": "assistant", "content": ".tsx:58 —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.132Z", "role": "assistant", "content": " colSpan=\"headers +"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.132Z", "role": "assistant", "content": " 1\" string"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.133Z", "role": "assistant", "content": " placeholder — Category "}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.133Z", "role": "assistant", "content": "2 — pending`\n`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.372Z", "role": "assistant", "content": "TableToolbar.fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.372Z", "role": "assistant", "content": "ma.tsx:10 "}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.373Z", "role": "assistant", "content": "— only TableToolbar"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.374Z", "role": "assistant", "content": " imported but"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.374Z", "role": "assistant", "content": " TableToolbarContent"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.374Z", "role": "assistant", "content": "/Search/Menu/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.375Z", "role": "assistant", "content": "Action/Button and action"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.375Z", "role": "assistant", "content": "() used —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.623Z", "role": "assistant", "content": " Category 2 — pending"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.623Z", "role": "assistant", "content": "`\n`Tag.fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.623Z", "role": "assistant", "content": "ma.tsx:50 "}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.625Z", "role": "assistant", "content": "— example hardcodes type"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.625Z", "role": "assistant", "content": "='blue', renderIc"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.625Z", "role": "assistant", "content": "on={null}, size='l"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.626Z", "role": "assistant", "content": "g',"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.626Z", "role": "assistant", "content": " d"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.924Z", "role": "assistant", "content": "ropping {...props} —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.925Z", "role": "assistant", "content": " Category 2 — pending`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.925Z", "role": "assistant", "content": "\n`Tag.figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.925Z", "role": "assistant", "content": ".tsx:52 —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.925Z", "role": "assistant", "content": " DismissibleTag,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.927Z", "role": "assistant", "content": " SelectableTag,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.927Z", "role": "assistant", "content": " OperationalTag,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:36.927Z", "role": "assistant", "content": " TagSkeleton conn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.173Z", "role": "assistant", "content": "ects deleted — Category "}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.174Z", "role": "assistant", "content": "2 — pending`\n`"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.175Z", "role": "assistant", "content": "TreeView.figma."}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.175Z", "role": "assistant", "content": "tsx:27 — T"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.175Z", "role": "assistant", "content": "reeView with"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.176Z", "role": "assistant", "content": " no label/aria-label —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.176Z", "role": "assistant", "content": " Category 2 — pending"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.176Z", "role": "assistant", "content": "`\n`ContainedList"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.425Z", "role": "assistant", "content": "Item.figma.ts"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.425Z", "role": "assistant", "content": "x:33"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.425Z", "role": "assistant", "content": " — tr"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.425Z", "role": "assistant", "content": "ailing whitespace —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.426Z", "role": "assistant", "content": " Category 2 — pending"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.426Z", "role": "assistant", "content": "`\n\nResolutions:"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.426Z", "role": "assistant", "content": "\nconfirmed finding —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.426Z", "role": "assistant", "content": " Merge conflict markers"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.677Z", "role": "assistant", "content": " in"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.678Z", "role": "assistant", "content": " AILabel.figma."}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.678Z", "role": "assistant", "content": "tsx\nconfirmed"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.678Z", "role": "assistant", "content": " finding — AILabel example"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.679Z", "role": "assistant", "content": " hardcodes props ("}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.679Z", "role": "assistant", "content": "lines 29 and 50"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.679Z", "role": "assistant", "content": " "}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.679Z", "role": "assistant", "content": "together"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.971Z", "role": "assistant", "content": ")\ndiscarded: a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.973Z", "role": "assistant", "content": "iText exist"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.973Z", "role": "assistant", "content": "ence — Category 1 and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.974Z", "role": "assistant", "content": " no"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.974Z", "role": "assistant", "content": " M"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.975Z", "role": "assistant", "content": "CP tool available"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.975Z", "role": "assistant", "content": ", so it"}
+{"type": "message", "timestamp": "2026-10-17T23:16:37.976Z", "role": "assistant", "content": " can't be verified and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.223Z", "role": "assistant", "content": " is"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.226Z", "role": "assistant", "content": " omitted\nconfirmed"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.226Z", "role": "assistant", "content": " finding — ContainedList"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.226Z", "role": "assistant", "content": " example hardco"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.227Z", "role": "assistant", "content": "ded\ndiscarded: "}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.227Z", "role": "assistant", "content": "ContainedList `"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.228Z", "role": "assistant", "content": "action` function type"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.228Z", "role": "assistant", "content": " — Category 1, can't"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.478Z", "role": "assistant", "content": " be verified without"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.479Z", "role": "assistant", "content": " MCP, so omitted"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.479Z", "role": "assistant", "content": "\nconfirmed finding —"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.480Z", "role": "assistant", "content": " ContainedListItem example"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.480Z", "role": "assistant", "content": " hardcoded\ndiscar"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.481Z", "role": "assistant", "content": "ded: ContainedListIt"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.482Z", "role": "assistant", "content": "em `action` function"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.482Z", "role": "assistant", "content": " type"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.774Z", "role": "assistant", "content": " — Category 1, can't"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.775Z", "role": "assistant", "content": " be verified without MCP,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.775Z", "role": "assistant", "content": " so omitted\ndiscarded"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.775Z", "role": "assistant", "content": ": DataTable EOF"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.775Z", "role": "assistant", "content": " newline — form"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.776Z", "role": "assistant", "content": "atting only, no functional imp"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.776Z", "role": "assistant", "content": "act\ndiscarded: D"}
+{"type": "message", "timestamp": "2026-10-17T23:16:38.776Z", "role": "assistant", "content": "ropdown titleText/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.034Z", "role": "assistant", "content": "items — the sur"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.034Z", "role": "assistant", "content": "rounding props and `items"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.034Z", "role": "assistant", "content": "` defin"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.035Z", "role": "assistant", "content": "ition aren't visible in the"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.036Z", "role": "assistant", "content": " diff, so I can't show"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.036Z", "role": "assistant", "content": " a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.037Z", "role": "assistant", "content": " funct"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.037Z", "role": "assistant", "content": "ional probl"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.272Z", "role": "assistant", "content": "em\nconfirmed finding"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.273Z", "role": "assistant", "content": " — HeaderGlob"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.273Z", "role": "assistant", "content": "alAction missing aria-"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.274Z", "role": "assistant", "content": "label\nconfirmed finding"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.274Z", "role": "assistant", "content": " — HeaderMenu"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.275Z", "role": "assistant", "content": "Button undefined vari"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.276Z", "role": "assistant", "content": "able\nconfirmed finding"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.278Z", "role": "assistant", "content": " — HeaderMenu"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.578Z", "role": "assistant", "content": "Item missing figma import"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.579Z", "role": "assistant", "content": "\nconfirmed finding — H"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.579Z", "role": "assistant", "content": "eaderPanel missing"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.581Z", "role": "assistant", "content": " figma import\nconfirmed"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.582Z", "role": "assistant", "content": " finding — SideNav miss"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.582Z", "role": "assistant", "content": "ing figma import\ndiscarded"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.582Z", "role": "assistant", "content": ": SideNav href"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.582Z", "role": "assistant", "content": " — Category 1, can't"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.824Z", "role": "assistant", "content": " be verified without MCP,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.824Z", "role": "assistant", "content": " so omitted\nconfirm"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.825Z", "role": "assistant", "content": "ed finding — SideNav"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.825Z", "role": "assistant", "content": "MenuItem IconName"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.825Z", "role": "assistant", "content": " undeclared\nconfirm"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.826Z", "role": "assistant", "content": "ed finding — Structured"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.826Z", "role": "assistant", "content": "List mappings de"}
+{"type": "message", "timestamp": "2026-10-17T23:16:39.826Z", "role": "assistant", "content": "leted\nconfirmed fin"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.124Z", "role": "assistant", "content": "ding — TableCell figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.125Z", "role": "assistant", "content": ".instance misuse\nconf"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.125Z", "role": "assistant", "content": "irmed finding — Table"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.125Z", "role": "assistant", "content": "Row missing aria-lab"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.126Z", "role": "assistant", "content": "els\nconfirmed finding"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.127Z", "role": "assistant", "content": " — TableRow colSp"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.127Z", "role": "assistant", "content": "an placeholder\nconfir"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.127Z", "role": "assistant", "content": "med finding — TableTo"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.377Z", "role": "assistant", "content": "olbar missing imports and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.377Z", "role": "assistant", "content": " undefined action\nconfirm"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.378Z", "role": "assistant", "content": "ed finding — Tag example"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.378Z", "role": "assistant", "content": " hardcoded\nconfir"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.379Z", "role": "assistant", "content": "med finding — Tag"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.379Z", "role": "assistant", "content": " conn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.379Z", "role": "assistant", "content": "ects deleted\nconf"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.381Z", "role": "assistant", "content": "irmed finding — Tre"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.627Z", "role": "assistant", "content": "eView missing label\ndiscar"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.629Z", "role": "assistant", "content": "ded: "}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.629Z", "role": "assistant", "content": "ContainedListItem trail"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.629Z", "role": "assistant", "content": "ing whitespace — form"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.630Z", "role": "assistant", "content": "atting only"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.630Z", "role": "assistant", "content": "\n\nConf"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.630Z", "role": "assistant", "content": "irmed findings list"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.630Z", "role": "assistant", "content": ": "}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.885Z", "role": "assistant", "content": "21 in"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.886Z", "role": "assistant", "content": " total, all"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.886Z", "role": "assistant", "content": " Category 2 (1"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.887Z", "role": "assistant", "content": " blocking, 9"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.887Z", "role": "assistant", "content": " major, 10"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.887Z", "role": "assistant", "content": " minor, 1 n"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.888Z", "role": "assistant", "content": "it). The Final ver"}
+{"type": "message", "timestamp": "2026-10-17T23:16:40.889Z", "role": "assistant", "content": "ification pass found"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.177Z", "role": "assistant", "content": " no su"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.177Z", "role": "assistant", "content": "ggested remedy already present"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.177Z", "role": "assistant", "content": " in the diff.\n\nBE"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.178Z", "role": "assistant", "content": "GIN_REVIE"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.180Z", "role": "assistant", "content": "W_JSON\n{"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.180Z", "role": "assistant", "content": "\n  \"summaryMark"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.180Z", "role": "assistant", "content": "down\": \"This PR ad"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.181Z", "role": "assistant", "content": "ds and ed"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.554Z", "role": "assistant", "content": "its Figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.555Z", "role": "assistant", "content": " Code Connect m"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.556Z", "role": "assistant", "content": "appings for UI"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.557Z", "role": "assistant", "content": " Shell,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.557Z", "role": "assistant", "content": " Table and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.557Z", "role": "assistant", "content": " T"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.558Z", "role": "assistant", "content": "reeView components, hardc"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.558Z", "role": "assistant", "content": "odes props"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.676Z", "role": "assistant", "content": " in several exist"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.677Z", "role": "assistant", "content": "ing examples, and deletes"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.677Z", "role": "assistant", "content": " StructuredList and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.678Z", "role": "assistant", "content": " Tag mappings. "}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.678Z", "role": "assistant", "content": "21 findings: 1 "}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.678Z", "role": "assistant", "content": "blocking, 9 major"}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.679Z", "role": "assistant", "content": ", 10 minor, "}
+{"type": "message", "timestamp": "2026-10-17T23:16:41.679Z", "role": "assistant", "content": "1 nit. Carb"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.069Z", "role": "assistant", "content": "on-specific pr"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.070Z", "role": "assistant", "content": "op chec"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.070Z", "role": "assistant", "content": "ks were omitted because"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.070Z", "role": "assistant", "content": " Carbon MCP t"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.070Z", "role": "assistant", "content": "ools were un"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.073Z", "role": "assistant", "content": "available.\",\n  \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.073Z", "role": "assistant", "content": "findings\": [\n    {"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.073Z", "role": "assistant", "content": "\n      \"severity\": \"bloc"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.273Z", "role": "assistant", "content": "king\",\n      \"file\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.274Z", "role": "assistant", "content": "packages/react/code-conn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.274Z", "role": "assistant", "content": "ect/AILabel/A"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.275Z", "role": "assistant", "content": "ILabel.figma.t"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.276Z", "role": "assistant", "content": "sx\",\n      \"line\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.276Z", "role": "assistant", "content": " 49,\n      \"title\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.276Z", "role": "assistant", "content": " \"Unresolved merge"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.276Z", "role": "assistant", "content": " conflict markers committed\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.480Z", "role": "assistant", "content": "\n      \"body\": \"The"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.480Z", "role": "assistant", "content": " file contains "}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.481Z", "role": "assistant", "content": "<<<<<<< HE"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.481Z", "role": "assistant", "content": "AD, ======= and >"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.483Z", "role": "assistant", "content": ">>>>>> up"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.484Z", "role": "assistant", "content": "stream/main markers at l"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.484Z", "role": "assistant", "content": "ines 49, 51 and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.484Z", "role": "assistant", "content": " 53. This is a synt"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.773Z", "role": "assistant", "content": "ax error, so the wh"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.774Z", "role": "assistant", "content": "ole"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.775Z", "role": "assistant", "content": " Code Connect file fails to"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.775Z", "role": "assistant", "content": " parse and the"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.776Z", "role": "assistant", "content": " AILabel in"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.776Z", "role": "assistant", "content": "line mapping c"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.776Z", "role": "assistant", "content": "annot publ"}
+{"type": "message", "timestamp": "2026-10-17T23:16:42.777Z", "role": "assistant", "content": "ish. Res"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.097Z", "role": "assistant", "content": "olve the conflict, ke"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.099Z", "role": "assistant", "content": "ep a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.099Z", "role": "assistant", "content": " single example line, and remove all"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.100Z", "role": "assistant", "content": " markers.\",\n      \"car"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.101Z", "role": "assistant", "content": "bonVerified"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.101Z", "role": "assistant", "content": "\": false,\n      \"verific"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.101Z", "role": "assistant", "content": "ationSource\": \"not-car"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.102Z", "role": "assistant", "content": "bon-specific\"\n    "}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.277Z", "role": "assistant", "content": "},\n    {\n      \"sever"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.278Z", "role": "assistant", "content": "ity\": \"major\",\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.278Z", "role": "assistant", "content": "file\": \"packages/react/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.279Z", "role": "assistant", "content": "code-connect/AILab"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.281Z", "role": "assistant", "content": "el/AILabel.fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.281Z", "role": "assistant", "content": "ma.tsx\",\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.281Z", "role": "assistant", "content": "\"line\": 29,\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.282Z", "role": "assistant", "content": "\"title\": \"AILabel"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.627Z", "role": "assistant", "content": " example hardcodes props"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.628Z", "role": "assistant", "content": " and drops Figma-"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.628Z", "role": "assistant", "content": "mapped values\",\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.629Z", "role": "assistant", "content": "body\": \"The example no longer"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.629Z", "role": "assistant", "content": " spreads {...props}"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.630Z", "role": "assistant", "content": ", so the Figma size m"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.630Z", "role": "assistant", "content": "apping is ignored and every"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.630Z", "role": "assistant", "content": " vari"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.824Z", "role": "assistant", "content": "ant em"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.824Z", "role": "assistant", "content": "its a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.824Z", "role": "assistant", "content": "iText='Text translation'"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.826Z", "role": "assistant", "content": " and size='md'. The con"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.826Z", "role": "assistant", "content": "flic"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.826Z", "role": "assistant", "content": "ting line at"}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.827Z", "role": "assistant", "content": " "}
+{"type": "message", "timestamp": "2026-10-17T23:16:43.828Z", "role": "assistant", "content": "50 h"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.145Z", "role": "assistant", "content": "ardcodes kind and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.146Z", "role": "assistant", "content": " aiText in"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.149Z", "role": "assistant", "content": " the same way. Restore {"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.150Z", "role": "assistant", "content": "...props} so the mapped"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.150Z", "role": "assistant", "content": " size fl"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.150Z", "role": "assistant", "content": "ows through, and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.151Z", "role": "assistant", "content": " add any"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.152Z", "role": "assistant", "content": " extra static props"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.377Z", "role": "assistant", "content": " al"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.378Z", "role": "assistant", "content": "ongside it.\",\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.378Z", "role": "assistant", "content": "carbonVerified\": false"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.378Z", "role": "assistant", "content": ",\n      \"verificationS"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.379Z", "role": "assistant", "content": "ource\": \"not-carbon"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.380Z", "role": "assistant", "content": "-specific\"\n    },"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.381Z", "role": "assistant", "content": "\n    {\n      \"severity\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.382Z", "role": "assistant", "content": " \"minor\",\n      \"file"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.673Z", "role": "assistant", "content": "\": \"packages/react/code"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.674Z", "role": "assistant", "content": "-connect/Contained"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.674Z", "role": "assistant", "content": "List/ContainedList."}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.675Z", "role": "assistant", "content": "figma.tsx\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.675Z", "role": "assistant", "content": "\n      \"line\": 68,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.675Z", "role": "assistant", "content": "\n      \"title\": \"Contain"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.675Z", "role": "assistant", "content": "edList example repl"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.676Z", "role": "assistant", "content": "aces Figma props"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.878Z", "role": "assistant", "content": " with liter"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.879Z", "role": "assistant", "content": "als\",\n      \"body\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.879Z", "role": "assistant", "content": "label"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.879Z", "role": "assistant", "content": ", kind and size are hard"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.880Z", "role": "assistant", "content": "coded to "}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.880Z", "role": "assistant", "content": "'label text', 'on-"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.880Z", "role": "assistant", "content": "page' and 'lg'"}
+{"type": "message", "timestamp": "2026-10-17T23:16:44.881Z", "role": "assistant", "content": " instead of tit"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.197Z", "role": "assistant", "content": "leItem.label,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.198Z", "role": "assistant", "content": " kind and rowItem."}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.198Z", "role": "assistant", "content": "size,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.198Z", "role": "assistant", "content": " and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.199Z", "role": "assistant", "content": " action"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.199Z", "role": "assistant", "content": " is a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.199Z", "role": "assistant", "content": " console"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.200Z", "role": "assistant", "content": ".log handler. Every"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.425Z", "role": "assistant", "content": " Figma variant now"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.427Z", "role": "assistant", "content": " emits ident"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.427Z", "role": "assistant", "content": "ical code. Restore the m"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.427Z", "role": "assistant", "content": "apped props ("}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.428Z", "role": "assistant", "content": "label={titleItem.label"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.428Z", "role": "assistant", "content": "}, kind={kind}"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.428Z", "role": "assistant", "content": ", size={rowItem."}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.429Z", "role": "assistant", "content": "size}).\",\n      \"car"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.722Z", "role": "assistant", "content": "bonVerified\": false,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.723Z", "role": "assistant", "content": "\n      \"verificationSource"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.724Z", "role": "assistant", "content": "\": \"not-carbon-"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.724Z", "role": "assistant", "content": "specific\"\n    },\n    "}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.724Z", "role": "assistant", "content": "{\n      \"severity\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.724Z", "role": "assistant", "content": "minor\",\n      \"file\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.724Z", "role": "assistant", "content": " \"packages/react/code-"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.725Z", "role": "assistant", "content": "connect/ContainedList"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.973Z", "role": "assistant", "content": "Item/ContainedList"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.973Z", "role": "assistant", "content": "Item.figma.ts"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.974Z", "role": "assistant", "content": "x\",\n      \"line\": "}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.974Z", "role": "assistant", "content": "31,\n      \"title\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.975Z", "role": "assistant", "content": "ContainedListItem example"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.975Z", "role": "assistant", "content": " "}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.976Z", "role": "assistant", "content": "ignores r"}
+{"type": "message", "timestamp": "2026-10-17T23:16:45.976Z", "role": "assistant", "content": "owCellItem props"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.247Z", "role": "assistant", "content": "\",\n      \"body\": \"ren"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.247Z", "role": "assistant", "content": "derIcon is"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.249Z", "role": "assistant", "content": " for"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.249Z", "role": "assistant", "content": "ced to null and the text is the"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.250Z", "role": "assistant", "content": " literal \\"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.250Z", "role": "assistant", "content": "\"text\\\", so"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.251Z", "role": "assistant", "content": " the Figma icon and c"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.251Z", "role": "assistant", "content": "ell text m"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.476Z", "role": "assistant", "content": "appings are disc"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.476Z", "role": "assistant", "content": "arded and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.477Z", "role": "assistant", "content": " r"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.477Z", "role": "assistant", "content": "owCellItem is un"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.478Z", "role": "assistant", "content": "used. Rest"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.478Z", "role": "assistant", "content": "ore ren"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.478Z", "role": "assistant", "content": "derIcon={rowC"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.479Z", "role": "assistant", "content": "ellItem.renderIc"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.782Z", "role": "assistant", "content": "on} and {rowCell"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.782Z", "role": "assistant", "content": "Item.text}.\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.784Z", "role": "assistant", "content": "\n      \"carbonVerified"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.785Z", "role": "assistant", "content": "\": false,\n      \"verific"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.785Z", "role": "assistant", "content": "ationSource\": \"not-car"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.786Z", "role": "assistant", "content": "bon-specific\"\n    "}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.786Z", "role": "assistant", "content": "},\n    {\n      \"sever"}
+{"type": "message", "timestamp": "2026-10-17T23:16:46.786Z", "role": "assistant", "content": "ity\": \"major\",\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.032Z", "role": "assistant", "content": "file\": \"packages/react/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.033Z", "role": "assistant", "content": "code-connect/Hea"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.034Z", "role": "assistant", "content": "derGlobalAction/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.035Z", "role": "assistant", "content": "HeaderGlobal"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.035Z", "role": "assistant", "content": "Action.figma.ts"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.035Z", "role": "assistant", "content": "x\",\n      \"line\": "}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.035Z", "role": "assistant", "content": "25,\n      \"title\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.036Z", "role": "assistant", "content": "HeaderGlobal"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.290Z", "role": "assistant", "content": "Action sn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.290Z", "role": "assistant", "content": "ippet has no a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.290Z", "role": "assistant", "content": "ria-label\",\n      \"body"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.291Z", "role": "assistant", "content": "\": \"HeaderGl"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.292Z", "role": "assistant", "content": "obalAction renders an ic"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.292Z", "role": "assistant", "content": "on-only button,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.293Z", "role": "assistant", "content": " and the sn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.293Z", "role": "assistant", "content": "ippet g"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.574Z", "role": "assistant", "content": "ives it no accessible name,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.575Z", "role": "assistant", "content": " so every copied snippet is"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.576Z", "role": "assistant", "content": " inaccessible. Add"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.576Z", "role": "assistant", "content": " an"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.577Z", "role": "assistant", "content": " aria-label (for"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.578Z", "role": "assistant", "content": " example a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.578Z", "role": "assistant", "content": "ria-label="}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.579Z", "role": "assistant", "content": "\\\"Action name"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.824Z", "role": "assistant", "content": "\\\") to the example.\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.824Z", "role": "assistant", "content": "\n      \"carbonVerified"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.825Z", "role": "assistant", "content": "\": false,\n      \"verific"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.826Z", "role": "assistant", "content": "ationSource\": \"not-car"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.826Z", "role": "assistant", "content": "bon-specific\"\n    "}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.826Z", "role": "assistant", "content": "},\n    {\n      \"sever"}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.827Z", "role": "assistant", "content": "ity\": \"minor\",\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:47.827Z", "role": "assistant", "content": "\"file\": \"packages/react"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.111Z", "role": "assistant", "content": "/code-connect/He"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.112Z", "role": "assistant", "content": "aderMenuButton/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.112Z", "role": "assistant", "content": "HeaderMenuBut"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.113Z", "role": "assistant", "content": "ton.figma.tsx"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.113Z", "role": "assistant", "content": "\",\n      \"line\": 22"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.114Z", "role": "assistant", "content": ",\n      \"title\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.114Z", "role": "assistant", "content": "Snippet references undef"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.115Z", "role": "assistant", "content": "ined isSideNavExp"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.375Z", "role": "assistant", "content": "anded\",\n      \"body\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.376Z", "role": "assistant", "content": " \"aria-label uses is"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.376Z", "role": "assistant", "content": "SideNavExpanded"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.376Z", "role": "assistant", "content": ", which is neither a m"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.377Z", "role": "assistant", "content": "apped prop nor decl"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.377Z", "role": "assistant", "content": "ared in the example"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.377Z", "role": "assistant", "content": ", so the"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.377Z", "role": "assistant", "content": " copied code"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.624Z", "role": "assistant", "content": " throws a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.625Z", "role": "assistant", "content": " ReferenceError."}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.627Z", "role": "assistant", "content": " Use the"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.628Z", "role": "assistant", "content": " mapped isActive value"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.628Z", "role": "assistant", "content": " ("}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.628Z", "role": "assistant", "content": "aria-label={isActive"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.628Z", "role": "assistant", "content": " ? 'Close menu"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.628Z", "role": "assistant", "content": "' : 'Open menu"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.877Z", "role": "assistant", "content": "'}).\",\n      \"car"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.878Z", "role": "assistant", "content": "bonVerified\": false,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.878Z", "role": "assistant", "content": "\n      \"verificationSource"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.878Z", "role": "assistant", "content": "\": \"not-carbon-"}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.878Z", "role": "assistant", "content": "specific\"\n    },\n    "}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.879Z", "role": "assistant", "content": "{\n      \"severity\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.879Z", "role": "assistant", "content": "major\",\n      \"file\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:48.879Z", "role": "assistant", "content": "packages/react/code-conn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.175Z", "role": "assistant", "content": "ect/HeaderMen"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.175Z", "role": "assistant", "content": "uItem/Header"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.175Z", "role": "assistant", "content": "MenuItem.figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.177Z", "role": "assistant", "content": ".tsx\",\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.178Z", "role": "assistant", "content": "line\": 12,\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.178Z", "role": "assistant", "content": "title\": \"figma is"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.178Z", "role": "assistant", "content": " used"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.179Z", "role": "assistant", "content": " but never"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.428Z", "role": "assistant", "content": " imported\",\n      \"body\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.428Z", "role": "assistant", "content": " \"fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.428Z", "role": "assistant", "content": "ma.connect is called but"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.429Z", "role": "assistant", "content": " the file never imports fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.429Z", "role": "assistant", "content": "ma from '@figma/code"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.429Z", "role": "assistant", "content": "-connect'"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.430Z", "role": "assistant", "content": " (the"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.430Z", "role": "assistant", "content": " s"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.753Z", "role": "assistant", "content": "ibling"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.753Z", "role": "assistant", "content": " Code"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.753Z", "role": "assistant", "content": " Connect files do"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.753Z", "role": "assistant", "content": "). The file c"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.754Z", "role": "assistant", "content": "annot be parsed or published"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.754Z", "role": "assistant", "content": ". Add"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.754Z", "role": "assistant", "content": " import fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.754Z", "role": "assistant", "content": "ma from '@figma/code"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.975Z", "role": "assistant", "content": "-connect'.\",\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.976Z", "role": "assistant", "content": "\"carbonVerified\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.976Z", "role": "assistant", "content": " false,\n      \"verification"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.976Z", "role": "assistant", "content": "Source\": \"not-carb"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.977Z", "role": "assistant", "content": "on-specific\"\n    },"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.977Z", "role": "assistant", "content": "\n    {\n      \"severity"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.977Z", "role": "assistant", "content": "\": \"major\",\n      \"file"}
+{"type": "message", "timestamp": "2026-10-17T23:16:49.978Z", "role": "assistant", "content": "\": \"packages/react/code"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.224Z", "role": "assistant", "content": "-connect/Header"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.224Z", "role": "assistant", "content": "Panel/Header"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.224Z", "role": "assistant", "content": "Panel.figma.t"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.226Z", "role": "assistant", "content": "sx\",\n      \"line\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.226Z", "role": "assistant", "content": " 12,\n      \"title\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.226Z", "role": "assistant", "content": " \"figma is used but never im"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.227Z", "role": "assistant", "content": "ported\",\n      \"body\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.228Z", "role": "assistant", "content": "figma.connect is called but"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.483Z", "role": "assistant", "content": " the file never imports figma from"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.483Z", "role": "assistant", "content": " '@figma/code-conn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.484Z", "role": "assistant", "content": "ect'. The file cannot"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.484Z", "role": "assistant", "content": " be parsed or published."}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.484Z", "role": "assistant", "content": " Add import figma from '@fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.484Z", "role": "assistant", "content": "ma/code-connect'."}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.484Z", "role": "assistant", "content": "\",\n      \"carbonV"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.484Z", "role": "assistant", "content": "erified\": false,\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.772Z", "role": "assistant", "content": "verificationSource\": \"not"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.774Z", "role": "assistant", "content": "-carbon-specific\""}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.774Z", "role": "assistant", "content": "\n    },\n    {\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.775Z", "role": "assistant", "content": "\"severity\": \"major\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.775Z", "role": "assistant", "content": "\n      \"file\": \"packages/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.776Z", "role": "assistant", "content": "react/code-connect/S"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.776Z", "role": "assistant", "content": "ideNav/SideNav"}
+{"type": "message", "timestamp": "2026-10-17T23:16:50.777Z", "role": "assistant", "content": ".figma.tsx\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.024Z", "role": "assistant", "content": "\n      \"line\": 12,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.024Z", "role": "assistant", "content": "\n      \"title\": \"figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.025Z", "role": "assistant", "content": " is used but never imported\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.026Z", "role": "assistant", "content": "\n      \"body\": \"figma."}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.026Z", "role": "assistant", "content": "connect is called but the file never"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.027Z", "role": "assistant", "content": " imports figma from '@fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.027Z", "role": "assistant", "content": "ma/code-connect'."}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.027Z", "role": "assistant", "content": " The file cannot be pars"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.277Z", "role": "assistant", "content": "ed or published. Add import fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.279Z", "role": "assistant", "content": "ma from '@figma/code"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.279Z", "role": "assistant", "content": "-connect'.\",\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.279Z", "role": "assistant", "content": "\"carbonVerified\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.280Z", "role": "assistant", "content": " false,\n      \"verification"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.280Z", "role": "assistant", "content": "Source\": \"not-carb"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.281Z", "role": "assistant", "content": "on-specific\"\n    },"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.281Z", "role": "assistant", "content": "\n    {\n      \"severity"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.585Z", "role": "assistant", "content": "\": \"minor\",\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.586Z", "role": "assistant", "content": "file\": \"packages/react/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.586Z", "role": "assistant", "content": "code-connect/SideN"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.587Z", "role": "assistant", "content": "avMenuItem/S"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.587Z", "role": "assistant", "content": "ideNavMenuItem"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.587Z", "role": "assistant", "content": ".figma.tsx\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.587Z", "role": "assistant", "content": "\n      \"line\": 25,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.587Z", "role": "assistant", "content": "\n      \"title\": \"ren"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.824Z", "role": "assistant", "content": "derIcon u"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.824Z", "role": "assistant", "content": "ses und"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.824Z", "role": "assistant", "content": "eclared IconName identif"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.825Z", "role": "assistant", "content": "ier\",\n      \"body\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.825Z", "role": "assistant", "content": "ren"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.826Z", "role": "assistant", "content": "derIcon={IconName"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.826Z", "role": "assistant", "content": "} ref"}
+{"type": "message", "timestamp": "2026-10-17T23:16:51.827Z", "role": "assistant", "content": "ers to an ident"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.072Z", "role": "assistant", "content": "ifier that is neither imported"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.073Z", "role": "assistant", "content": " nor mapped, so the"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.074Z", "role": "assistant", "content": " copied snippet thro"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.074Z", "role": "assistant", "content": "ws a ReferenceError"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.075Z", "role": "assistant", "content": " ("}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.075Z", "role": "assistant", "content": "type"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.076Z", "role": "assistant", "content": " chec"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.078Z", "role": "assistant", "content": "king is dis"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.371Z", "role": "assistant", "content": "abled by"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.372Z", "role": "assistant", "content": " @ts-nocheck"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.373Z", "role": "assistant", "content": "). Map the"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.373Z", "role": "assistant", "content": " icon with fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.373Z", "role": "assistant", "content": "ma.instance and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.373Z", "role": "assistant", "content": " p"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.374Z", "role": "assistant", "content": "ass it through"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.374Z", "role": "assistant", "content": " props"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.620Z", "role": "assistant", "content": ", or import a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.620Z", "role": "assistant", "content": " concrete icon.\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.620Z", "role": "assistant", "content": "\n      \"carbonVerified"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.620Z", "role": "assistant", "content": "\": false,\n      \"verific"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.621Z", "role": "assistant", "content": "ationSource\": \"not-car"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.622Z", "role": "assistant", "content": "bon-specific\"\n    "}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.623Z", "role": "assistant", "content": "},\n    {\n      \"sever"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.623Z", "role": "assistant", "content": "ity\": \"major\",\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.873Z", "role": "assistant", "content": "file\": \"packages/react/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.873Z", "role": "assistant", "content": "code-connect/Structu"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.875Z", "role": "assistant", "content": "redList/StructuredList"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.875Z", "role": "assistant", "content": ".figma.tsx\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.875Z", "role": "assistant", "content": "\n      \"line\": 39,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.876Z", "role": "assistant", "content": "\n      \"title\": \"Sel"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.876Z", "role": "assistant", "content": "ectable StructuredList,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:52.876Z", "role": "assistant", "content": " row and cell mappings de"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.174Z", "role": "assistant", "content": "leted\",\n      \"body\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.175Z", "role": "assistant", "content": " \"The PR removes the sel"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.175Z", "role": "assistant", "content": "ectable w"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.176Z", "role": "assistant", "content": "rapper, header"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.176Z", "role": "assistant", "content": "-"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.176Z", "role": "assistant", "content": "row, row"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.177Z", "role": "assistant", "content": ", selectable-row and header"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.177Z", "role": "assistant", "content": "-cell and cell connects"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.428Z", "role": "assistant", "content": " ("}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.431Z", "role": "assistant", "content": "about"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.433Z", "role": "assistant", "content": " 107 lines), so those"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.434Z", "role": "assistant", "content": " Figma components"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.434Z", "role": "assistant", "content": " l"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.434Z", "role": "assistant", "content": "ose their"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.434Z", "role": "assistant", "content": " code sn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.434Z", "role": "assistant", "content": "ippets. Nothing in"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.673Z", "role": "assistant", "content": " the diff replaces them."}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.673Z", "role": "assistant", "content": " Restore the mappings or"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.674Z", "role": "assistant", "content": " state"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.674Z", "role": "assistant", "content": " in"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.675Z", "role": "assistant", "content": " the P"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.676Z", "role": "assistant", "content": "R why they are being d"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.676Z", "role": "assistant", "content": "ropped.\",\n      \"car"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.678Z", "role": "assistant", "content": "bonVerified\": false,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.970Z", "role": "assistant", "content": "\n      \"verificationSource"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.970Z", "role": "assistant", "content": "\": \"not-carbon-"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.971Z", "role": "assistant", "content": "specific\"\n    },\n    "}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.971Z", "role": "assistant", "content": "{\n      \"severity\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.972Z", "role": "assistant", "content": "major\",\n      \"file\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.972Z", "role": "assistant", "content": "packages/react/code-conn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.973Z", "role": "assistant", "content": "ect/TableCell/T"}
+{"type": "message", "timestamp": "2026-10-17T23:16:53.973Z", "role": "assistant", "content": "ableCell.figma.t"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.221Z", "role": "assistant", "content": "sx\",\n      \"line\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.222Z", "role": "assistant", "content": " 18,\n      \"title\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.222Z", "role": "assistant", "content": " \"figma.instance called"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.223Z", "role": "assistant", "content": " with a mapping object\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.223Z", "role": "assistant", "content": "\n      \"body\": \"figma."}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.223Z", "role": "assistant", "content": "instance tak"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.224Z", "role": "assistant", "content": "es only"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.225Z", "role": "assistant", "content": " a property name;"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.478Z", "role": "assistant", "content": " the {"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.479Z", "role": "assistant", "content": " true: figma.boolean"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.479Z", "role": "assistant", "content": "('Slot') } map"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.480Z", "role": "assistant", "content": "ping is"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.480Z", "role": "assistant", "content": " inverted and un"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.480Z", "role": "assistant", "content": "s"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.480Z", "role": "assistant", "content": "upported, so the slot content"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.480Z", "role": "assistant", "content": " will"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.772Z", "role": "assistant", "content": " not resolve."}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.773Z", "role": "assistant", "content": " Use"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.773Z", "role": "assistant", "content": " figma.boolean('"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.774Z", "role": "assistant", "content": "Slot', { true: figma"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.774Z", "role": "assistant", "content": ".instance('Swap sl"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.774Z", "role": "assistant", "content": "ot') }) instead.\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.774Z", "role": "assistant", "content": "\n      \"carbonVer"}
+{"type": "message", "timestamp": "2026-10-17T23:16:54.775Z", "role": "assistant", "content": "ified\": false,\n      \"ver"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.020Z", "role": "assistant", "content": "ificationSource\": \"not-"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.020Z", "role": "assistant", "content": "carbon-specific\""}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.024Z", "role": "assistant", "content": "\n    },\n    {\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.024Z", "role": "assistant", "content": "severity\": \"major\",\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.024Z", "role": "assistant", "content": "\"file\": \"packages/react"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.025Z", "role": "assistant", "content": "/code-connect/Table"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.025Z", "role": "assistant", "content": "Row/TableRow."}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.025Z", "role": "assistant", "content": "figma.tsx\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.278Z", "role": "assistant", "content": "\n      \"line\": 57,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.279Z", "role": "assistant", "content": "\n      \"title\": \"TableEx"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.280Z", "role": "assistant", "content": "pandRow and TableS"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.280Z", "role": "assistant", "content": "electRow sn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.280Z", "role": "assistant", "content": "ippets have no accessible name"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.281Z", "role": "assistant", "content": "\",\n      \"body\": \"T"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.281Z", "role": "assistant", "content": "ableExpandRow ("}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.281Z", "role": "assistant", "content": "lines 57, 76)"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.572Z", "role": "assistant", "content": " and TableSelectRow"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.573Z", "role": "assistant", "content": " (lines 77, 98"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.573Z", "role": "assistant", "content": ", 115) render"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.573Z", "role": "assistant", "content": " interactive exp"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.573Z", "role": "assistant", "content": "and and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.574Z", "role": "assistant", "content": " checkbox/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.574Z", "role": "assistant", "content": "radio controls, but none"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.574Z", "role": "assistant", "content": " of the snippets pass"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.833Z", "role": "assistant", "content": "es an aria-label,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.834Z", "role": "assistant", "content": " so every copied snippet is"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.836Z", "role": "assistant", "content": " inaccessible. Add"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.836Z", "role": "assistant", "content": " aria-label to each"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.837Z", "role": "assistant", "content": " ("}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.837Z", "role": "assistant", "content": "for"}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.837Z", "role": "assistant", "content": " example aria-label="}
+{"type": "message", "timestamp": "2026-10-17T23:16:55.838Z", "role": "assistant", "content": "\\\"Expand row\\\""}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.072Z", "role": "assistant", "content": " and aria-label=\\\""}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.075Z", "role": "assistant", "content": "Select row\\\").\",\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.075Z", "role": "assistant", "content": "\"carbonVerified\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.075Z", "role": "assistant", "content": " false,\n      \"verification"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.075Z", "role": "assistant", "content": "Source\": \"not-carb"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.076Z", "role": "assistant", "content": "on-specific\"\n    },"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.076Z", "role": "assistant", "content": "\n    {\n      \"severity"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.076Z", "role": "assistant", "content": "\": \"minor\",\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.375Z", "role": "assistant", "content": "file\": \"packages/react/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.377Z", "role": "assistant", "content": "code-connect/TableR"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.377Z", "role": "assistant", "content": "ow/TableRow.fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.378Z", "role": "assistant", "content": "ma.tsx\",\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.378Z", "role": "assistant", "content": "\"line\": 58,\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.378Z", "role": "assistant", "content": "\"title\": \"colSpan"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.378Z", "role": "assistant", "content": " is a non"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.379Z", "role": "assistant", "content": "-numeric string"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.628Z", "role": "assistant", "content": " placeholder\",\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.629Z", "role": "assistant", "content": "body\": \"colSpan="}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.629Z", "role": "assistant", "content": "\\\"headers + 1\\"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.629Z", "role": "assistant", "content": "\" is not a valid col"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.629Z", "role": "assistant", "content": "span value and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.629Z", "role": "assistant", "content": " is em"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.630Z", "role": "assistant", "content": "itted ver"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.630Z", "role": "assistant", "content": "batim into developers"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.874Z", "role": "assistant", "content": "' code (also"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.874Z", "role": "assistant", "content": " at line"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.876Z", "role": "assistant", "content": " 77). Use a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.876Z", "role": "assistant", "content": " numeric expression such as col"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.876Z", "role": "assistant", "content": "Span={headers.length"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.877Z", "role": "assistant", "content": " + 1} with a comment"}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.877Z", "role": "assistant", "content": ","}
+{"type": "message", "timestamp": "2026-10-17T23:16:56.877Z", "role": "assistant", "content": " or a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.254Z", "role": "assistant", "content": " literal number"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.254Z", "role": "assistant", "content": ".\",\n      \"carbon"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.255Z", "role": "assistant", "content": "Verified\": false,\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.256Z", "role": "assistant", "content": "\"verificationSource\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.256Z", "role": "assistant", "content": "not-carbon-specific"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.256Z", "role": "assistant", "content": "\"\n    },\n    {"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.257Z", "role": "assistant", "content": "\n      \"severity\": \"minor"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.257Z", "role": "assistant", "content": "\",\n      \"file\": \"pack"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.425Z", "role": "assistant", "content": "ages/react/code-connect"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.427Z", "role": "assistant", "content": "/TableToolbar/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.428Z", "role": "assistant", "content": "TableToolbar.fig"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.428Z", "role": "assistant", "content": "ma.tsx\",\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.429Z", "role": "assistant", "content": "\"line\": 10,\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.429Z", "role": "assistant", "content": "\"title\": \"Sn"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.430Z", "role": "assistant", "content": "ippet u"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.430Z", "role": "assistant", "content": "ses components"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.781Z", "role": "assistant", "content": " and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.782Z", "role": "assistant", "content": " helpers that are not imported"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.783Z", "role": "assistant", "content": " or def"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.783Z", "role": "assistant", "content": "ined\",\n      \"body\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.783Z", "role": "assistant", "content": "Only TableToolbar is"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.784Z", "role": "assistant", "content": " imported, but the example"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.784Z", "role": "assistant", "content": " uses TableToolbar"}
+{"type": "message", "timestamp": "2026-10-17T23:16:57.785Z", "role": "assistant", "content": "Content, TableToolb"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.046Z", "role": "assistant", "content": "arSearch, TableTo"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.047Z", "role": "assistant", "content": "olbarMenu, T"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.048Z", "role": "assistant", "content": "ableToolbarAction and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.048Z", "role": "assistant", "content": " Button, pl"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.048Z", "role": "assistant", "content": "us a"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.049Z", "role": "assistant", "content": " Storybook-only"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.050Z", "role": "assistant", "content": " action() helper that"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.050Z", "role": "assistant", "content": " does"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.306Z", "role": "assistant", "content": " not exist in application"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.307Z", "role": "assistant", "content": " code. Import the used"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.307Z", "role": "assistant", "content": " components from"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.307Z", "role": "assistant", "content": " '@carbon/react'"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.307Z", "role": "assistant", "content": " and replace action("}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.308Z", "role": "assistant", "content": "...) with pl"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.308Z", "role": "assistant", "content": "ain hand"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.309Z", "role": "assistant", "content": "lers such"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.523Z", "role": "assistant", "content": " as () => {}.\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.523Z", "role": "assistant", "content": "\n      \"carbonVerified"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.524Z", "role": "assistant", "content": "\": false,\n      \"verific"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.524Z", "role": "assistant", "content": "ationSource\": \"not-car"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.524Z", "role": "assistant", "content": "bon-specific\"\n    "}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.524Z", "role": "assistant", "content": "},\n    {\n      \"sever"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.525Z", "role": "assistant", "content": "ity\": \"major\",\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.525Z", "role": "assistant", "content": "file\": \"packages/react/"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.830Z", "role": "assistant", "content": "code-connect/Tag"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.830Z", "role": "assistant", "content": "/Tag.figma."}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.831Z", "role": "assistant", "content": "tsx\",\n      \"line"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.831Z", "role": "assistant", "content": "\": 50,\n      \"title"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.831Z", "role": "assistant", "content": "\": \"Tag example hard"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.831Z", "role": "assistant", "content": "codes type, size"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.832Z", "role": "assistant", "content": " and ic"}
+{"type": "message", "timestamp": "2026-10-17T23:16:58.833Z", "role": "assistant", "content": "on\",\n      \"body\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.166Z", "role": "assistant", "content": "The example em"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.166Z", "role": "assistant", "content": "its type='blue', render"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.166Z", "role": "assistant", "content": "Icon={null}"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.167Z", "role": "assistant", "content": " and size='lg' regard"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.168Z", "role": "assistant", "content": "less of the Figma Color"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.168Z", "role": "assistant", "content": ", Size or Icon sett"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.168Z", "role": "assistant", "content": "ings, and"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.169Z", "role": "assistant", "content": " no longer spreads {..."}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.353Z", "role": "assistant", "content": "props}. Every T"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.356Z", "role": "assistant", "content": "ag variant produces the same code"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.357Z", "role": "assistant", "content": ". Restore {...props}"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.358Z", "role": "assistant", "content": " so the mapped type, size"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.358Z", "role": "assistant", "content": " and renderIcon flow"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.358Z", "role": "assistant", "content": " through.\",\n      \"carb"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.359Z", "role": "assistant", "content": "onVerified\": false,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.359Z", "role": "assistant", "content": "\n      \"verificationSource\":"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.573Z", "role": "assistant", "content": " \"not-carbon-spec"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.574Z", "role": "assistant", "content": "ific\"\n    },\n    {"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.575Z", "role": "assistant", "content": "\n      \"severity\": \"major"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.575Z", "role": "assistant", "content": "\",\n      \"file\": \"pack"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.576Z", "role": "assistant", "content": "ages/react/code-connect"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.576Z", "role": "assistant", "content": "/Tag/Tag"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.576Z", "role": "assistant", "content": ".figma.tsx\","}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.577Z", "role": "assistant", "content": "\n      \"line\": 52,"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.878Z", "role": "assistant", "content": "\n      \"title\": \"Dism"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.878Z", "role": "assistant", "content": "issibleTag, Sel"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.878Z", "role": "assistant", "content": "ectableTag, Operation"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.878Z", "role": "assistant", "content": "alTag and TagSk"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.879Z", "role": "assistant", "content": "eleton mappings dele"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.880Z", "role": "assistant", "content": "ted\",\n      \"body\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.880Z", "role": "assistant", "content": "About"}
+{"type": "message", "timestamp": "2026-10-17T23:16:59.881Z", "role": "assistant", "content": " 150 lines of Code"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.155Z", "role": "assistant", "content": " Connect mappings for D"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.156Z", "role": "assistant", "content": "ismissibleTag, S"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.156Z", "role": "assistant", "content": "electableTag, Oper"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.156Z", "role": "assistant", "content": "ationalTag and the T"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.157Z", "role": "assistant", "content": "agSkeleton vari"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.157Z", "role": "assistant", "content": "ants are removed with"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.157Z", "role": "assistant", "content": " no replacement in"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.157Z", "role": "assistant", "content": " the diff,"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.431Z", "role": "assistant", "content": " so those Figma components l"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.432Z", "role": "assistant", "content": "ose their snippets. Rest"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.432Z", "role": "assistant", "content": "ore the mappings or explain"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.434Z", "role": "assistant", "content": " the"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.435Z", "role": "assistant", "content": " removal in the PR.\","}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.436Z", "role": "assistant", "content": "\n      \"carbonVer"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.436Z", "role": "assistant", "content": "ified\": false,\n      \"ver"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.436Z", "role": "assistant", "content": "ificationSource\": \"not-"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.672Z", "role": "assistant", "content": "carbon-specific\""}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.673Z", "role": "assistant", "content": "\n    },\n    {\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.675Z", "role": "assistant", "content": "severity\": \"minor\","}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.676Z", "role": "assistant", "content": "\n      \"file\": \"packages/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.677Z", "role": "assistant", "content": "react/code-connect/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.677Z", "role": "assistant", "content": "Treeview/TreeView"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.678Z", "role": "assistant", "content": ".figma.tsx\","}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.678Z", "role": "assistant", "content": "\n      \"line\": 27,"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.925Z", "role": "assistant", "content": "\n      \"title\": \"Tre"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.926Z", "role": "assistant", "content": "eView snippet has no label"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.926Z", "role": "assistant", "content": " or aria-label\",\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.927Z", "role": "assistant", "content": "\"body\": \"The Tree"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.927Z", "role": "assistant", "content": "View container"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.928Z", "role": "assistant", "content": " ("}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.928Z", "role": "assistant", "content": "role t"}
+{"type": "message", "timestamp": "2026-10-17T23:17:00.929Z", "role": "assistant", "content": "ree) is"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.185Z", "role": "assistant", "content": " emitted without a"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.186Z", "role": "assistant", "content": " label,"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.186Z", "role": "assistant", "content": " so copied snippets have no"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.186Z", "role": "assistant", "content": " accessible name"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.186Z", "role": "assistant", "content": " for the tree. Add label"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.186Z", "role": "assistant", "content": "="}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.187Z", "role": "assistant", "content": "\\\""}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.187Z", "role": "assistant", "content": "Tree view"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.473Z", "role": "assistant", "content": "\\\" (or aria-label"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.474Z", "role": "assistant", "content": ") to the example.\",\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.475Z", "role": "assistant", "content": "\"carbonVerified\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.475Z", "role": "assistant", "content": " false,\n      \"verification"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.475Z", "role": "assistant", "content": "Source\": \"not-carb"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.476Z", "role": "assistant", "content": "on-specific\"\n    },"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.476Z", "role": "assistant", "content": "\n    {\n      \"severity"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.476Z", "role": "assistant", "content": "\": \"nit\",\n      \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.723Z", "role": "assistant", "content": "file\": \"packages/react/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.726Z", "role": "assistant", "content": "code-connect/Contain"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.726Z", "role": "assistant", "content": "edListItem/Contain"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.726Z", "role": "assistant", "content": "edListItem.figma."}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.727Z", "role": "assistant", "content": "tsx\",\n      \"line"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.727Z", "role": "assistant", "content": "\": 33,\n      \"title"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.727Z", "role": "assistant", "content": "\": \"Trailing whit"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.727Z", "role": "assistant", "content": "espace after"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.978Z", "role": "assistant", "content": " closing t"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.978Z", "role": "assistant", "content": "ag\",\n      \"body\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.979Z", "role": "assistant", "content": "The closing </"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.982Z", "role": "assistant", "content": "ContainedListItem>"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.983Z", "role": "assistant", "content": " line"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.983Z", "role": "assistant", "content": " has"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.983Z", "role": "assistant", "content": " trailing sp"}
+{"type": "message", "timestamp": "2026-10-17T23:17:01.983Z", "role": "assistant", "content": "aces, which"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.277Z", "role": "assistant", "content": " Prettier would flag."}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.280Z", "role": "assistant", "content": " Remove them"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.280Z", "role": "assistant", "content": ".\",\n      \"carbon"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.281Z", "role": "assistant", "content": "Verified\": false,\n      "}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.281Z", "role": "assistant", "content": "\"verificationSource\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.281Z", "role": "assistant", "content": "not-carbon-specific"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.281Z", "role": "assistant", "content": "\"\n    }\n  ],"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.281Z", "role": "assistant", "content": "\n  \"findingsTable"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.523Z", "role": "assistant", "content": "\": [\n    {"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.524Z", "role": "assistant", "content": " \"area\": \"General\", \"category"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.524Z", "role": "assistant", "content": "\": \"Cat 2\","}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.525Z", "role": "assistant", "content": " \"severity\": \"blocking"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.526Z", "role": "assistant", "content": "\", \"title\": \"Unres"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.526Z", "role": "assistant", "content": "olved merge conflict mark"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.527Z", "role": "assistant", "content": "ers committed\", \"file\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.527Z", "role": "assistant", "content": "packages/react/code-conn"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.773Z", "role": "assistant", "content": "ect/AILabel/A"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.773Z", "role": "assistant", "content": "ILabel.figma.t"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.774Z", "role": "assistant", "content": "sx\" },\n    { \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.775Z", "role": "assistant", "content": "area\": \"General\", \"category\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.776Z", "role": "assistant", "content": " \"Cat 2\", \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.776Z", "role": "assistant", "content": "severity\": \"major\", \"title"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.776Z", "role": "assistant", "content": "\": \"AILabel example h"}
+{"type": "message", "timestamp": "2026-10-17T23:17:02.777Z", "role": "assistant", "content": "ardcodes props and drops"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.074Z", "role": "assistant", "content": " Figma-mapped values"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.074Z", "role": "assistant", "content": "\", \"file\": \"packages/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.075Z", "role": "assistant", "content": "react/code-connect/A"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.077Z", "role": "assistant", "content": "ILabel/AILabel"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.078Z", "role": "assistant", "content": ".figma.tsx\""}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.078Z", "role": "assistant", "content": " },\n    { \"area\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.078Z", "role": "assistant", "content": "General\", \"category\": \"C"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.078Z", "role": "assistant", "content": "at 2\", \"severity\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.324Z", "role": "assistant", "content": " \"minor\", \"title\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.328Z", "role": "assistant", "content": "ContainedList example repla"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.328Z", "role": "assistant", "content": "ces Figma props with literals"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.328Z", "role": "assistant", "content": "\", \"file\": \"packages/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.329Z", "role": "assistant", "content": "react/code-connect/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.330Z", "role": "assistant", "content": "ContainedList/Contain"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.331Z", "role": "assistant", "content": "edList.figma.ts"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.331Z", "role": "assistant", "content": "x\" },\n    { \"area"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.574Z", "role": "assistant", "content": "\": \"General\", \"category\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.575Z", "role": "assistant", "content": "Cat 2\", \"sever"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.576Z", "role": "assistant", "content": "ity\": \"minor\", \"title"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.577Z", "role": "assistant", "content": "\": \"ContainedListIt"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.577Z", "role": "assistant", "content": "em example ignores rowC"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.577Z", "role": "assistant", "content": "ellItem props\", \"file\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.577Z", "role": "assistant", "content": " \"packages/react/code-"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.577Z", "role": "assistant", "content": "connect/ContainedList"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.872Z", "role": "assistant", "content": "Item/ContainedList"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.874Z", "role": "assistant", "content": "Item.figma.ts"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.874Z", "role": "assistant", "content": "x\" },\n    { \"area"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.875Z", "role": "assistant", "content": "\": \"General\", \"category\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.875Z", "role": "assistant", "content": "Cat 2\", \"sever"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.876Z", "role": "assistant", "content": "ity\": \"major\", \"title\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.876Z", "role": "assistant", "content": " \"HeaderGlob"}
+{"type": "message", "timestamp": "2026-10-17T23:17:03.876Z", "role": "assistant", "content": "alAction snippet has no"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.129Z", "role": "assistant", "content": " aria-label\", \"file\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.129Z", "role": "assistant", "content": " \"packages/react/code-"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.129Z", "role": "assistant", "content": "connect/HeaderG"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.129Z", "role": "assistant", "content": "lobalAction/He"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.129Z", "role": "assistant", "content": "aderGlobalAction"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.129Z", "role": "assistant", "content": ".figma.tsx\""}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.130Z", "role": "assistant", "content": " },\n    { \"area\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.130Z", "role": "assistant", "content": "General\", \"category\": \"C"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.374Z", "role": "assistant", "content": "at 2\", \"severity\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.377Z", "role": "assistant", "content": " \"minor\", \"title\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.377Z", "role": "assistant", "content": "Snippet references undefined"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.377Z", "role": "assistant", "content": " isSideNavExpan"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.378Z", "role": "assistant", "content": "ded\", \"file\": \"packages"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.378Z", "role": "assistant", "content": "/react/code-connect/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.378Z", "role": "assistant", "content": "HeaderMenuBut"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.378Z", "role": "assistant", "content": "ton/HeaderMen"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.675Z", "role": "assistant", "content": "uButton.figma.t"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.676Z", "role": "assistant", "content": "sx\" },\n    { \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.676Z", "role": "assistant", "content": "area\": \"General\", \"category\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.676Z", "role": "assistant", "content": " \"Cat 2\", \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.676Z", "role": "assistant", "content": "severity\": \"major\", \"title"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.677Z", "role": "assistant", "content": "\": \"figma is used but never"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.678Z", "role": "assistant", "content": " imported\", \"file\": \"pack"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.679Z", "role": "assistant", "content": "ages/react/code-connect"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.921Z", "role": "assistant", "content": "/HeaderMenu"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.923Z", "role": "assistant", "content": "Item/HeaderM"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.924Z", "role": "assistant", "content": "enuItem.figma."}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.924Z", "role": "assistant", "content": "tsx\" },\n    {"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.924Z", "role": "assistant", "content": " \"area\": \"General\", \"category"}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.925Z", "role": "assistant", "content": "\": \"Cat 2\","}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.925Z", "role": "assistant", "content": " \"severity\": \"major\", \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:04.925Z", "role": "assistant", "content": "title\": \"figma is used but"}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.173Z", "role": "assistant", "content": " never imported\", \"file\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.174Z", "role": "assistant", "content": "packages/react/code-conn"}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.174Z", "role": "assistant", "content": "ect/HeaderPan"}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.175Z", "role": "assistant", "content": "el/HeaderPan"}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.175Z", "role": "assistant", "content": "el.figma.tsx"}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.176Z", "role": "assistant", "content": "\" },\n    { \"area\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.176Z", "role": "assistant", "content": " \"General\", \"category\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.176Z", "role": "assistant", "content": "Cat 2\", \"severity"}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.394Z", "role": "assistant", "content": "\": \"major\", \"title\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.394Z", "role": "assistant", "content": "figma is used but never imported"}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.395Z", "role": "assistant", "content": "\", \"file\": \"packages/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.395Z", "role": "assistant", "content": "react/code-connect/S"}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.396Z", "role": "assistant", "content": "ideNav/SideNav"}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.396Z", "role": "assistant", "content": ".figma.tsx\""}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.396Z", "role": "assistant", "content": " },\n    { \"area"}
+{"type": "message", "timestamp": "2026-10-17T23:17:05.536Z", "role": "assistant", "content": "\n\n_[Continuing response due to length limit...]_\n\n"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.310Z", "role": "assistant", "content": ":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.311Z", "role": "assistant", "content": " \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.311Z", "role": "assistant", "content": "General\", \"category\": \"C"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.377Z", "role": "assistant", "content": "at 2\", \"severity\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.377Z", "role": "assistant", "content": " \"minor\", \"title\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.378Z", "role": "assistant", "content": "renderIcon uses und"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.378Z", "role": "assistant", "content": "eclared IconName identif"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.378Z", "role": "assistant", "content": "ier\", \"file\": \"packages"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.379Z", "role": "assistant", "content": "/react/code-connect/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.379Z", "role": "assistant", "content": "SideNavMenuIt"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.379Z", "role": "assistant", "content": "em/SideNavMen"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.526Z", "role": "assistant", "content": "uItem.figma.t"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.527Z", "role": "assistant", "content": "sx\" },\n    { \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.527Z", "role": "assistant", "content": "area\": \"General\", \"category\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.529Z", "role": "assistant", "content": " \"Cat 2\", \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.530Z", "role": "assistant", "content": "severity\": \"major\", \"title"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.530Z", "role": "assistant", "content": "\": \"Selectable Struct"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.531Z", "role": "assistant", "content": "uredList, row and cell"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.531Z", "role": "assistant", "content": " mappings deleted\", \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.629Z", "role": "assistant", "content": "file\": \"packages/react/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.631Z", "role": "assistant", "content": "code-connect/Structu"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.631Z", "role": "assistant", "content": "redList/StructuredList"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.631Z", "role": "assistant", "content": ".figma.tsx\""}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.632Z", "role": "assistant", "content": " },\n    { \"area\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.632Z", "role": "assistant", "content": "General\", \"category\": \"C"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.632Z", "role": "assistant", "content": "at 2\", \"severity\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.632Z", "role": "assistant", "content": " \"major\", \"title\": \"fig"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.836Z", "role": "assistant", "content": "ma.instance called with a m"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.836Z", "role": "assistant", "content": "apping object\", \"file\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.836Z", "role": "assistant", "content": "packages/react/code-conn"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.836Z", "role": "assistant", "content": "ect/TableCell/T"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.836Z", "role": "assistant", "content": "ableCell.figma.t"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.837Z", "role": "assistant", "content": "sx\" },\n    { \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.837Z", "role": "assistant", "content": "area\": \"General\", \"category\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:09.837Z", "role": "assistant", "content": " \"Cat 2\", \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.077Z", "role": "assistant", "content": "severity\": \"major\", \"title"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.078Z", "role": "assistant", "content": "\": \"TableExpandR"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.079Z", "role": "assistant", "content": "ow and TableSelectR"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.079Z", "role": "assistant", "content": "ow snippets have no access"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.080Z", "role": "assistant", "content": "ible name\", \"file\": \"pack"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.081Z", "role": "assistant", "content": "ages/react/code-connect"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.081Z", "role": "assistant", "content": "/TableRow/Table"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.082Z", "role": "assistant", "content": "Row.figma.ts"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.183Z", "role": "assistant", "content": "x\" },\n    { \"area"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.183Z", "role": "assistant", "content": "\": \"General\", \"category\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.184Z", "role": "assistant", "content": "Cat 2\", \"sever"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.184Z", "role": "assistant", "content": "ity\": \"minor\", \"title"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.184Z", "role": "assistant", "content": "\": \"colSpan is a"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.184Z", "role": "assistant", "content": " non-numeric string place"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.184Z", "role": "assistant", "content": "holder\", \"file\": \"pack"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.185Z", "role": "assistant", "content": "ages/react/code-connect"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.428Z", "role": "assistant", "content": "/TableRow/Table"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.429Z", "role": "assistant", "content": "Row.figma.ts"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.429Z", "role": "assistant", "content": "x\" },\n    { \"area"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.432Z", "role": "assistant", "content": "\": \"General\", \"category\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.432Z", "role": "assistant", "content": "Cat 2\", \"sever"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.435Z", "role": "assistant", "content": "ity\": \"minor\", \"title"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.435Z", "role": "assistant", "content": "\": \"Snippet uses"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.435Z", "role": "assistant", "content": " components and helpers that are not"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.729Z", "role": "assistant", "content": " imported or defined\", \"file"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.731Z", "role": "assistant", "content": "\": \"packages/react/code"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.731Z", "role": "assistant", "content": "-connect/TableTool"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.731Z", "role": "assistant", "content": "bar/TableToolb"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.732Z", "role": "assistant", "content": "ar.figma.tsx"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.732Z", "role": "assistant", "content": "\" },\n    { \"area\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.732Z", "role": "assistant", "content": " \"General\", \"category\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:10.732Z", "role": "assistant", "content": "Cat 2\", \"severity"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.077Z", "role": "assistant", "content": "\": \"major\", \"title\": \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.078Z", "role": "assistant", "content": "Tag example hardcod"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.078Z", "role": "assistant", "content": "es type, size and icon\","}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.079Z", "role": "assistant", "content": " \"file\": \"packages/react"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.079Z", "role": "assistant", "content": "/code-connect/T"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.079Z", "role": "assistant", "content": "ag/Tag.figma"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.079Z", "role": "assistant", "content": ".tsx\" },\n    "}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.080Z", "role": "assistant", "content": "{ \"area\": \"General\", \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.413Z", "role": "assistant", "content": "category\": \"Cat 2"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.420Z", "role": "assistant", "content": "\", \"severity\": \"major\","}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.421Z", "role": "assistant", "content": " \"title\": \"Dismissib"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.424Z", "role": "assistant", "content": "leTag, Selectable"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.424Z", "role": "assistant", "content": "Tag, OperationalT"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.425Z", "role": "assistant", "content": "ag and TagSkele"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.425Z", "role": "assistant", "content": "ton mappings deleted\","}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.425Z", "role": "assistant", "content": " \"file\": \"packages/react"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.539Z", "role": "assistant", "content": "/code-connect/T"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.540Z", "role": "assistant", "content": "ag/Tag.figma"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.540Z", "role": "assistant", "content": ".tsx\" },\n    "}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.541Z", "role": "assistant", "content": "{ \"area\": \"General\", \""}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.541Z", "role": "assistant", "content": "category\": \"Cat 2"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.541Z", "role": "assistant", "content": "\", \"severity\": \"minor"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.542Z", "role": "assistant", "content": "\", \"title\": \"Tree"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.544Z", "role": "assistant", "content": "View snippet has no label or"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.791Z", "role": "assistant", "content": " aria-label\", \"file\":"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.793Z", "role": "assistant", "content": " \"packages/react/code-"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.793Z", "role": "assistant", "content": "connect/Treeview/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.794Z", "role": "assistant", "content": "TreeView.figma."}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.794Z", "role": "assistant", "content": "tsx\" },\n    {"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.796Z", "role": "assistant", "content": " \"area\": \"General\", \"category"}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.796Z", "role": "assistant", "content": "\": \"Cat 2\","}
+{"type": "message", "timestamp": "2026-10-17T23:17:11.797Z", "role": "assistant", "content": " \"severity\": \"nit\","}
+{"type": "message", "timestamp": "2026-10-17T23:17:12.128Z", "role": "assistant", "content": " \"title\": \"Trailing"}
+{"type": "message", "timestamp": "2026-10-17T23:17:12.128Z", "role": "assistant", "content": " whitespace after closing t"}
+{"type": "message", "timestamp": "2026-10-17T23:17:12.128Z", "role": "assistant", "content": "ag\", \"file\": \"packages"}
+{"type": "message", "timestamp": "2026-10-17T23:17:12.129Z", "role": "assistant", "content": "/react/code-connect/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:12.143Z", "role": "assistant", "content": "ContainedListItem/"}
+{"type": "message", "timestamp": "2026-10-17T23:17:12.143Z", "role": "assistant", "content": "ContainedListItem."}
+{"type": "message", "timestamp": "2026-10-17T23:17:12.143Z", "role": "assistant", "content": "figma.tsx\" }"}
+{"type": "message", "timestamp": "2026-10-17T23:17:12.143Z", "role": "assistant", "content": "\n  ],\n  \"sh"}
+{"type": "message", "timestamp": "2026-10-17T23:17:12.190Z", "role": "assistant", "content": "ouldPostInlineCom"}
+{"type": "message", "timestamp": "2026-10-17T23:17:12.190Z", "role": "assistant", "content": "ments\": true\n}\nEND_"}
+{"type": "message", "timestamp": "2026-10-17T23:17:12.190Z", "role": "assistant", "content": "REVIEW_JS"}
+{"type": "message", "timestamp": "2026-10-17T23:17:12.191Z", "role": "assistant", "content": "ON"}
+{"type": "result", "timestamp": "2026-10-17T23:17:12.229Z", "status": "success", "stats": {"task_id": "f94539e2ba75efd03bf75ffe271e05cb", "duration_ms": 174347, "session_costs": 0.7049500000000001, "max_cost": 0, "tool_calls": 1}}

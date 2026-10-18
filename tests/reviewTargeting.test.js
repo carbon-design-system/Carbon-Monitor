@@ -419,7 +419,11 @@ async function main() {
     `;
     const out = execFileSync(process.execPath, ['-e', script], {
       cwd: REPO_ROOT,
-      env: { ...process.env, GITHUB_AI_AGENT_PR_NUMBER: '4242' },
+      env: {
+        ...process.env,
+        GITHUB_AI_AGENT_PR_NUMBER: '4242',
+        CARBON_MONITOR_SKIP_DOTENV: '1',
+      },
       encoding: 'utf8',
     });
 
@@ -747,7 +751,7 @@ async function main() {
       url: `/api/review/logs?since=${cursor}`,
     });
     assertEqual(second.json.lines.length, 1, 'exactly the one new line');
-    assertEqual(second.json.lines[0].text, 'after the clear', 'text');
+    assertEqual(second.json.lines[0].text, '[batch] after the clear', 'text');
     assert(
       second.json.lines[0].seq > cursor,
       `a cleared buffer must keep counting forwards: seq ${second.json.lines[0].seq} vs cursor ${cursor}`
@@ -810,7 +814,7 @@ async function main() {
     );
     assertList(
       after.json.lines.map((l) => l.text),
-      ['five'],
+      ['[batch] five'],
       'only post-clear output remains'
     );
   });
@@ -846,7 +850,7 @@ async function main() {
       );
       const texts = state.lines.map((l) => l.text);
       assert(
-        texts.includes('output from after the clear'),
+        texts.includes('[batch] output from after the clear'),
         'new output must keep arriving'
       );
       assert(

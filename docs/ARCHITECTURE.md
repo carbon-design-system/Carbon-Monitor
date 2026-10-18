@@ -35,7 +35,7 @@ indefinitely**.
 │  IBM Cloud Code Engine · project $PROJECT · region $REGION                │
 │                                                                           │
 │  ┌─────────────────────────────────────────────────────────────────────┐  │
-│  │  App: carbon-monitor          min-scale 1 · max-scale 1 · 1vCPU 2GB │  │
+│  │  App: carbon-monitor          min-scale 1 · max-scale 1 · 1vCPU 4GB │  │
 │  │  ┌───────────────────────────────────────────────────────────────┐  │  │
 │  │  │  node src/api/server.js            (port 8080)                │  │  │
 │  │  │                                                               │  │  │
@@ -96,8 +96,9 @@ cover `darwin-x64`, `darwin-arm64`, `linux-x64`, `linux-arm64`, `win32-x64` and
 `win32-arm64` only. On Alpine the binary cannot load and `bob` fails at startup.
 Bob's own `dist/vscode-policy-watcher.node` is likewise a glibc x86-64 ELF.
 
-`node:22-bookworm-slim` provides glibc 2.36. Node 22 is also a hard floor —
-Bob Shell requires `>= 22.15.0` and refuses to install below it.
+`node:24-bookworm-slim` provides glibc 2.36. Node 24 is also a hard floor —
+Bob Shell's install page requires Node.js 24 or later, and the build verifies that
+`bob` 2.0.5 installs and starts on it.
 
 > The previous `node:18-alpine` base failed on **both** counts.
 
@@ -136,6 +137,7 @@ cannot simply be a `package.json` dependency.
 /home/app/.bob/settings.json            licenseConsent seeded
 /home/app/.bob/trustedFolders.json      /workspace pre-trusted
 /home/app/.bob/settings/mcp.json        rewritten on every token refresh
+/home/app/.bob/settings/settings.json   tasks.retentionDays 1
 /workspace/                             review bundles + OAuth refresh state
 ```
 
@@ -292,6 +294,7 @@ no login page, and every `/api/*` route answers without a credential.
 
    Always open, regardless of the flag:
                  GET /api/health          liveness probe
+                 GET /api/ready           readiness probe
                  GET /api/mcp/callback    OAuth redirect — no header possible;
                                           guarded by an unexpired one-shot
                                           `state` this process issued, and PKCE
@@ -354,7 +357,7 @@ end.
         │      cwd = the bundle · stdin ignored · 10-minute cap
         │           │
         │           └─► Carbon MCP tools: code_search · docs_search ·
-        │               get_charts · labs_search
+        │               get_charts · labs_search · code_audit
         │
         ├─► parseReviewOutput()                  src/reviewParser.js
         └─► post inline + summary comments, apply the AIReviewed label
@@ -498,7 +501,7 @@ IBMid** once. After that the container renews its own token.
 Nothing above requires a container to work on.
 
 ```bash
-npm install
+npm ci
 npm run build:client       # stages IBM Plex, builds to dist/client
 npm run api                # http://localhost:3000 — console + API
 
@@ -547,27 +550,28 @@ See [`.env.example`](../.env.example) for the full set.
 
 ## 11. API surface
 
-| Method         | Path                     | Auth         | Purpose                                             |
-| -------------- | ------------------------ | ------------ | --------------------------------------------------- |
-| `GET`          | `/api/health`            | none         | Liveness probe                                      |
-| `GET`          | `/api/auth/status`       | none         | Whether sign-in is required / satisfied             |
-| `POST`         | `/api/auth/login`        | none         | Exchange credentials for a session cookie           |
-| `POST`         | `/api/auth/logout`       | none         | Clear the session                                   |
-| `GET`          | `/api/mcp/callback`      | state + PKCE | OAuth redirect target                               |
-| `GET`          | `/api/status`            | yes          | All dependency checks                               |
-| `GET`          | `/api/config`            | yes          | Sanitized configuration                             |
-| `GET`          | `/api/mcp/status`        | yes          | Connection detail, no secrets                       |
-| `POST`         | `/api/mcp/connect`       | yes          | Begin the OAuth bootstrap                           |
-| `POST`         | `/api/mcp/refresh`       | yes          | Force refresh, or store pasted credentials          |
-| `POST`         | `/api/mcp/test`          | yes          | Live probe (also repairs a session connection)      |
-| `POST`         | `/api/review/trigger`    | yes          | Start a review (202, background)                    |
-| `GET`          | `/api/review/status`     | yes          | Current or last run                                 |
-| `POST`         | `/api/mcp/disconnect`    | yes          | Forget the stored grant and strip Bob's MCP headers |
-| `GET`          | `/api/credits`           | yes          | Bobcoins balance                                    |
-| `GET`          | `/api/credits/history`   | yes          | Per-review spend                                    |
-| `GET`          | `/api/review/logs`       | yes          | Log tail of the current or last run                 |
-| `POST`         | `/api/review/logs/clear` | yes          | Clear that log                                      |
-| `GET` / `POST` | `/api/schedule`          | yes          | Read or set the review schedule                     |
+| Method         | Path                     | Auth         | Purpose                                                         |
+| -------------- | ------------------------ | ------------ | --------------------------------------------------------------- |
+| `GET`          | `/api/health`            | none         | Liveness probe                                                  |
+| `GET`          | `/api/ready`             | none         | Readiness probe (503 if Bob is missing or the agent is invalid) |
+| `GET`          | `/api/auth/status`       | none         | Whether sign-in is required / satisfied                         |
+| `POST`         | `/api/auth/login`        | none         | Exchange credentials for a session cookie                       |
+| `POST`         | `/api/auth/logout`       | none         | Clear the session                                               |
+| `GET`          | `/api/mcp/callback`      | state + PKCE | OAuth redirect target                                           |
+| `GET`          | `/api/status`            | yes          | All dependency checks                                           |
+| `GET`          | `/api/config`            | yes          | Sanitized configuration                                         |
+| `GET`          | `/api/mcp/status`        | yes          | Connection detail, no secrets                                   |
+| `POST`         | `/api/mcp/connect`       | yes          | Begin the OAuth bootstrap                                       |
+| `POST`         | `/api/mcp/refresh`       | yes          | Force refresh, or store pasted credentials                      |
+| `POST`         | `/api/mcp/test`          | yes          | Live probe (also repairs a session connection)                  |
+| `POST`         | `/api/review/trigger`    | yes          | Start a review (202, background)                                |
+| `GET`          | `/api/review/status`     | yes          | Current or last run                                             |
+| `POST`         | `/api/mcp/disconnect`    | yes          | Forget the stored grant and strip Bob's MCP headers             |
+| `GET`          | `/api/credits`           | yes          | Bobcoins balance                                                |
+| `GET`          | `/api/credits/history`   | yes          | Per-review spend                                                |
+| `GET`          | `/api/review/logs`       | yes          | Log tail of the current or last run                             |
+| `POST`         | `/api/review/logs/clear` | yes          | Clear that log                                                  |
+| `GET` / `POST` | `/api/schedule`          | yes          | Read or set the review schedule                                 |
 
 `POST /api/mcp/refresh` keeps its original contract: a body carrying `token`
 and/or `sessionId` stores those credentials, exactly as the existing runbooks in
@@ -603,8 +607,9 @@ src/
     ├── bobCredits.js         Bobcoins balance from the Bob gateway
     ├── creditLedger.js       per-review spend ledger
     ├── reviewLog.js          log tail for the console
+    ├── reviewProgress.js     in-flight and queued reviews into reviewState
     ├── scheduleManager.js    scheduled review runs
-    └── tokenManager.js       compatibility shim → mcpConnection
+    └── tokenManager.js       unused; kept for reference
 
 client/src/
 ├── App.jsx                   login vs console
@@ -624,9 +629,9 @@ client/src/
     └── ErrorBoundary.jsx     root error boundary
 ```
 
-★ `mcpConnection.js` is the single writer of `~/.bob/settings/mcp.json`.
-`tokenManager.js` delegates to it rather than reimplementing the write — two
-independent writers would silently clobber each other.
+★ `mcpConnection.js` is the single writer of `~/.bob/settings/mcp.json`; two
+independent writers would silently clobber each other. `tokenManager.js` is
+unused and kept for reference only.
 
 ---
 

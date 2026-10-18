@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Node.js >= 22.15.0
+- Node.js >= 22.15.0 to work on the code; Bob Shell itself needs Node.js 24 or later
 - Bob Shell
 - For deploys only: zsh, podman, the ibmcloud CLI with the `code-engine` and `container-registry` plugins, and kubectl
 
@@ -10,8 +10,12 @@
 
 ```bash
 cp .env.example .env   # fill in credentials; see the comments in the file
-npm install
+npm ci
 ```
+
+`package-lock.json` is committed. `npm ci` is the install for CI and the image; use
+`npm install` only to add or update a dependency, and commit the lockfile change.
+The repo `.npmrc` pins the public npm registry so IBM Artifactory URLs stay out of the lockfile.
 
 ## Run locally
 

@@ -9,7 +9,7 @@
  * Runs identically on a laptop (`npm run api`) and in IBM Code Engine; the only
  * difference is which port is injected and whether the client bundle has been
  * built. Deliberately built on node:http with no web framework, so the container
- * carries no dependency that exists purely to serve four routes.
+ * carries no dependency that exists purely to serve about twenty routes.
  *****************************************************************************/
 
 // Load .env BEFORE requiring anything that reads process.env at import time —
@@ -33,9 +33,20 @@ const bobCredits = require('./bobCredits');
 const creditLedger = require('./creditLedger');
 const { esCall } = require('../observability/esClient');
 const reviewLog = require('./reviewLog');
+const {
+  startProgress,
+  applyProgress,
+  endProgress,
+} = require('./reviewProgress');
 const scheduleManager = require('./scheduleManager');
 const { reviewPRs, parsePrNumbers, resolveReviewTargets } = require('../index');
-const { MAX_PRS_PER_RUN, N_DAYS_SINCE_PR_CREATED } = require('../constants');
+const { isAgentAvailable, getConfiguredAgent } = require('../agentRunner');
+const { checkStartup, getStartupProblems } = require('../config/env');
+const {
+  MAX_PRS_PER_RUN,
+  N_DAYS_SINCE_PR_CREATED,
+  EFFECTIVE_REVIEW_CONCURRENCY,
+} = require('../constants');
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
@@ -48,13 +59,6 @@ const ENABLE_AUTH = process.env.API_ENABLE_AUTH !== 'false';
 
 /** Built client bundle. Absent during API-only local development. */
 const CLIENT_DIR = path.join(__dirname, '..', '..', 'dist', 'client');
-
-if (ENABLE_AUTH && !API_SECRET) {
-  console.warn(
-    '[api/server] WARNING: API_ENABLE_AUTH=true but API_SECRET is not set — ' +
-      'all authenticated requests will be rejected.'
-  );
-}
 
 // ── Authentication ──────────────────────────────────────────────────────────
 
@@ -94,11 +98,10 @@ function verifyBearer(req) {
  * alone is sufficient; requiring both would break one of them.
  */
 function isAuthorized(req) {
-  // The AUTH_REQUIRED feature flag is the single switch, and it is OFF by
-  // default: the standard deployment is open. Stated first and explicitly,
-  // rather than falling out of hasValidSession() returning true when the flag is
-  // off — a gate whose open state is a side effect of another function is one
-  // refactor away from being wrong.
+  // AUTH_REQUIRED is the single switch (deploy_ce.sh sets it true; unset is off).
+  // Stated explicitly rather than falling out of hasValidSession(): a gate whose
+  // open state is a side effect of another function is one refactor away from
+  // being wrong.
   if (!sessionAuth.AUTH_REQUIRED) return true;
 
   // Flag on: either credential admits. A browser holds a session cookie; CI and
@@ -106,6 +109,57 @@ function isAuthorized(req) {
   if (sessionAuth.hasValidSession(req)) return true;
   if (ENABLE_AUTH && verifyBearer(req)) return true;
   return false;
+}
+
+// How many proxies sit between the client and this process. The throttle key
+// is the X-Forwarded-For entry that many from the end; earlier entries are
+// client-supplied and spoofable.
+function trustedProxyHops() {
+  return Math.max(1, parseInt(process.env.TRUSTED_PROXY_HOPS || '1', 10) || 1);
+}
+
+/**
+ * Address the sign-in throttle is keyed on, plus how it was chosen.
+ * Falls back to the socket address when the header is absent or too short.
+ */
+function clientAddress(req) {
+  const header = req.headers['x-forwarded-for'];
+  const entries =
+    typeof header === 'string'
+      ? header
+          .split(',')
+          .map((e) => e.trim())
+          .filter(Boolean)
+      : [];
+  const hops = trustedProxyHops();
+  const index = entries.length - hops;
+  if (index >= 0) {
+    return { ip: entries[index], entries: entries.length, source: 'header' };
+  }
+  // A header shorter than the hop count still beats the socket address, which
+  // behind a proxy is one address shared by every user.
+  if (entries.length > 0) {
+    return { ip: entries[0], entries: entries.length, source: 'header' };
+  }
+  return {
+    ip: req.socket?.remoteAddress || null,
+    entries: entries.length,
+    source: 'socket',
+  };
+}
+
+let loggedProxyHops = false;
+
+/** One line at the first failed sign-in so the operator can check the hop count. */
+function logProxyHopsOnce(address) {
+  if (loggedProxyHops) return;
+  loggedProxyHops = true;
+  console.log(
+    `[api/auth] sign-in throttle: X-Forwarded-For had ${address.entries} entries; ` +
+      (address.source === 'header'
+        ? `using entry ${trustedProxyHops()} from the end (TRUSTED_PROXY_HOPS=${trustedProxyHops()})`
+        : `too few for TRUSTED_PROXY_HOPS=${trustedProxyHops()}, using the socket address`)
+  );
 }
 
 // ── Response helpers ────────────────────────────────────────────────────────
@@ -122,6 +176,20 @@ function sendError(res, statusCode, message) {
   });
 }
 
+function escapeHtml(value) {
+  return String(value).replace(
+    /[&<>"']/g,
+    (c) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[c]
+  );
+}
+
 /**
  * Render a minimal self-contained HTML page.
  *
@@ -134,7 +202,7 @@ function sendHTML(res, statusCode, { title, message, ok }) {
   res.end(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title}</title>
+<title>${escapeHtml(title)}</title>
 <style>
   body { font-family: 'IBM Plex Sans', system-ui, sans-serif; background:#161616;
          color:#f4f4f4; display:flex; align-items:center; justify-content:center;
@@ -145,8 +213,8 @@ function sendHTML(res, statusCode, { title, message, ok }) {
   a { color:#78a9ff; }
 </style></head>
 <body><main>
-  <h1>${title}</h1>
-  <p>${message}</p>
+  <h1>${escapeHtml(title)}</h1>
+  <p>${escapeHtml(message)}</p>
   <p><a href="/">Return to Carbon Monitor</a></p>
 </main>
 <script>
@@ -338,6 +406,80 @@ function handleHealth(req, res) {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
+}
+
+const READY_PROBE_TTL_MS = 60_000;
+// A miss is retried soon: a cold Bob can overrun the probe timeout once.
+const READY_PROBE_MISS_TTL_MS = 5_000;
+const agentProbe = {
+  at: 0,
+  pending: null,
+  available: false,
+  everAvailable: false,
+};
+
+/**
+ * Whether the agent binary runs. The probe spawns the CLI, which can overrun its
+ * timeout while a review saturates the CPU, so only the very first check waits;
+ * after that the cached answer is returned at once and a stale one is refreshed
+ * in the background. A binary seen working once stays reported as present, so
+ * readiness never drops mid-review and takes the console offline.
+ */
+function agentOnPath(agent) {
+  const ttl = agentProbe.available
+    ? READY_PROBE_TTL_MS
+    : READY_PROBE_MISS_TTL_MS;
+  const stale = agentProbe.at === 0 || Date.now() - agentProbe.at >= ttl;
+  if (stale && !agentProbe.pending) {
+    agentProbe.pending = isAgentAvailable(agent)
+      .then((ok) => {
+        agentProbe.everAvailable = agentProbe.everAvailable || ok;
+        agentProbe.available = ok || agentProbe.everAvailable;
+        agentProbe.at = Date.now();
+        return agentProbe.available;
+      })
+      .finally(() => {
+        agentProbe.pending = null;
+      });
+  }
+  if (agentProbe.at === 0) return agentProbe.pending;
+  return Promise.resolve(agentProbe.available);
+}
+
+/** The agent GITHUB_AI_AGENT_CLI selects, defaulting to bob as constants.js does. */
+function resolveAgent() {
+  return process.env.GITHUB_AI_AGENT_CLI ? getConfiguredAgent() : 'bob';
+}
+
+/**
+ * GET /api/ready — readiness probe. Intentionally unauthenticated.
+ *
+ * 503 only when reviews cannot run at all: the agent config is invalid or its
+ * binary is missing. A missing credential, Elasticsearch or Carbon MCP is a
+ * warning with a 200, so a half-configured instance stays reachable and the
+ * console can show what to fix.
+ */
+async function handleReady(req, res) {
+  const reasons = [];
+  let agent = null;
+  try {
+    agent = resolveAgent();
+  } catch (error) {
+    reasons.push(error.message);
+  }
+  if (agent && !(await agentOnPath(agent))) {
+    reasons.push(`Agent CLI '${agent}' is not available on PATH`);
+  }
+
+  if (reasons.length) {
+    return sendJSON(res, 503, { ready: false, reasons });
+  }
+
+  const warnings = getStartupProblems();
+  if (!process.env.ES_URL) {
+    warnings.push('ES_URL is not set: telemetry and the credit ledger are off');
+  }
+  sendJSON(res, 200, { ready: true, ...(warnings.length ? { warnings } : {}) });
 }
 
 /**
@@ -555,22 +697,9 @@ async function handleCredits(req, res) {
     getCreditsSummary(),
   ]);
 
-  // Re-read the balance when the ledger proves it is out of date.
-  //
-  // The two halves of this response have different freshness. The ledger is a
-  // FILE, so a review recording spend is visible here instantly — but reviews
-  // run in their own process (`node src/index.js`), and getBalance()'s cache is
-  // per-process, so this server's copy can predate the review by up to the TTL.
-  //
-  // The visible symptom was a panel contradicting itself: the table showed a
-  // finished review with "remaining after 97.77" while the headline above it
-  // read 97.93, a mid-review figure this process had cached seconds earlier.
-  //
-  // A ledger entry newer than the balance we hold is exactly the signal that
-  // spend has landed since, and it is the only cross-process signal available.
-  // Forcing on that condition alone keeps the cache doing its real job —
-  // absorbing the 30-second poll from every open tab — while making the numbers
-  // agree whenever they otherwise would not.
+  // Reviews write the ledger from their own process, so this process's cached
+  // balance can predate it; a newer ledger entry is the only cross-process
+  // signal, so force a re-read on that alone (see docs/API.md).
   if (summary.lastRecordedAt && balance.fetchedAt) {
     const ledgerNewer =
       new Date(summary.lastRecordedAt).getTime() >
@@ -642,6 +771,10 @@ const reviewState = {
   // after it to appear to own.
   mode: null,
   prNumbers: null,
+  // Reviews running side by side inside the batch, and the PRs still waiting.
+  inFlight: [],
+  queued: [],
+  concurrency: EFFECTIVE_REVIEW_CONCURRENCY,
 };
 
 /**
@@ -718,6 +851,7 @@ async function handleReviewTrigger(req, res) {
   reviewState.error = null;
   reviewState.mode = target.mode;
   reviewState.prNumbers = target.prNumbers;
+  startProgress(reviewState, target.prNumbers || []);
 
   sendJSON(res, 202, {
     success: true,
@@ -729,6 +863,7 @@ async function handleReviewTrigger(req, res) {
     mode: target.mode,
     prNumbers: target.prNumbers,
     maxPRs: MAX_PRS_PER_RUN,
+    concurrency: EFFECTIVE_REVIEW_CONCURRENCY,
     // Auto mode only. An explicit list ignores the age window entirely, so
     // reporting it there would describe a filter that is not being applied.
     daysBack: target.mode === 'auto' ? N_DAYS_SINCE_PR_CREATED : undefined,
@@ -740,7 +875,10 @@ async function handleReviewTrigger(req, res) {
   // throw cannot leave the console methods permanently wrapped.
   reviewLog.start(reviewState.startedAt);
 
-  reviewPRs({ prNumbers: parsed.prNumbers })
+  reviewPRs({
+    prNumbers: parsed.prNumbers,
+    onProgress: (snapshot) => applyProgress(reviewState, snapshot),
+  })
     .then(() => {
       reviewState.error = null;
     })
@@ -751,12 +889,13 @@ async function handleReviewTrigger(req, res) {
     .finally(() => {
       reviewState.running = false;
       reviewState.finishedAt = new Date().toISOString();
+      endProgress(reviewState);
       reviewLog.stop();
     });
 }
 
 /**
- * GET /api/review/logs?since=N&limit=M
+ * GET /api/review/logs?since=N&limit=M&pr=P&worker=W
  *
  * Incremental log tail for the console. The client keeps the `nextSince` cursor
  * from the previous response and polls with it, so each request carries only new
@@ -774,9 +913,15 @@ function handleReviewLogs(req, res) {
       ? Math.min(requested, 1000)
       : 500;
 
+  // Unfiltered unless asked: ?pr=<n> and ?worker=<n> narrow to one review.
+  const filter = {
+    pr: Number(url.searchParams.get('pr')) || undefined,
+    worker: Number(url.searchParams.get('worker')) || undefined,
+  };
+
   sendJSON(res, 200, {
     success: true,
-    ...reviewLog.read(since, limit),
+    ...reviewLog.read(since, limit, filter),
     running: reviewState.running,
     timestamp: new Date().toISOString(),
   });
@@ -950,6 +1095,7 @@ const ROUTES = {
  */
 const SILENT_GET_ROUTES = new Set([
   '/api/health', // CE health probe every 30 s + console on mount
+  '/api/ready', // CE readiness probe every 10 s
   '/api/status', // console status panel, every 30 s
   '/api/mcp/status', // same 30 s batch
   '/api/review/status', // same 30 s batch
@@ -994,6 +1140,8 @@ async function handleRequest(req, res) {
   // the sign-in endpoints themselves (which are the way to become authenticated).
   if (pathname === '/api/health' && method === 'GET')
     return handleHealth(req, res);
+  if (pathname === '/api/ready' && method === 'GET')
+    return handleReady(req, res);
   if (pathname === '/api/mcp/callback' && method === 'GET') {
     return handleMcpCallback(req, res, url);
   }
@@ -1003,7 +1151,9 @@ async function handleRequest(req, res) {
   if (pathname === '/api/auth/login' && method === 'POST') {
     try {
       const body = await readJsonBody(req);
-      const result = sessionAuth.login(res, body);
+      const address = clientAddress(req);
+      const result = sessionAuth.login(res, body, address.ip);
+      if (result.status === 401) logProxyHopsOnce(address);
       return sendJSON(res, result.status, result.body);
     } catch (error) {
       return sendError(res, 400, error.message);
@@ -1078,6 +1228,18 @@ async function handleRequestSafely(req, res) {
 
 function startServer() {
   const server = http.createServer(handleRequestSafely);
+
+  checkStartup({
+    mode: 'server',
+    authRequired: sessionAuth.AUTH_REQUIRED,
+    bearerEnabled: ENABLE_AUTH,
+  });
+  // Warm the readiness probe so the first CE probe does not pay for a cold Bob.
+  try {
+    agentOnPath(resolveAgent()).catch(() => {});
+  } catch (_) {
+    /* an invalid agent is reported by /api/ready */
+  }
 
   // Belt and braces: a rejection from a background task (the review loop, the
   // MCP refresh timer) must not be fatal either. Logged, never exited on.

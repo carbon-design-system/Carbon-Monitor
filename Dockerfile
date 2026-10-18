@@ -9,26 +9,26 @@
 #   fails at startup. Bob's own dist/vscode-policy-watcher.node is likewise a
 #   glibc x86-64 ELF. bookworm-slim provides glibc 2.36.
 #
-# NODE VERSION: 22, because Bob Shell requires >= 22.15.0 and refuses to install
-#   below that. The previous node:18-alpine base failed on both counts.
+# NODE VERSION: 24, because Bob Shell's install page requires Node.js 24 or later
+#   (https://bob.ibm.com/docs/shell/getting-started/install-and-setup). The build
+#   verifies that bob 2.0.5 installs and starts on it.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ---- Dependencies (production only) ----
-FROM node:22-bookworm-slim AS deps
+FROM node:24-bookworm-slim AS deps
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json package-lock.json ./
 
-# `npm install`, not `npm ci`: package-lock.json is gitignored, so no lockfile
-# exists to install from.
+# `npm ci` installs exactly what the committed lockfile records.
 #
 # --registry is pinned explicitly because a developer's ~/.npmrc may default to
 # IBM Artifactory. That registry needs credentials the image does not carry, and
 # the failure surfaces minutes into the build as an opaque E401.
-RUN npm install --omit=dev --registry=https://registry.npmjs.org/ --no-audit --no-fund
+RUN npm ci --omit=dev --registry=https://registry.npmjs.org/ --no-audit --no-fund
 
 # ---- Runtime ----
-FROM node:22-bookworm-slim
+FROM node:24-bookworm-slim
 
 ENV NODE_ENV=production
 
@@ -94,37 +94,61 @@ COPY --chown=app:app .bob ./.bob
 # fail loudly; it just answers Carbon questions from an older rulebook, which is
 # precisely the kind of silent degradation worth engineering against.
 #
-# Pinned to a ref rather than an immutable commit so a rebuild picks up skill
-# improvements without a code change. Set CARBON_SKILL_REF to a tag or SHA when a
-# byte-identical rebuild matters more than freshness.
+# CARBON_SKILL_REF may be a branch, a tag or a 40-hex commit SHA. A SHA is fetched
+# as that commit; anything else is tried as a tag, then as a branch. Branches are
+# the default so a rebuild picks up skill improvements without a code change; set
+# a tag or SHA when a byte-identical rebuild matters more than freshness.
 ARG CARBON_SKILL_REPO=carbon-design-system/carbon-mcp
 ARG CARBON_SKILL_REF=main
 ARG CARBON_SKILL_PATH=public/skills/carbon-builder
+# Optional SHA-256 of the downloaded tarball, checked with sha256sum -c. GitHub
+# does not promise byte-stable tarballs for branches and tags, so pair it with a SHA ref.
+ARG CARBON_SKILL_SHA256=
+# true makes a failed fetch or a checksum mismatch fail the build instead of
+# falling back to the vendored copy.
+ARG CARBON_SKILL_STRICT=false
 
-# Failure here is NOT fatal: the vendored copy above is already in place, so a
-# GitHub outage or a moved path degrades to "slightly stale" rather than blocking
-# a deploy. It is loud, and it records which source won in skill-source.txt so
-# the choice is auditable after the fact instead of being guessed from a build
-# log nobody kept.
+# Failure here is NOT fatal by default: the vendored copy above is already in
+# place, so a GitHub outage or a moved path degrades to "slightly stale" rather
+# than blocking a deploy. It is loud, and it records which source won in
+# skill-source.txt so the choice is auditable after the fact instead of being
+# guessed from a build log nobody kept.
 RUN set -eux; \
   SKILL_DIR=/app/.bob/skills/carbon-builder; \
   TMP=$(mktemp -d); \
-  REF_SLUG=$(echo "${CARBON_SKILL_REF}" | tr '/' '-'); \
-  if curl -fsSL --max-time 120 \
-       "https://codeload.github.com/${CARBON_SKILL_REPO}/tar.gz/refs/heads/${CARBON_SKILL_REF}" \
-       -o "${TMP}/repo.tgz" 2>/dev/null \
-     && tar -xzf "${TMP}/repo.tgz" -C "${TMP}" \
-          --strip-components=4 \
-          "$(basename ${CARBON_SKILL_REPO})-${REF_SLUG}/${CARBON_SKILL_PATH}" 2>/dev/null \
-     && [ -f "${TMP}/SKILL.md" ]; then \
+  mkdir "${TMP}/skill"; \
+  STRIP=$(( $(printf '%s' "${CARBON_SKILL_PATH}" | tr -cd '/' | wc -c) + 2 )); \
+  if printf '%s' "${CARBON_SKILL_REF}" | grep -Eq '^[0-9a-f]{40}$'; then \
+    URLS="https://codeload.github.com/${CARBON_SKILL_REPO}/tar.gz/${CARBON_SKILL_REF}"; \
+  else \
+    URLS="https://codeload.github.com/${CARBON_SKILL_REPO}/tar.gz/refs/tags/${CARBON_SKILL_REF} https://codeload.github.com/${CARBON_SKILL_REPO}/tar.gz/refs/heads/${CARBON_SKILL_REF}"; \
+  fi; \
+  FAIL="no tarball found for ${CARBON_SKILL_REF}"; \
+  for URL in ${URLS}; do \
+    if curl -fsSL --max-time 120 "${URL}" -o "${TMP}/repo.tgz" 2>/dev/null; then FAIL=; break; fi; \
+  done; \
+  if [ -z "${FAIL}" ] && [ -n "${CARBON_SKILL_SHA256}" ] \
+     && ! echo "${CARBON_SKILL_SHA256}  ${TMP}/repo.tgz" | sha256sum -c -; then \
+    FAIL="checksum mismatch for the downloaded tarball"; \
+  fi; \
+  TOP=; \
+  if [ -z "${FAIL}" ]; then TOP=$(tar -tzf "${TMP}/repo.tgz" 2>/dev/null | head -n 1 | cut -d/ -f1); fi; \
+  if [ -z "${FAIL}" ] && [ -n "${TOP}" ] \
+     && tar -xzf "${TMP}/repo.tgz" -C "${TMP}/skill" --strip-components="${STRIP}" \
+          "${TOP}/${CARBON_SKILL_PATH}" 2>/dev/null \
+     && [ -f "${TMP}/skill/SKILL.md" ]; then \
     rm -rf "${SKILL_DIR}"; \
     mkdir -p "${SKILL_DIR}"; \
-    cp -R "${TMP}/." "${SKILL_DIR}/"; \
+    cp -R "${TMP}/skill/." "${SKILL_DIR}/"; \
     echo "${CARBON_SKILL_REPO}@${CARBON_SKILL_REF} (downloaded $(date -u +%Y-%m-%dT%H:%M:%SZ))" \
       > "${SKILL_DIR}/skill-source.txt"; \
     echo "carbon-builder: refreshed from ${CARBON_SKILL_REPO}@${CARBON_SKILL_REF}"; \
   else \
-    echo "WARNING: could not fetch carbon-builder from ${CARBON_SKILL_REPO}@${CARBON_SKILL_REF}."; \
+    echo "WARNING: could not fetch carbon-builder from ${CARBON_SKILL_REPO}@${CARBON_SKILL_REF}: ${FAIL:-${CARBON_SKILL_PATH} not found in the tarball}."; \
+    if [ "${CARBON_SKILL_STRICT}" = "true" ]; then \
+      echo "FATAL: CARBON_SKILL_STRICT=true, refusing to fall back to the vendored copy."; \
+      exit 1; \
+    fi; \
     echo "WARNING: falling back to the copy vendored in this repo, which may be stale."; \
     echo "vendored in carbon-monitor (upstream fetch failed at build time)" \
       > "${SKILL_DIR}/skill-source.txt"; \
@@ -146,11 +170,14 @@ COPY --chown=app:app dist ./dist
 # licenseConsent short-circuits the license gate, and the review workspace is
 # pre-trusted so Bob does not disable MCP tools on an unrecognised folder.
 # `bob run` also passes --trust and --accept-license as a second line of defence.
+# tasks.retentionDays: 1 because task history must not accumulate on ephemeral storage.
 RUN mkdir -p /home/app/.bob/settings /home/app/.bob/skills /workspace \
   && printf '%s\n' '{"ibm":{"licenseConsent":true,"isNotFirstTime":true}}' \
      > /home/app/.bob/settings.json \
   && printf '%s\n' '{"/workspace":true}' > /home/app/.bob/trustedFolders.json \
   && printf '%s\n' '{"mcpServers":{}}' > /home/app/.bob/settings/mcp.json \
+  && printf '%s\n' '{"tasks":{"retentionDays":1}}' \
+     > /home/app/.bob/settings/settings.json \
   && cp -R /app/.bob/skills/carbon-builder /home/app/.bob/skills/carbon-builder \
   && chown -R app:app /home/app /workspace
 

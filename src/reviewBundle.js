@@ -108,6 +108,94 @@ async function copyDirectory(src, dest) {
 }
 
 /**
+ * Give one Bob process its own HOME, seeded from the real ~/.bob.
+ *
+ * Two Bob processes must share no file: trustedFolders.json, task history, logs
+ * and mcp.json are all read and rewritten under $HOME/.bob. skills/ is
+ * read-only to Bob, so it is a symlink; the bundle cleanup removes the rest.
+ * @param {string} bundleDir - The bundle directory (also Bob's cwd)
+ * @returns {Promise<string>} The HOME to give the child
+ */
+async function seedBobHome(bundleDir) {
+  const src = path.join(os.homedir(), '.bob');
+  const home = path.join(bundleDir, 'home');
+  const dest = path.join(home, '.bob');
+  await fs.mkdir(path.join(dest, 'settings'), { recursive: true });
+
+  for (const rel of [
+    'settings.json',
+    path.join('settings', 'settings.json'),
+    path.join('settings', 'mcp.json'),
+  ]) {
+    await fs.copyFile(path.join(src, rel), path.join(dest, rel)).catch((e) => {
+      if (e.code !== 'ENOENT') throw e;
+    });
+  }
+
+  // Trust the bundle explicitly as well as passing --trust. A list or a
+  // path-keyed map are the two shapes Bob versions have used.
+  let trusted = null;
+  try {
+    trusted = JSON.parse(
+      await fs.readFile(path.join(src, 'trustedFolders.json'), 'utf8')
+    );
+  } catch {
+    // Absent or unreadable: rely on --trust.
+  }
+  if (trusted !== null && typeof trusted === 'object') {
+    const dirs = new Set([bundleDir, await fs.realpath(bundleDir)]);
+    for (const dir of dirs) {
+      if (Array.isArray(trusted)) {
+        if (!trusted.includes(dir)) trusted.push(dir);
+      } else {
+        trusted[dir] = true;
+      }
+    }
+    await fs.writeFile(
+      path.join(dest, 'trustedFolders.json'),
+      JSON.stringify(trusted, null, 2)
+    );
+  }
+
+  const rules = path.join(src, 'rules');
+  if (
+    await fs.stat(rules).then(
+      (st) => st.isDirectory(),
+      () => false
+    )
+  ) {
+    await copyDirectory(rules, path.join(dest, 'rules'));
+  }
+  const skills = path.join(src, 'skills');
+  if (
+    await fs.stat(skills).then(
+      (st) => st.isDirectory(),
+      () => false
+    )
+  ) {
+    await fs.symlink(skills, path.join(dest, 'skills'));
+  }
+  return home;
+}
+
+/**
+ * Copy the real mcp.json into a review's HOME again, so a bearer refreshed
+ * since seeding is used. Called at run boundaries only, never mid-run.
+ * @param {string} home - The HOME returned by seedBobHome
+ */
+async function refreshBobMcp(home) {
+  const rel = path.join('settings', 'mcp.json');
+  await fs
+    .copyFile(
+      path.join(os.homedir(), '.bob', rel),
+      path.join(home, '.bob', rel)
+    )
+    .catch((e) => {
+      if (e.code !== 'ENOENT') throw e;
+    });
+}
+
+/**
  * Build a review bundle for agent execution
  * @param {Object} options - { owner, repo, pr, diff, files }
  * @returns {Promise<Object>} Bundle object with dir, prompt, and cleanup function
@@ -322,4 +410,9 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
   }
 }
 
-module.exports = { buildReviewBundle, getWorkspaceRoot };
+module.exports = {
+  buildReviewBundle,
+  getWorkspaceRoot,
+  seedBobHome,
+  refreshBobMcp,
+};

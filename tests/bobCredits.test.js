@@ -787,6 +787,29 @@ async function main() {
     );
   });
 
+  await test('record keeps task id, tokens and tool calls, and nulls them when absent', async () => {
+    resetLedger();
+    await creditLedger.record({
+      prNumber: 1,
+      coinsSpent: 1,
+      taskId: 'task-abc',
+      tokens: { input: 10, output: 5, cacheRead: 2, cacheWrite: 1, total: 15 },
+      toolCalls: 7,
+    });
+    await creditLedger.record({ prNumber: 2, coinsSpent: 1 });
+
+    const [full, partial] = await creditLedger.readAll();
+    assert(full.taskId === 'task-abc', 'taskId should pass through');
+    assert(full.tokens.cacheRead === 2 && full.tokens.total === 15);
+    assert(full.toolCalls === 7, 'toolCalls should pass through');
+    assert(
+      partial.taskId === null &&
+        partial.tokens === null &&
+        partial.toolCalls === null,
+      'absent fields should default to null'
+    );
+  });
+
   await test('record does not throw when the ledger cannot be written', async () => {
     const original = process.env.CREDIT_LEDGER_PATH;
     // A file standing where the directory should be: mkdir fails, so the whole

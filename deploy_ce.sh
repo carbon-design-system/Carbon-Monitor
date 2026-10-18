@@ -17,7 +17,7 @@ export NODE_ENV=production
 
 : "${APP:=carbon-monitor}"
 : "${IMAGE_NAME:=carbon-monitor}"
-: "${VERSION:=1.3.0}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
+: "${VERSION:=1.4.0}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
 
 # Secret holding this app's credentials. 
 : "${SECRET_NAME:=carbon-monitor-secrets}"
@@ -54,17 +54,15 @@ export NODE_ENV=production
 # sign-in off anyone holding the URL can read status and trigger a review.
 : "${AUTH_REQUIRED:=true}"
 
-# CPU / memory. Sized for THIS workload, not padded: reviews are single-flight
-# (one at a time) and top out at ~50 PRs/day, and the heavy lifting — the LLM
-# inference — happens remotely on the Bob gateway, so the container is I/O- and
-# latency-bound, not CPU-bound. 1 vCPU / 2 GB holds a bounded review bundle
-# (GITHUB_AI_AGENT_MAX_INPUT_TOKENS ≈ 512 KB of prompt) plus Bob and Node with
-# headroom. The app runs 24/7 (min-scale 1), so this is what is billed around the
-# clock — halving it from 2 vCPU / 4 GB roughly halves that standing cost. If a
-# very large PR ever OOM-kills a review, raise MEMORY to 4G (a valid 1 vCPU / 4 GB
-# pairing) rather than reaching for more CPU.
+# CPU / memory. Batches are single-flight and the LLM inference runs remotely on
+# the Bob gateway, so the container is I/O- and latency-bound, not CPU-bound: 1 vCPU
+# is enough. Memory is 4 GB because Bob Shell documents 4 GB as its minimum per
+# process (https://bob.ibm.com/docs/shell/getting-started/install-and-setup); 1 vCPU
+# / 4 GB is a valid Code Engine pairing. REVIEW_CONCURRENCY (default 2) runs that many Bob processes
+# at once, each wanting 4 GB: at 4G a large PR may OOM one review, so pair 2 with
+# MEMORY=8G in the best case, or set REVIEW_CONCURRENCY=1.
 : "${CPU:=1}"
-: "${MEMORY:=2G}"
+: "${MEMORY:=4G}"
 : "${CONCURRENCY:=100}"
 : "${REQUEST_TIMEOUT:=300}"   # CE and Bob cap is 300s (5m)
 : "${SCALE_DOWN_DELAY:=300}"
@@ -412,12 +410,14 @@ if [ -n "${URL:-}" ]; then
   EXTRA_ENV+=(--env "BASE_URL=${URL}")
 fi
 
+APP_PORT=8080
+
 typeset -a COMMON_FLAGS
 COMMON_FLAGS=(
   --image "${DEPLOY_IMAGE}"
   --registry-secret "${REGISTRY_SECRET}"
   --env-from-secret "${SECRET_NAME}"
-  --port 8080
+  --port "${APP_PORT}"
   --cpu "${CPU}"
   --memory "${MEMORY}"
   --concurrency "${CONCURRENCY}"
@@ -426,6 +426,22 @@ COMMON_FLAGS=(
   --max-scale "${MAX_SCALE}"
   --request-timeout "${REQUEST_TIMEOUT}"
   --scale-down-delay "${SCALE_DOWN_DELAY}"
+  # Probe syntax per https://cloud.ibm.com/docs/codeengine?topic=codeengine-app-probes
+  # (one NAME=VALUE per flag). Ready fails only when Bob is missing; see docs/API.md.
+  --probe-ready type=http
+  --probe-ready path=/api/ready
+  --probe-ready "port=${APP_PORT}"
+  --probe-ready interval=10
+  --probe-ready initial-delay=5
+  --probe-ready timeout=5
+  --probe-ready failure-threshold=3
+  --probe-live type=http
+  --probe-live path=/api/health
+  --probe-live "port=${APP_PORT}"
+  --probe-live interval=30
+  --probe-live initial-delay=10
+  --probe-live timeout=5
+  --probe-live failure-threshold=3
   --env NODE_ENV=production
   --env "LOG_LEVEL=${LOG_LEVEL:-info}"
   --env "SCHEDULE_TIMEZONE=${SCHEDULE_TIMEZONE:-America/Chicago}"
@@ -438,6 +454,11 @@ COMMON_FLAGS=(
   --env GITHUB_AI_AGENT_DAYS_BACK="${GITHUB_AI_AGENT_DAYS_BACK:-21}"
   --env GITHUB_AI_AGENT_REVIEW_LABEL="${GITHUB_AI_AGENT_REVIEW_LABEL:-AIReviewed}"
   --env BOB_WORKSPACE_ROOT=/workspace
+  --env "BOB_OUTPUT_FORMAT=${BOB_OUTPUT_FORMAT:-}"
+  --env "BOB_MAX_COST=${BOB_MAX_COST:-}"
+  --env "BOB_MAX_TURNS=${BOB_MAX_TURNS:-}"
+  --env "BOB_DISABLE_TOOL_GROUPS=${BOB_DISABLE_TOOL_GROUPS:-}"
+  --env "REVIEW_CONCURRENCY=${REVIEW_CONCURRENCY:-}"
   --env MCP_STATE_PATH=/workspace/.mcp-state.json
   # Durable Carbon MCP state lives in Elasticsearch
   # (readState/writeState) and the 'carbon-monitor-mcp-state' index.

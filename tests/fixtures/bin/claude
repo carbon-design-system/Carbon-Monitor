@@ -1,0 +1,4 @@
+#!/usr/bin/env node
+// Fake non-Bob agent: answers --version and otherwise says nothing, so a review
+// fails to parse. Enough to watch the pool's concurrency rule for non-Bob agents.
+if (process.argv.includes('--version')) process.stdout.write('fake-claude\n');

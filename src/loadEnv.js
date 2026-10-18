@@ -26,4 +26,7 @@
  * diverge again.
  *****************************************************************************/
 
-require('dotenv').config({ override: true });
+// Tests spawn children with this set so a developer's .env cannot override theirs.
+if (process.env.CARBON_MONITOR_SKIP_DOTENV !== '1') {
+  require('dotenv').config({ override: true });
+}

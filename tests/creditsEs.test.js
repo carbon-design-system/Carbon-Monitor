@@ -233,9 +233,10 @@ async function main() {
     // Whitespace-tolerant: the formatter owns alignment and indentation.
     const source = fs.readFileSync('src/index.js', 'utf8');
     assert(/event_type:\s*'pr_review_completed'/.test(source));
-    assert(/\bcoinsSpent,/.test(source));
+    assert(/\bcoinsSpent:\s*totalSpent\b/.test(source));
     assert(/\bremainingAfter:/.test(source));
     assert(/\bdurationMs:/.test(source));
+    assert(/\bruns,/.test(source));
   });
 
   console.log(`\nResults: ${passed} passed, ${failed} failed`);

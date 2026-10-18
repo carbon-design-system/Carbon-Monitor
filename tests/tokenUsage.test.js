@@ -2,7 +2,10 @@
  * Test token usage estimation
  */
 
-const { estimateTokenUsage } = require('../src/reviewPrompt');
+const {
+  estimateTokenUsage,
+  formatSummaryComment,
+} = require('../src/reviewPrompt');
 
 console.log('🧪 Testing Token Usage Estimation\n');
 
@@ -85,6 +88,47 @@ if (roundUsage.input === 3) {
   console.log('  ✅ PASS\n');
 } else {
   console.log('  ❌ FAIL\n');
+  process.exit(1);
+}
+
+// Test 5: Summary comment wording per source
+console.log('Test 5: Summary comment token section by source');
+function commentFor(tokenUsage) {
+  return formatSummaryComment({
+    agent: 'bob',
+    summaryMarkdown: 'Summary.',
+    prNumber: 1,
+    commitSha: 'abcdef1234567',
+    tokenUsage,
+  });
+}
+const counts = { input: 12345, output: 678, total: 13023 };
+const estimateBody = commentFor({ ...counts, source: 'estimate' });
+const missingBody = commentFor(counts);
+const bobBody = commentFor({ ...counts, source: 'bob', cacheRead: 5 });
+
+const estimateOk =
+  estimateBody === missingBody &&
+  estimateBody.includes('**Estimated Token Usage:**') &&
+  estimateBody.includes('- Input tokens: ~12,345') &&
+  estimateBody.includes('- Total tokens: ~13,023') &&
+  estimateBody.includes('Token estimates are approximate');
+const bobOk =
+  bobBody.includes('**Token Usage:**') &&
+  !bobBody.includes('Estimated') &&
+  bobBody.includes('- Input tokens: 12,345\n') &&
+  bobBody.includes('- Output tokens: 678\n') &&
+  bobBody.includes('- Total tokens: 13,023\n') &&
+  !bobBody.includes('~') &&
+  !bobBody.includes('approximate');
+const noneOk = !commentFor(null).includes('Token Usage');
+
+if (estimateOk && bobOk && noneOk) {
+  console.log('  ✅ PASS\n');
+} else {
+  console.log(
+    `  ❌ FAIL (estimate ${estimateOk}, bob ${bobOk}, none ${noneOk})\n`
+  );
   process.exit(1);
 }
 

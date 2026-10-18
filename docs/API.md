@@ -13,23 +13,28 @@ Serves the operator console and the REST API on one port (`PORT`, then
 `API_PORT`, default `3000`). Code Engine injects `PORT`, and exposes a single
 port per app, which is why both share one.
 
-| Method | Path                         | Description                                                                                                          |
-| ------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `GET`  | `/api/health`                | Health check — always open                                                                                           |
-| `GET`  | `/api/auth/status`           | Whether sign-in is required and satisfied — always open                                                              |
-| `POST` | `/api/auth/login` / `logout` | Session sign-in — always open                                                                                        |
-| `GET`  | `/api/mcp/callback`          | OAuth redirect target — guarded by one-shot `state` + PKCE                                                           |
-| `GET`  | `/api/status`                | All dependency checks (Bob, Carbon MCP, GitHub, Elasticsearch, Bobcoins)                                             |
-| `GET`  | `/api/config`                | Current configuration (sanitised — never returns credentials)                                                        |
-| `GET`  | `/api/mcp/status`            | Carbon MCP connection detail                                                                                         |
-| `POST` | `/api/mcp/connect`           | Begin the IBMid OAuth bootstrap                                                                                      |
-| `POST` | `/api/mcp/refresh`           | Force a refresh, or store a pasted token / session id                                                                |
-| `POST` | `/api/mcp/test`              | Live probe — also repairs a session-backed connection                                                                |
-| `POST` | `/api/mcp/disconnect`        | Forget the stored OAuth state and strip Bob's MCP headers                                                            |
-| `GET`  | `/api/credits`               | Bobcoins balance and spend summary                                                                                   |
-| `GET`  | `/api/credits/history`       | Per-review spend, plus a cumulative series                                                                           |
-| `POST` | `/api/review/trigger`        | Trigger a review (202, runs in the background) — see [Triggering a review over HTTP](#triggering-a-review-over-http) |
-| `GET`  | `/api/review/status`         | Current or most recent run, with its mode and PR numbers                                                             |
+| Method | Path                         | Description                                                                                                                  |
+| ------ | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/health`                | Liveness check — always open                                                                                                 |
+| `GET`  | `/api/ready`                 | Readiness check — always open; see [Readiness](#readiness)                                                                   |
+| `GET`  | `/api/auth/status`           | Whether sign-in is required and satisfied — always open                                                                      |
+| `POST` | `/api/auth/login` / `logout` | Session sign-in — always open                                                                                                |
+| `GET`  | `/api/mcp/callback`          | OAuth redirect target — guarded by one-shot `state` + PKCE                                                                   |
+| `GET`  | `/api/status`                | All dependency checks (Bob, Carbon MCP, GitHub, Elasticsearch, Bobcoins)                                                     |
+| `GET`  | `/api/config`                | Current configuration (sanitised — never returns credentials)                                                                |
+| `GET`  | `/api/mcp/status`            | Carbon MCP connection detail                                                                                                 |
+| `POST` | `/api/mcp/connect`           | Begin the IBMid OAuth bootstrap                                                                                              |
+| `POST` | `/api/mcp/refresh`           | Force a refresh, or store a pasted token / session id                                                                        |
+| `POST` | `/api/mcp/test`              | Live probe — also repairs a session-backed connection                                                                        |
+| `POST` | `/api/mcp/disconnect`        | Forget the stored OAuth state and strip Bob's MCP headers                                                                    |
+| `GET`  | `/api/credits`               | Bobcoins balance and spend summary                                                                                           |
+| `GET`  | `/api/credits/history`       | Per-review spend, plus a cumulative series                                                                                   |
+| `POST` | `/api/review/trigger`        | Trigger a review (202, runs in the background) — see [Triggering a review over HTTP](#triggering-a-review-over-http)         |
+| `GET`  | `/api/review/status`         | Current or most recent run: mode, PR numbers, reviews in flight and queued                                                   |
+| `GET`  | `/api/review/logs`           | Incremental log tail (`?since=` cursor, `?limit=` up to 1000, default 500, `?pr=` / `?worker=` filters); returns `nextSince` |
+| `POST` | `/api/review/logs/clear`     | Empty the log buffer; allowed mid-run, returns the number of lines `cleared`                                                 |
+| `GET`  | `/api/schedule`              | Scheduled-run config (`enabled`, `timeLocal`, `paused`) with the computed `nextRunAt`                                        |
+| `POST` | `/api/schedule`              | Save a partial schedule update; `400` with a message on invalid input                                                        |
 
 `POST /api/mcp/disconnect` is the inverse of **Sign in with IBMid**: it deletes
 the stored refresh token and removes the `Authorization` / `X-MCP-Session`
@@ -39,9 +44,11 @@ disconnected server still returns `{ "success": true, "disconnected": true }`.
 Reconnecting costs a browser round trip through IBMid, which is why the console
 asks for confirmation first.
 
-**Authentication is off by default** — every route above answers without a
-credential. When `AUTH_REQUIRED=true`, everything except the always-open routes
-needs either a session cookie or `Authorization: Bearer <API_SECRET>`. See
+**Authentication follows `AUTH_REQUIRED`.** `deploy_ce.sh` defaults it to
+`true`, so a deployed console is protected. A local run without the variable set
+is open: every route above answers without a credential. When it is on,
+everything except the always-open routes needs either a session cookie or
+`Authorization: Bearer <API_SECRET>`. See
 [Console sign-in](ARCHITECTURE.md#5-authentication-model).
 
 ```bash
@@ -49,6 +56,59 @@ API_PORT=3000
 API_SECRET=your_secure_api_secret_here   # bearer token for CI / curl
 API_ENABLE_AUTH=true                     # only has effect when AUTH_REQUIRED=true
 ```
+
+`GET /api/credits` and `GET /api/credits/history` read different stores: the
+history comes from the ledger file, the balance from a per-process cache. Reviews
+write the ledger from their own process, so the server re-reads the balance
+whenever a ledger entry is newer than the balance it holds. That keeps the
+headline and the table from contradicting each other while the 30-second poll
+from open tabs stays cheap.
+
+### Reviews in flight
+
+`REVIEW_CONCURRENCY` (default `2`, see
+[CONFIGURATION.md](CONFIGURATION.md#1-environment-variables)) sets how many
+reviews of one batch run at once. Batches stay single-flight: a second trigger
+still gets `409`.
+
+- `GET /api/review/status` adds `inFlight` (`[{ worker, pr, startedAt }]`, one per
+  running review), `queued` (`[pr]`, PRs not yet started, in list order) and
+  `concurrency`. Both lists are empty when no batch runs. The `202` from
+  `POST /api/review/trigger` also reports `concurrency`.
+- `GET /api/review/logs` returns each line as `{ seq, at, stream, text }`, plus
+  `worker` and `pr` when a review wrote it. `text` starts with `[agent 1 #1234] ` for
+  such a line and `[batch] ` for a line outside any review. `?pr=<n>` and
+  `?worker=<n>` return only that review's lines (unfiltered by default); the
+  `nextSince` cursor works the same either way.
+
+### Readiness
+
+`GET /api/ready` is what Code Engine's readiness probe calls (`deploy_ce.sh`
+sets it). It answers `200 {"ready": true}` when the process can run reviews at
+all: `GITHUB_AI_AGENT_CLI` names a supported agent and that agent's binary runs
+(the answer is cached and refreshed in the background, so a probe never waits on the agent after the first check). Otherwise it answers
+`503 {"ready": false, "reasons": [...]}`.
+
+A missing credential, Elasticsearch or Carbon MCP never fails readiness, so a
+half-configured instance stays reachable and the console can show what to fix.
+They come back as `warnings` on the `200`, for example
+`{"ready": true, "warnings": ["GITHUB_AI_AGENT_TOKEN is not set: ..."]}`.
+`/api/health` stays the cheap liveness check and is used for the liveness probe.
+
+### Sign-in throttle
+
+After five failed `POST /api/auth/login` attempts from one address within 15
+minutes, that address gets `429` with a `Retry-After` header (60 seconds at
+most; `retryAfter` is also in the body) instead of a credential check. Attempts
+during a lockout do not extend it. A successful sign-in resets the count. The
+throttle is in memory, per instance, and bounded.
+
+The address is the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` from the end
+(default `1`, the last entry); the first entry when the header is shorter than
+the hop count; the socket address only when the header is absent. Earlier
+entries are client-supplied and ignored. If the last entry is
+a proxy shared by every user, raise `TRUSTED_PROXY_HOPS`; see
+[CONFIGURATION.md](CONFIGURATION.md#5-sign-in-throttle-and-proxies).
 
 ### Triggering a review over HTTP
 
@@ -101,10 +161,11 @@ Two things follow from that, and both are deliberate:
   Code Engine's 300-second request ceiling, so there is nothing useful to wait
   on — the HTTP request would time out long before the review finished. Poll
   `GET /api/review/status` for the outcome.
-- **Auth is off by default.** With `AUTH_REQUIRED` unset, the commands below work
-  as written, including against the public deployment URL. When
-  `AUTH_REQUIRED=true`, add `-H "Authorization: Bearer $API_SECRET"` to every
-  call — see **With authentication on** at the end of this section.
+- **Auth is off for a local run with `AUTH_REQUIRED` unset**, so the commands
+  below work as written there. A deployed instance defaults it to `true`
+  (`deploy_ce.sh`), so against the deployment URL add
+  `-H "Authorization: Bearer $API_SECRET"` to every call — see **With
+  authentication on** at the end of this section.
 
 **1. Auto mode — no body**
 
@@ -205,7 +266,13 @@ While the run is in flight:
   "finishedAt": null,
   "error": null,
   "mode": "explicit",
-  "prNumbers": [22971, 22972],
+  "prNumbers": [22971, 22972, 22980],
+  "inFlight": [
+    { "worker": 1, "pr": 22971, "startedAt": "2026-08-08T14:22:04.020Z" },
+    { "worker": 2, "pr": 22972, "startedAt": "2026-08-08T14:22:04.021Z" }
+  ],
+  "queued": [22980],
+  "concurrency": 2,
   "timestamp": "2026-08-08T14:24:41.902Z"
 }
 ```
@@ -221,6 +288,9 @@ After it finishes:
   "error": null,
   "mode": "auto",
   "prNumbers": null,
+  "inFlight": [],
+  "queued": [],
+  "concurrency": 2,
   "timestamp": "2026-08-08T14:32:10.005Z"
 }
 ```

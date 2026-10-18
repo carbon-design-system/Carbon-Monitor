@@ -16,6 +16,8 @@
  *  5. A missing or non-string Authorization header is rejected
  *  6. An Authorization value with no Bearer prefix is rejected
  *  7. A handler that throws is answered with a 500, not an unhandled rejection
+ *  8. Repeated failed sign-ins through /api/auth/login end in a 429 with
+ *     Retry-After, keyed on the proxy-appended address, not a spoofable prefix
  */
 
 // Set before server.js is loaded: API_SECRET and the auth flags are read at
@@ -23,6 +25,8 @@
 process.env.API_SECRET = 'supersecret'; // 11 characters, as in the report
 process.env.API_ENABLE_AUTH = 'true';
 process.env.AUTH_REQUIRED = 'true';
+process.env.CONSOLE_USERNAME = 'operator';
+process.env.CONSOLE_PASSWORD = 'correct-horse-battery';
 process.env.SESSION_SECRET = 'test-session-secret';
 
 const { handleRequest } = require('../src/api/server');
@@ -150,6 +154,98 @@ async function main() {
   await test('an unknown authenticated path is a 404, not a crash', async () => {
     const res = await request('Bearer supersecret', '/api/does-not-exist');
     assert(res.statusCode === 404, `expected 404, got ${res.statusCode}`);
+  });
+
+  const { Readable } = require('stream');
+  const attempt = async (password, forwarded) => {
+    const res = fakeRes();
+    res.headers = {};
+    res.setHeader = (k, v) => {
+      res.headers[k] = v;
+    };
+    const req = Readable.from([
+      JSON.stringify({ username: 'operator', password }),
+    ]);
+    Object.assign(req, {
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: forwarded
+        ? { host: 'localhost', 'x-forwarded-for': forwarded }
+        : { host: 'localhost' },
+    });
+    await handleRequest(req, res);
+    return res;
+  };
+
+  await test('failed sign-ins are throttled per address with a 429', async () => {
+    // A client-chosen prefix must not dodge the limit: the last hop is the key.
+    const logged = [];
+    const originalLog = console.log;
+    console.log = (...args) => logged.push(args.join(' '));
+    try {
+      for (let i = 0; i < 5; i++) {
+        const res = await attempt('wrong', `spoof-${i}, 203.0.113.9`);
+        assert(res.statusCode === 401, `attempt ${i + 1}: ${res.statusCode}`);
+      }
+    } finally {
+      console.log = originalLog;
+    }
+    const hopLines = logged.filter((l) => l.includes('X-Forwarded-For had'));
+    assert(
+      hopLines.length === 1,
+      `expected one hop line, got ${hopLines.length}`
+    );
+    assert(
+      hopLines[0].includes('2 entries') &&
+        hopLines[0].includes('TRUSTED_PROXY_HOPS=1'),
+      hopLines[0]
+    );
+    assert(
+      !/\d+\.\d+\.\d+\.\d+|spoof/.test(hopLines[0]),
+      'no addresses in the log'
+    );
+
+    const blocked = await attempt('correct-horse-battery', 'x, 203.0.113.9');
+    assert(
+      blocked.statusCode === 429,
+      `expected 429, got ${blocked.statusCode}`
+    );
+    assert(blocked.headers['Retry-After'] === '60', 'Retry-After: 60');
+
+    const other = await attempt('correct-horse-battery', '203.0.113.10');
+    assert(other.statusCode === 200, `other address: ${other.statusCode}`);
+  });
+
+  await test('TRUSTED_PROXY_HOPS picks the entry that many from the end', async () => {
+    process.env.TRUSTED_PROXY_HOPS = '2';
+    try {
+      // Two hops: the shared proxy address (last) is skipped, the client is the key.
+      for (let i = 0; i < 5; i++) {
+        await attempt('wrong', '198.51.100.7, 10.1.1.1');
+      }
+      const blocked = await attempt(
+        'correct-horse-battery',
+        '198.51.100.7, 10.1.1.1'
+      );
+      assert(
+        blocked.statusCode === 429,
+        `client blocked: ${blocked.statusCode}`
+      );
+      const bystander = await attempt(
+        'correct-horse-battery',
+        '198.51.100.8, 10.1.1.1'
+      );
+      assert(
+        bystander.statusCode === 200,
+        `bystander: ${bystander.statusCode}`
+      );
+
+      // Header shorter than the hop count: falls back to the socket, no throw.
+      const short = await attempt('wrong', '198.51.100.9');
+      assert(short.statusCode === 401, `short header: ${short.statusCode}`);
+    } finally {
+      delete process.env.TRUSTED_PROXY_HOPS;
+    }
   });
 
   console.log(`\n  ${passed} passed, ${failed} failed\n`);

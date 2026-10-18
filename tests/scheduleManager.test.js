@@ -605,9 +605,7 @@ async function main() {
     );
 
     // Whitespace-tolerant: the formatter may wrap this condition.
-    const balanceGuardIdx = src.search(
-      /balance\.available\s*&&\s*balance\.percentRemaining !== null/
-    );
+    const balanceGuardIdx = src.search(/isLowBalance\(balance\)/);
     // Use the unique step-6 comment as the anchor for the idempotency token write.
     const tokenWriteIdx = src.indexOf(
       '// 6. Write the idempotency token BEFORE firing'
@@ -617,7 +615,7 @@ async function main() {
 
     assert(
       balanceGuardIdx !== -1,
-      'balance.available guard must appear in scheduleManager.js'
+      'isLowBalance guard must appear in scheduleManager.js'
     );
     assert(
       tokenWriteIdx !== -1,

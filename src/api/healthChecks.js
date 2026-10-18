@@ -251,6 +251,9 @@ async function checkCarbonMcp() {
  */
 async function checkGitHub() {
   const token = process.env.GITHUB_AI_AGENT_TOKEN;
+  const apiBase = (
+    process.env.GITHUB_API_BASE_URL || 'https://api.github.com'
+  ).replace(/\/+$/, '');
 
   if (!token) {
     return {
@@ -290,7 +293,7 @@ async function checkGitHub() {
     //
     // This call also returns the viewer's `permissions`, which is the only way to
     // detect the Triage requirement before a run hits it.
-    const repoRes = await get(`https://api.github.com/repos/${owner}/${repo}`);
+    const repoRes = await get(`${apiBase}/repos/${owner}/${repo}`);
 
     if (repoRes.status === 401) {
       return {
@@ -375,7 +378,7 @@ async function checkGitHub() {
     let quota = '';
     let low = false;
     try {
-      const limitRes = await get('https://api.github.com/rate_limit');
+      const limitRes = await get(`${apiBase}/rate_limit`);
       if (limitRes.ok) {
         const core = (await limitRes.json()).resources?.core;
         if (core) {

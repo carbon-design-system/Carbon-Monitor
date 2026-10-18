@@ -38,8 +38,11 @@ case 'gemini':
   break;
 ```
 
-Where `runAgent` resolves, parse `stdout` as JSON and return the response text
-field; keep the token statistics for the ledger.
+Use the object `runAgent` resolves (`text`, `toolCalls`, `stats`): set `text`
+to the response text field and map the token statistics into `stats`
+(`input_tokens`, `output_tokens`, `total_tokens`) for the ledger. Counts mapped
+into `stats` are labelled `token_source: 'bob'`; a per-agent label is future
+work. A `stats` of `null` keeps the character estimate for tokens.
 
 ## 3. src/api/healthChecks.js
 
@@ -53,6 +56,10 @@ label `Gemini CLI` and `id: 'agent'`.
 - The preflight `verify_bob_source` function and its call go.
 - `--env GITHUB_AI_AGENT_CLI=bob` becomes `gemini` (or the renamed variable from SPEC section 6).
 - `.env.example`: replace the Bob block with `GEMINI_API_KEY=` and a one-line comment, and add `AGENT_MONTHLY_BUDGET_USD=` for the budget in section 7. Drop the `BOB_GATEWAY_BASE_URL`, `BOB_CREDITS_*` and `BOB_CHECK_TIMEOUT_MS` entries with the Bobcoins tile.
+
+`REVIEW_CONCURRENCY` stays at 1 for this agent: the harness gives only Bob a
+private `HOME` per review, and Gemini CLI keeps per-user state under the real home directory. Raising it takes a per-review home like
+`seedBobHome`, with the agent's own state seeded into it.
 
 ## 5. MCP configuration
 

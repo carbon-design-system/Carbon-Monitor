@@ -1,12 +1,4 @@
-/******************************************************************************
- * Token Manager for Carbon MCP Integration — compatibility layer
- *
- * The real implementation now lives in ./mcpConnection, which additionally
- * handles OAuth discovery and unattended refresh. This module remains so the
- * function names referenced by docs/MCP_TOKEN_REFRESH.md keep working, and it
- * delegates rather than reimplementing:
- * two independent writers of Bob's mcp.json would silently clobber each other.
- *****************************************************************************/
+// Unused: nothing imports this module. Kept for reference; the live refresh path is ./mcpConnection.
 
 const { spawn } = require('child_process');
 const mcpConnection = require('./mcpConnection');

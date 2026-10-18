@@ -633,6 +633,11 @@ body {
   flex: 0 0 auto;
 }
 
+.cm-log__filter {
+  max-inline-size: 16rem;
+  margin-bottom: $spacing-04;
+}
+
 .cm-pr-progress__num {
   font-variant-numeric: tabular-nums;
 }
@@ -685,10 +690,8 @@ body {
   overflow-wrap: anywhere;
 }
 
-.cm-log__line--err {
-  color: $text-error;
-}
-
+// stderr lines render in the same colour as stdout: the ⚠️ and ❌ markers in the
+// text already say what matters, and a wall of red read as a failing run.
 .cm-log__line--muted {
   color: $text-secondary;
 }
