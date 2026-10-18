@@ -283,12 +283,12 @@ function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
           },
         });
       } else if (result.skipped) {
-        // Skipped PR — too large to review automatically
+        // Skipped PR: left unreviewed on purpose (a low balance, or no file fits the diff budget)
         blocks.push({
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `⏭️  *<${result.prUrl}|PR #${result.prNumber}>* — Skipped\n_${escapeAtSign(result.reason || 'Too large to review')}_`,
+            text: `⏭️  *<${result.prUrl}|PR #${result.prNumber}>* — Skipped\n_${escapeAtSign(result.reason || 'Skipped before the review started')}_`,
           },
         });
       } else {
@@ -301,13 +301,18 @@ function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
           rawSummary.split('`').length % 2 === 0 ? rawSummary + '`' : rawSummary
         );
 
+        const cov = result.coverage;
+        const partial = cov?.partial
+          ? ` · partial review: ${cov.files_reviewed} of ${cov.files_total} files`
+          : '';
+
         blocks.push({
           type: 'section',
           text: {
             type: 'mrkdwn',
             text: [
               `${emoji}  *<${result.prUrl}|PR #${result.prNumber}>* — ${label}`,
-              `${result.findingsCount} ${issueWord} found`,
+              `${result.findingsCount} ${issueWord} found${partial}`,
               summary ? `_${summary}_` : '',
             ]
               .filter(Boolean)
@@ -407,7 +412,7 @@ function postToSlack(payload) {
  * @param {number}  opts.startedAt     - epoch ms when the run started (from runStartedAt in index.js)
  * @param {string}  opts.repo          - "owner/repo" string
  * @param {Array}   opts.results       - Array of per-PR result objects:
- *   Success shape: { prNumber, prUrl, findingsCount, summary, recommendation }
+ *   Success shape: { prNumber, prUrl, findingsCount, summary, recommendation, coverage }
  *   Failure shape: { prNumber, failed: true, error }
  *   Skipped shape: { prNumber, prUrl, skipped: true, reason }
  * @param {number}   [opts.maxPRs]     - selection cap (MAX_PRS_PER_RUN), shown in the Criteria line

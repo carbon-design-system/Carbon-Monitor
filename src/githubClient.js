@@ -126,29 +126,7 @@ function createGitHubClient(octokit) {
     },
 
     /**
-     * Fetch unified diff for a PR
-     * @param {Object} options - { owner, repo, pullNumber }
-     * @returns {Promise<string>} Unified diff text
-     */
-    async fetchPRDiff({ owner, repo, pullNumber }) {
-      try {
-        const { data: diff } = await octokit.rest.pulls.get({
-          owner,
-          repo,
-          pull_number: pullNumber,
-          mediaType: {
-            format: 'diff',
-          },
-        });
-        return diff;
-      } catch (error) {
-        console.error('Error fetching PR diff:', error.message);
-        throw error;
-      }
-    },
-
-    /**
-     * Fetch list of changed files in PR
+     * Fetch list of changed files in PR, each with its `patch` when GitHub has one
      * @param {Object} options - { owner, repo, pullNumber }
      * @returns {Promise<Array>} Array of file objects with additions/deletions
      */
@@ -156,16 +134,18 @@ function createGitHubClient(octokit) {
       try {
         const allFiles = [];
         let page = 1;
+        // GitHub documents per_page up to 100, but in practice it sends no `patch` past the 70th file of a page
+        const perPage = 70;
         while (true) {
           const { data: files } = await octokit.rest.pulls.listFiles({
             owner,
             repo,
             pull_number: pullNumber,
-            per_page: 100,
+            per_page: perPage,
             page,
           });
           allFiles.push(...files);
-          if (files.length < 100) break;
+          if (files.length < perPage) break;
           page++;
         }
         return allFiles;
@@ -176,9 +156,9 @@ function createGitHubClient(octokit) {
     },
 
     /**
-     * Post inline review comments on specific lines
+     * Post inline review comments on specific lines, as one review
      * @param {Object} options - { owner, repo, pullNumber, commitId, comments }
-     * @returns {Promise<Object>} Review object
+     * @returns {Promise<Object|null>} { id, comments: [{ path, position }] } for the comments posted, or null
      */
     async postReviewComments({ owner, repo, pullNumber, commitId, comments }) {
       try {
@@ -195,10 +175,48 @@ function createGitHubClient(octokit) {
           return null;
         }
 
-        // Post inline comments individually to ensure they appear on specific lines
-        // Using createReview with event: 'COMMENT' groups them in summary
-        // Instead, post each comment individually using createReviewComment
+        // One review is one event and one notification, however many comments it carries
+        const body = `Carbon Monitor inline findings (${validComments.length}). The summary and recommendation follow in a separate comment.`;
+        try {
+          const { data: review } = await octokit.rest.pulls.createReview({
+            owner,
+            repo,
+            pull_number: pullNumber,
+            commit_id: commitId,
+            event: 'COMMENT',
+            body,
+            comments: validComments.map((c) => ({
+              path: c.path,
+              position: c.position,
+              body: c.body,
+            })),
+          });
+          console.log(
+            `✅ Posted one review with ${validComments.length} inline comment(s)`
+          );
+          return {
+            id: review.id,
+            comments: validComments.map(({ path, position }) => ({
+              path,
+              position,
+            })),
+          };
+        } catch (reviewError) {
+          // 422 means GitHub created nothing and does not name the bad comment; anything else may have posted
+          if (reviewError.status !== 422) throw reviewError;
+          console.warn(
+            `⚠️  Grouped review rejected (422: ${reviewError.message}) — posting inline comments one by one`
+          );
+          if (reviewError.response) {
+            console.warn(
+              '   Response data:',
+              JSON.stringify(reviewError.response.data, null, 2)
+            );
+          }
+        }
+
         const postedComments = [];
+        let reviewId = null;
         for (const comment of validComments) {
           try {
             const { data: reviewComment } =
@@ -211,7 +229,11 @@ function createGitHubClient(octokit) {
                 body: comment.body,
                 position: comment.position,
               });
-            postedComments.push(reviewComment);
+            postedComments.push({
+              path: comment.path,
+              position: comment.position,
+            });
+            reviewId = reviewId ?? reviewComment.pull_request_review_id ?? null;
             console.log(
               `✅ Posted inline comment on ${comment.path}:${comment.position}`
             );
@@ -240,16 +262,7 @@ function createGitHubClient(octokit) {
           return null;
         }
 
-        // Return a summary object similar to createReview response
-        const review = {
-          id:
-            postedComments.length > 0
-              ? postedComments[0].pull_request_review_id
-              : null,
-          comments: postedComments,
-        };
-
-        return review;
+        return { id: reviewId, comments: postedComments };
       } catch (error) {
         console.error('❌ Error posting review:', error.message);
         if (error.response) {

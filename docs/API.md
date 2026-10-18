@@ -195,8 +195,9 @@ curl "$BASE/api/review/status"
 curl -X POST "$BASE/api/review/trigger"
 ```
 
-> Each of these posts **real** inline comments, a summary comment and the
-> `AIReviewed` label to the pull requests, publicly. The last one does it to
+> Each of these posts a **real** review of inline comments, a summary comment (or
+> a short verdict comment) and the `AIReviewed` label to the pull requests,
+> publicly. The last one does it to
 > every PR that passes the auto-select filter — up to `GITHUB_AI_AGENT_MAX_PRS`
 > of them.
 
@@ -204,8 +205,9 @@ The rest of this section covers the full contract: every accepted body shape,
 the validation rules, and the error responses.
 
 `POST /api/review/trigger` starts a **real** review. It reads live open PRs from
-the configured repository, runs the selected agent against them, and posts public inline and
-summary comments on each one, then labels them. There is no dry-run mode — every
+the configured repository, runs the selected agent against them, and posts a public
+review of inline comments and a summary comment (a short verdict comment for a clean PR) on
+each one, then labels them. There is no dry-run mode — every
 command below writes to GitHub.
 
 Two things follow from that, and both are deliberate:

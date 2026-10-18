@@ -62,8 +62,9 @@ function AboutAi() {
             rather than the model’s recollection of it.
           </p>
           <p>
-            Findings are posted back to the pull request as inline comments plus
-            a summary.
+            Findings are posted back to the pull request as one review of inline
+            comments plus a summary. A pull request with nothing above a nit
+            gets a short verdict instead.
           </p>
           <AILabelActions>
             <Button onClick={() => setOpen(true)}>How it works</Button>
@@ -122,8 +123,9 @@ function AboutAi() {
           </li>
           <li>
             <strong>Post comments and label.</strong> Inline comments land on
-            those lines, a summary comment goes on the pull request, and the
-            pull request is labelled as reviewed so it is not picked up twice.
+            those lines in one review, a summary comment goes on the pull
+            request (a clean one gets a short verdict instead), and the pull
+            request is labelled as reviewed so it is not picked up twice.
           </li>
         </ol>
 

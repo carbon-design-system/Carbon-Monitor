@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Carbon PR Review bot now supports **inline review comments** that appear directly on specific lines of code in the GitHub PR diff view, in addition to the summary comment.
+The Carbon PR Review bot now supports **inline review comments** that appear directly on specific lines of code in the GitHub PR diff view, in addition to the summary comment. They are posted as one GitHub review.
 
 ## How It Works
 
@@ -14,11 +14,13 @@ The [`diffMapper.js`](../src/diffMapper.js) module parses the unified diff forma
 const { splitFindings } = require('./diffMapper');
 
 const { inlineFindings, summaryFindings } = splitFindings(
-  review.findings,
-  diff,
+  nonNitFindings, // review.findings without the nits
+  bundle.diff, // the diff the agent was given
   files
 );
 ```
+
+The diff is not GitHub's `.diff` download, which fails above 300 files. [`reviewCoverage.js`](../src/reviewCoverage.js) assembles it from the `patch` of each file in `pulls.listFiles` (70 files a page, up to GitHub's 3,000), for the files that fit the review (see [Partial reviews](REVIEW_OUTPUT.md#partial-reviews)). A file that is not in the diff has no position, so a finding on it goes to the summary. Files appear in review order, source before tests, and the offsets the agent reports are counted in that order, so the mapper must read the same `bundle.diff` that went into `PR_REVIEW_REQUEST.md`.
 
 ### 2. Finding Classification
 
@@ -29,6 +31,8 @@ Each finding is classified as either:
   - Line number exists in the diff (or within 5 lines)
   - Posted as inline review comment on the exact code line
 
+- **Never inline**: `nit` findings. `src/index.js` takes them out before `splitFindings`. They are listed, title and location only, in a collapsed block in the summary comment (or the Looks Good comment)
+
 - **Summary-only**: Cannot be mapped to diff
   - File not in changed files
   - Line number outside diff range
@@ -38,8 +42,8 @@ Each finding is classified as either:
 
 According to the spec (lines 328-336), the bot follows this strategy:
 
-1. **Post inline comments** for mappable findings
-2. **Post summary comment** with:
+1. **Post one review** (`pulls.createReview`, event `COMMENT`) with every mappable finding of `minor` severity or above as an inline comment. The review body is one line, because GitHub requires a body on a `COMMENT` review. A PR with no such finding gets no review, which includes every `Looks Good` PR
+2. **Post summary comment** (a clean PR gets the short Looks Good comment instead) with:
    - Agent's overall summary
    - Findings that couldn't be mapped inline
    - Review metadata
@@ -47,9 +51,11 @@ According to the spec (lines 328-336), the bot follows this strategy:
 
 ### 4. Fallback Handling
 
-If inline comment posting fails:
+One review is one event and one notification. If it fails:
 
-- Failed findings are moved to summary comment
+- GitHub answers 422 when any comment's position does not resolve, and does not say which. In practice GitHub creates nothing on a 422, and the fallback relies on that. The bot logs `Grouped review rejected (422: ...) — posting inline comments one by one` and posts each comment with `pulls.createReviewComment`, which notifies the author once per comment
+- Any other error (a 5xx, a network failure) is not retried, because the review may have been created and a retry would post it twice. All the inline findings go to the summary comment
+- Findings whose comment failed are moved to summary comment
 - Review continues without blocking
 - User still gets all findings, just in summary format
 
@@ -84,39 +90,19 @@ The mapper:
    number and converting it through the hunk offsets
 4. Returns the position for GitHub's API, or routes the finding to the summary
 
+Each file's `diff --git`, mode and `---`/`+++` lines are rebuilt from the file's name and status, because `patch` starts at the first `@@`. They are not counted, so positions are the same as in GitHub's own diff. A renamed file gets `a/<old name>` and `b/<new name>` and no `rename from`, `rename to` or `similarity` line; the mapper keys on the `b/` path. A `patch` that already starts with `diff --git` (test PRs made by `scripts/create-test-pr.js`) is used as it is.
+
 Until Oct 18, 2026 the first header was counted too, so every inline comment
 landed one line below the finding and a finding on the last line of a file's
 diff was rejected with a 422 ("position could not be resolved").
 
 ### Comment Format
 
-Inline comments use the [`formatInlineComment()`](../src/reviewPrompt.js) function:
-
-```markdown
-**Finding Title**
-
-Severity: major
-
-Detailed explanation of the issue and how to fix it.
-
-_✓ Verified with carbon-builder_
-```
-
-Or if using carbon-mcp fallback:
-
-```markdown
-**Finding Title**
-
-Severity: major
-
-Detailed explanation of the issue and how to fix it.
-
-_✓ Verified with carbon-mcp_
-```
+Inline comments use the [`formatInlineComment()`](../src/reviewPrompt.js) function: the finding's title in bold, a quoted line with its severity and guidance, the explanation, and, for a Carbon-specific finding, a line saying which source verified it. See [Example Output](#example-output) below.
 
 ### API Integration
 
-Uses GitHub's review API via [`githubClient.js`](../src/githubClient.js):
+Uses GitHub's review API via [`githubClient.js`](../src/githubClient.js). `postReviewComments` makes one `octokit.rest.pulls.createReview({ owner, repo, pull_number, commit_id, event: 'COMMENT', body, comments })` call and returns `{ id, comments: [{ path, position }] }`, or `null` when nothing was posted:
 
 ```javascript
 await client.postReviewComments({
@@ -209,39 +195,9 @@ Icon button needs aria-label for accessibility. Add aria-label prop with descrip
 
 An inline comment does not name the agent. The summary comment does.
 
-### Summary Comment
+### Summary and Looks Good comments
 
-```markdown
-[AI agent review — Carbon grounded] · **Consider Revising**
-
-Reviewed by: IBM Bob · Commit: abc1234
-Carbon verification: Carbon-specific claims verified using Carbon Builder skill (primary authority) and Carbon MCP (fallback).
-
-## Review Summary
-
-Found 3 issues: 1 major, 2 minor. All Carbon-specific claims verified.
-
-## Additional Findings
-
-The following findings could not be mapped to specific lines in the diff:
-
-### 1. Unused import
-
-**File:** `src/utils.js` (Line 100)
-**Severity:** minor
-
-Import statement is not used in this file.
-
----
-
-Review artifacts:
-
-- PR: #123
-- Commit: abc1234
-- Agent: IBM Bob
-- Inline comments: 2
-- Summary findings: 1
-```
+The summary comment, the short Looks Good comment and the partial-review note are shown in [REVIEW_OUTPUT.md](REVIEW_OUTPUT.md).
 
 ## Future Enhancements
 
@@ -249,5 +205,4 @@ Potential improvements:
 
 - Support for multi-line comments (start_line, end_line)
 - Suggestion blocks with code fixes
-- Batch comment posting for better performance
 - Retry logic for failed inline comments

@@ -17,6 +17,29 @@ const CONTINUATION_GLOBAL =
 // The bundle code is loaded lazily: reviewBundle requires this registry.
 const bundle = () => require('../reviewBundle');
 
+// The child gets only these and BOB_*, never the harness's own secrets. NODE_ENV
+// stays because Bob's bundle picks its production UI builds from it.
+const ENV_ALLOW = new Set(
+  [
+    'PATH',
+    'HOME',
+    'TMPDIR',
+    'LANG',
+    'LC_ALL',
+    'TERM',
+    'USER',
+    'LOGNAME',
+    'SHELL',
+    'HTTP_PROXY',
+    'HTTPS_PROXY',
+    'NO_PROXY',
+    'ALL_PROXY',
+    'SSL_CERT_FILE',
+    'NODE_EXTRA_CA_CERTS',
+  ].flatMap((k) => [k, k.toLowerCase()])
+);
+for (const k of ['NO_COLOR', 'FORCE_COLOR', 'CI', 'NODE_ENV']) ENV_ALLOW.add(k);
+
 function limitOf(event) {
   if (event.severity && event.severity !== 'error') return null;
   const msg = String(event.message || '');
@@ -81,7 +104,10 @@ module.exports = {
   },
 
   env(base, { home } = {}) {
-    const env = { ...base };
+    const env = {};
+    for (const [k, v] of Object.entries(base)) {
+      if (ENV_ALLOW.has(k) || k.startsWith('BOB_')) env[k] = v;
+    }
     if (home) env.HOME = home;
     return env;
   },

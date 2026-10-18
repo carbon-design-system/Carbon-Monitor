@@ -11,6 +11,9 @@
  *  6. formatSummaryComment escapes @word in summaryMarkdown
  *  7. formatSummaryComment escapes @word in summaryFindings title and body
  *  8. formatSummaryComment escapes @word in findingsTable row.title
+ *  9. The Looks Good comment: exact text with and without nits
+ * 10. formatSummaryComment lists nits between Summary and Details, never in Additional Findings
+ * 11. The agent prompt is byte-identical per agent
  */
 
 'use strict';
@@ -22,6 +25,7 @@ const { escapeAtSign } = require('../src/textUtils');
 const {
   formatInlineComment,
   formatSummaryComment,
+  formatLooksGoodComment,
   buildReviewPrompt,
 } = require('../src/reviewPrompt');
 const agents = require('../src/agents');
@@ -196,7 +200,182 @@ async function main() {
     );
   });
 
-  // ── 9. Prompt per agent ─────────────────────────────────────────────────────
+  // ── 9. The Looks Good comment ───────────────────────────────────────────────
+  const verdict =
+    '[AI agent review — Carbon grounded] · **Looks Good** · Reviewed by: Claude · Commit: abc1234';
+  const nit = (title, file, line) => ({
+    severity: 'nit',
+    title,
+    file,
+    line,
+    body: 'Nit body that must not be shown.',
+  });
+
+  await test('the Looks Good comment without nits is the verdict line and the summary', () => {
+    const result = formatLooksGoodComment({
+      agent: 'claude',
+      agentName: 'Claude',
+      summaryMarkdown: 'Small, safe change.',
+      commitSha: 'abc1234def5678',
+    });
+    assert.strictEqual(result, `${verdict}\n\nSmall, safe change.\n`);
+  });
+
+  await test('the Looks Good comment with nits adds one collapsed list and nothing else', () => {
+    const result = formatLooksGoodComment({
+      agent: 'claude',
+      agentName: 'Claude',
+      summaryMarkdown: 'Small, safe change.',
+      commitSha: 'abc1234def5678',
+      nitFindings: [
+        nit('Prefer a token over @media literal', 'src/a.scss', 12),
+        nit('Rename the story', 'src/b.stories.js', 40),
+      ],
+    });
+    assert.strictEqual(
+      result,
+      `${verdict}\n\nSmall, safe change.\n\n` +
+        '<details>\n<summary>2 optional nits</summary>\n\n' +
+        `- Prefer a token over @${ZWS}media literal — \`src/a.scss:12\`\n` +
+        '- Rename the story — `src/b.stories.js:40`\n\n</details>\n'
+    );
+    for (const absent of [
+      '## Recommendation',
+      '| Area',
+      'Token',
+      'Review artifacts',
+      'Nit body',
+    ]) {
+      assert.ok(!result.includes(absent), `${absent} in the quiet comment`);
+    }
+  });
+
+  await test('one nit reads "1 optional nit", and a nit without a line has no colon', () => {
+    const result = formatLooksGoodComment({
+      agent: 'claude',
+      summaryMarkdown: 'Fine.',
+      commitSha: 'abc1234def5678',
+      nitFindings: [nit('Whole-file remark', 'src/c.js', undefined)],
+    });
+    assert.ok(result.includes('<summary>1 optional nit</summary>'));
+    assert.ok(result.includes('- Whole-file remark — `src/c.js`\n'));
+    assert.ok(
+      result.includes('Reviewed by: claude'),
+      'name defaults to the id'
+    );
+  });
+
+  await test('the Looks Good comment escapes @word in the summary', () => {
+    const result = formatLooksGoodComment({
+      agent: 'bob',
+      summaryMarkdown: 'The @if block is fine.',
+      commitSha: 'abc1234def5678',
+    });
+    assert.ok(result.includes(`@${ZWS}if`));
+  });
+
+  // ── 10. Nits in the full summary comment ────────────────────────────────────
+  const summaryArgs = {
+    agent: 'bob',
+    agentName: 'IBM Bob',
+    summaryMarkdown: 'One finding and a nit.',
+    prNumber: 42,
+    commitSha: 'abc1234def',
+    recommendation: 'suggested-improvements',
+    summaryFindings: [
+      {
+        title: 'Unmapped finding',
+        severity: 'minor',
+        file: 'a.scss',
+        body: 'Body.',
+      },
+    ],
+    nitFindings: [nit('Rename the story', 'src/b.stories.js', 40)],
+  };
+
+  await test('formatSummaryComment places the nit block between Summary and Details', () => {
+    const result = formatSummaryComment(summaryArgs);
+    const summaryAt = result.indexOf('## Summary');
+    const nitAt = result.indexOf('<summary>1 optional nit</summary>');
+    const detailsAt = result.indexOf('<summary>Details</summary>');
+    assert.ok(summaryAt >= 0 && nitAt > summaryAt, 'nit block after Summary');
+    assert.ok(detailsAt > nitAt, 'nit block before the Details block');
+    assert.ok(result.includes('- Rename the story — `src/b.stories.js:40`'));
+  });
+
+  await test('nits stay out of Additional Findings and the artifact counts', () => {
+    const result = formatSummaryComment(summaryArgs);
+    const additional = result.slice(result.indexOf('## Additional Findings'));
+    assert.ok(!additional.includes('Rename the story'));
+    assert.ok(result.includes('- Summary findings: 1\n'));
+    assert.ok(!result.includes('Inline comments:'));
+  });
+
+  await test('a yellow review with nits keeps the full layout', () => {
+    const result = formatSummaryComment(summaryArgs);
+    for (const present of [
+      '## Recommendation',
+      'Reviewed by: IBM Bob',
+      'Review artifacts:',
+      'An AI agent generated this review.',
+    ]) {
+      assert.ok(result.includes(present), `${present} missing`);
+    }
+  });
+
+  await test('a nit is listed once: the findings table skips nit rows', () => {
+    const result = formatSummaryComment({
+      ...summaryArgs,
+      findingsTable: [
+        {
+          area: 'General',
+          category: 'Cat 2',
+          severity: 'major',
+          title: 'Real problem',
+          file: 'a.js',
+        },
+        {
+          area: 'General',
+          category: 'Cat 2',
+          severity: 'nit',
+          title: 'Rename the story',
+          file: 'src/b.stories.js',
+        },
+      ],
+    });
+    assert.ok(result.includes('<summary>Findings (1)</summary>'));
+    assert.strictEqual(result.split('Rename the story').length - 1, 1);
+
+    const onlyNits = formatSummaryComment({
+      ...summaryArgs,
+      findingsTable: [
+        { severity: 'nit', title: 'Rename the story', file: 'x.js' },
+      ],
+    });
+    assert.ok(!onlyNits.includes('<summary>Findings'));
+  });
+
+  await test('the nit list cannot be closed or broken by a title or path', () => {
+    const result = formatLooksGoodComment({
+      agent: 'bob',
+      summaryMarkdown: 'Fine.',
+      commitSha: 'abc1234def5678',
+      nitFindings: [nit('Close </details> early', 'src/we`ird.js', 3)],
+    });
+    assert.strictEqual(result.split('</details>').length - 1, 1);
+    assert.ok(
+      result.includes('- Close &lt;/details> early — `src/weird.js:3`')
+    );
+  });
+
+  await test('formatSummaryComment without nits is unchanged by the nit block', () => {
+    const { nitFindings, ...rest } = summaryArgs;
+    const result = formatSummaryComment(rest);
+    assert.ok(!result.includes('optional nit'));
+    assert.ok(result.includes('One finding and a nit.\n\n\n<details>'));
+  });
+
+  // ── 11. Prompt per agent ─────────────────────────────────────────────────────
   const target = { owner: 'carbon-design-system', repo: 'carbon' };
   // Generated from the code at commit d17acc5, before the fragments existed.
   const snapshot = fs.readFileSync(

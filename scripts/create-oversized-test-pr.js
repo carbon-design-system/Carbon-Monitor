@@ -2,9 +2,10 @@
 /**
  * create-oversized-test-pr.js
  *
- * Creates a test PR with 3 dummy files and NO ORIGINAL_FILES.json or
- * ORIGINAL_DIFF.patch. Carbon Monitor's size gate treats it like a real repo
- * PR — set GITHUB_AI_AGENT_MAX_FILES=1 to trigger the gate with just 3 files.
+ * Creates a test PR with 3 dummy files and NO ORIGINAL_FILES.json. Carbon
+ * Monitor treats it like a real repo PR and takes the diff from GitHub's file
+ * patches. Set GITHUB_AI_AGENT_MAX_FILES=2 to get a partial review with just
+ * 3 files: two reviewed, one listed as not reviewed.
  *
  * Usage:
  *   GITHUB_AI_AGENT_TOKEN=ghp_... node scripts/create-oversized-test-pr.js
@@ -73,7 +74,7 @@ async function ghFetch(path, options = {}) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(`\n🚀 Creating oversized-gate test PR in ${OWNER}/${REPO}`);
+  console.log(`\n🚀 Creating partial-review test PR in ${OWNER}/${REPO}`);
   console.log(`   Branch: ${HEAD_BRANCH}\n`);
 
   // 0. Close stale PRs from previous runs
@@ -109,7 +110,7 @@ async function main() {
   });
   console.log('   ✅ Branch created');
 
-  // 3. Create blobs — 3 dummy files, NO ORIGINAL_FILES.json or ORIGINAL_DIFF.patch
+  // 3. Create blobs — 3 dummy files, NO ORIGINAL_FILES.json
   console.log('\n📝 Creating blobs...');
   const [blobA, blobB, blobC] = await Promise.all([
     ghFetch(`/repos/${OWNER}/${REPO}/git/blobs`, {
@@ -159,8 +160,7 @@ async function main() {
   const commit = await ghFetch(`/repos/${OWNER}/${REPO}/git/commits`, {
     method: 'POST',
     body: {
-      message:
-        'test: oversized PR gate — 3 dummy files, no ORIGINAL_FILES.json',
+      message: 'test: partial review, 3 dummy files, no ORIGINAL_FILES.json',
       tree: tree.sha,
       parents: [baseSha],
     },
@@ -179,23 +179,23 @@ async function main() {
   const pr = await ghFetch(`/repos/${OWNER}/${REPO}/pulls`, {
     method: 'POST',
     body: {
-      title: 'test: oversized PR gate — 3 dummy files',
+      title: 'test: partial review, 3 dummy files',
       head: HEAD_BRANCH,
       base: BASE_BRANCH,
-      body: `> **Oversized-gate test PR** — created by \`scripts/create-oversized-test-pr.js\`.\n> This PR has no \`ORIGINAL_FILES.json\` so Carbon Monitor treats it like a real repo PR.\n> Set \`GITHUB_AI_AGENT_MAX_FILES=1\` and run a scheduled review to verify the size gate fires.`,
+      body: `> **Partial-review test PR** — created by \`scripts/create-oversized-test-pr.js\`.\n> This PR has no \`ORIGINAL_FILES.json\` so Carbon Monitor treats it like a real repo PR.\n> Set \`GITHUB_AI_AGENT_MAX_FILES=2\` and run a review to see a partial-review comment that lists one file as not reviewed.`,
     },
   });
 
   console.log(`\n✅ PR created: ${pr.html_url}`);
   console.log(`   PR number:  #${pr.number}`);
-  console.log('\n💡 To test the gate:');
-  console.log('   1. Set GITHUB_AI_AGENT_MAX_FILES=1 in .env');
+  console.log('\n💡 To test a partial review:');
+  console.log('   1. Set GITHUB_AI_AGENT_MAX_FILES=2 in .env');
   console.log(
     `   2. Set GITHUB_AI_AGENT_OWNER=${OWNER} and GITHUB_AI_AGENT_REPO=${REPO} in .env`
   );
-  console.log('   3. Trigger a scheduled run');
+  console.log('   3. Review the PR');
   console.log(
-    `   4. Expect: ⏭️  PR #${pr.number} skipped — 3 files exceeds MAX_FILES_PER_PR (1)\n`
+    `   4. Expect: a "Partial review: 2 of 3 changed files reviewed" note on PR #${pr.number}, with one file under "Over the 2-file cap"\n`
   );
 }
 

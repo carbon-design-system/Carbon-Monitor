@@ -52,6 +52,7 @@ async function main() {
   await test('every PR gets exactly one summary comment and one label', () => {
     for (const pr of [1, 2, 3, 4]) {
       assert.strictEqual(four.comments(pr).length, 1, `comments on #${pr}`);
+      assert.strictEqual(four.reviews(pr).length, 1, `reviews on #${pr}`);
       assert.strictEqual(four.labels(pr).length, 1, `labels on #${pr}`);
     }
   });
@@ -186,6 +187,7 @@ async function main() {
 
   await test('a cost-limit failure leaves the sibling review intact', () => {
     assert.strictEqual(mixed.comments(2).length, 1);
+    assert.strictEqual(mixed.reviews(2).length, 1);
     assert.strictEqual(mixed.labels(2).length, 1);
     assert.strictEqual(mixed.comments(1).length, 0);
     assert.strictEqual(mixed.labels(1).length, 0, 'failed PR is not labelled');
@@ -360,6 +362,7 @@ async function main() {
       [false, [], []]
     );
     for (const pr of five) assert.strictEqual(server.comments(pr).length, 1);
+    for (const pr of five) assert.strictEqual(server.reviews(pr).length, 1);
   });
 
   await test('a second trigger while the batch runs still gets 409', () => {

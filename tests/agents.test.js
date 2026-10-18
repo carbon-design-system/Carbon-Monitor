@@ -281,11 +281,13 @@ test('env: Bob sets HOME and keeps its key; Claude isolates its config and drops
     BOB_API_KEY: 'b',
     ANTHROPIC_API_KEY: 'a',
   };
+  // Bob's allowlist drops the Anthropic key, which the old pass-through kept.
+  const { ANTHROPIC_API_KEY: _a, ...bobBase } = base;
   assert.deepStrictEqual(bob.env(base, { home: '/h', bundleDir: '/b' }), {
-    ...base,
+    ...bobBase,
     HOME: '/h',
   });
-  assert.deepStrictEqual(bob.env(base, { bundleDir: '/b' }), base);
+  assert.deepStrictEqual(bob.env(base, { bundleDir: '/b' }), bobBase);
   assert.deepStrictEqual(
     claude.env(base, { home: '/b/claude-config', bundleDir: '/b' }),
     {
@@ -352,6 +354,76 @@ test('env: Claude gets an allowlist, none of the harness secrets', () => {
   ]);
   assert.strictEqual(env.HOME, '/real', 'HOME stays real');
   assert.strictEqual(env.CLAUDE_CONFIG_DIR, '/b/claude-config');
+});
+
+test('env: Bob gets an allowlist and every BOB_ variable, none of the harness secrets', () => {
+  const base = {
+    PATH: '/bin',
+    HOME: '/real',
+    TMPDIR: '/t',
+    LANG: 'C',
+    LC_ALL: 'C',
+    TERM: 'dumb',
+    USER: 'u',
+    LOGNAME: 'u',
+    SHELL: '/bin/sh',
+    HTTP_PROXY: 'h',
+    https_proxy: 's',
+    no_proxy: 'n',
+    ALL_PROXY: 'a',
+    all_proxy: 'a',
+    NODE_ENV: 'production',
+    SSL_CERT_FILE: '/c',
+    NODE_EXTRA_CA_CERTS: '/e',
+    BOB_API_KEY: 'b',
+    BOB_TEAM_ID: 'team',
+    BOB_INSTANCE_ID: 'inst',
+    BOB_LOG_LEVEL: 'debug',
+    ANTHROPIC_API_KEY: 'a',
+    CLAUDE_MODEL: 'm',
+    GITHUB_AI_AGENT_TOKEN: 't',
+    ES_PASSWORD: 'p',
+    SLACK_WEBHOOK_URL: 'w',
+    CONSOLE_PASSWORD: 'c',
+    API_SECRET: 's',
+    NO_COLOR: '1',
+    FORCE_COLOR: '0',
+    CI: 'true',
+  };
+  const env = bob.env(base, { home: '/h', bundleDir: '/b' });
+  assert.deepStrictEqual(Object.keys(env).sort(), [
+    'ALL_PROXY',
+    'BOB_API_KEY',
+    'BOB_INSTANCE_ID',
+    'BOB_LOG_LEVEL',
+    'BOB_TEAM_ID',
+    'CI',
+    'FORCE_COLOR',
+    'HOME',
+    'HTTP_PROXY',
+    'LANG',
+    'LC_ALL',
+    'LOGNAME',
+    'NODE_ENV',
+    'NODE_EXTRA_CA_CERTS',
+    'NO_COLOR',
+    'PATH',
+    'SHELL',
+    'SSL_CERT_FILE',
+    'TERM',
+    'TMPDIR',
+    'USER',
+    'all_proxy',
+    'https_proxy',
+    'no_proxy',
+  ]);
+  assert.strictEqual(env.HOME, '/h', 'the per-review home wins');
+  assert.strictEqual(
+    bob.env(base).HOME,
+    '/real',
+    'no home keeps the base HOME'
+  );
+  assert.strictEqual(bob.env({ PATH: '/bin' }).HOME, undefined);
 });
 
 test('effectiveConcurrency: only an isolated agent runs side by side', () => {

@@ -1,6 +1,6 @@
 # Token Usage Tracking
 
-Each review's summary comment ends with its token usage. The numbers are exact when the agent reports them and an estimate otherwise.
+Each review's summary comment ends with its token usage. The numbers are exact when the agent reports them and an estimate otherwise. The short Looks Good comment carries no token usage; the `pr_review_completed` event and the log still do.
 
 ## Where the numbers come from
 

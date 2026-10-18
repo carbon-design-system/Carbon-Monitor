@@ -167,6 +167,8 @@ The Kibana data view `carbon-monitor-events-*` covers all months.
 - `payload.recommendation` — `keyword` (no `.keyword` sub-field)
 - All `payload.*` numeric fields — `long` or `float`
 - `payload.cost_unit`: `keyword`, `bobcoins` or `usd`. `payload.coinsSpent` is in that unit and the root `agent` field says which agent ran, so a panel that sums cost should filter or split on one of them. No panel here sums cost. Events from before the field existed have no `cost_unit` and are Bobcoins; the mapping applies when the next monthly index is created
+- `payload.coverage.*`: on `pr_review_completed`, `files_total`, `files_reviewed`, `files_omitted`, `diff_chars_total` and `diff_chars_reviewed` (all `integer` or `long`) and `partial` (`boolean`). `partial: true` means some files were not reviewed, or one was cut short. A PR where no file fit has `payload.runs: 0`. Events from before this field existed have none, and the mapping applies when the next monthly index is created. No panel here uses them yet; a panel for partial reviews can count `payload.coverage.partial: true`.
+- The `pr_skipped_too_large` event is retired. A PR over the old 300-file limit is now reviewed in part and reports `payload.coverage` instead. Old documents keep the event type, and no panel here reads it.
 
 If you ever modify a panel manually in the Kibana UI and it stops working, run `node scripts/rebuild-dashboard.js` to reset it from the script's source of truth.
 

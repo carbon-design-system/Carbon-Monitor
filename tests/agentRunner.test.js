@@ -89,7 +89,7 @@ const cases = [];
 const test = (name, fn) => cases.push([name, fn]);
 
 test('assembles text from assistant messages, reasoning excluded', async () => {
-  const { result } = await run({ FAKE_BOB_FIXTURE: fx('review-ok.ndjson') });
+  const { result } = await run({ BOB_FAKE_FIXTURE: fx('review-ok.ndjson') });
   assert.strictEqual(result.format, 'stream-json');
   assert.ok(result.text.includes('BEGIN_REVIEW_JSON'));
   assert.ok(!result.text.includes('should load the carbon-builder skill'));
@@ -99,7 +99,7 @@ test('assembles text from assistant messages, reasoning excluded', async () => {
 });
 
 test('text parses through parseReviewOutput with one finding', async () => {
-  const { result } = await run({ FAKE_BOB_FIXTURE: fx('review-ok.ndjson') });
+  const { result } = await run({ BOB_FAKE_FIXTURE: fx('review-ok.ndjson') });
   const review = await quiet(() => parseReviewOutput(result.text));
   assert.ok(review, 'review parsed');
   assert.strictEqual(review.findings.length, 1);
@@ -109,7 +109,7 @@ test('real Bob 2.0.0 stream: token-level message pieces reassemble and parse', a
   // Captured live from a review of carbon-design-system/carbon#22971: 1186
   // assistant pieces with no delta flag, a result with no last_message and no
   // token fields.
-  const { result } = await run({ FAKE_BOB_FIXTURE: fx('review-real.ndjson') });
+  const { result } = await run({ BOB_FAKE_FIXTURE: fx('review-real.ndjson') });
   assert.strictEqual(result.format, 'stream-json');
   assert.ok(result.text.includes('BEGIN_REVIEW_JSON'));
   assert.ok(result.text.includes('END_REVIEW_JSON'));
@@ -125,14 +125,14 @@ test('real Bob 2.0.0 stream: token-level message pieces reassemble and parse', a
 });
 
 test('stats carry session_costs as a number', async () => {
-  const { result } = await run({ FAKE_BOB_FIXTURE: fx('review-ok.ndjson') });
+  const { result } = await run({ BOB_FAKE_FIXTURE: fx('review-ok.ndjson') });
   assert.strictEqual(result.stats.session_costs, 0.42);
   assert.strictEqual(result.stats.input_tokens, 41320);
   assert.strictEqual(result.stats.task_id, 'task-ok-0001');
 });
 
 test('tool calls pair by id and summarise', async () => {
-  const { result } = await run({ FAKE_BOB_FIXTURE: fx('review-ok.ndjson') });
+  const { result } = await run({ BOB_FAKE_FIXTURE: fx('review-ok.ndjson') });
   assert.strictEqual(result.toolCalls.length, 4);
   assert.ok(result.toolCalls.every((c) => c.status === 'success'));
   const s = summarizeToolCalls(result.toolCalls);
@@ -161,7 +161,7 @@ test('summarizeToolCalls collects skill files and unpaired status', () => {
 
 test('chunk boundaries: every fixture line becomes one event', async () => {
   const fixture = fx('review-ok.ndjson');
-  const { result, cwd } = await run({ FAKE_BOB_FIXTURE: fixture });
+  const { result, cwd } = await run({ BOB_FAKE_FIXTURE: fixture });
   const expected = fs.readFileSync(fixture, 'utf8').trim().split('\n');
   const saved = fs
     .readFileSync(path.join(cwd, 'agent-events.ndjson'), 'utf8')
@@ -175,7 +175,7 @@ test('chunk boundaries: every fixture line becomes one event', async () => {
 
 test('writes agent-output.txt and agent-events.ndjson', async () => {
   const { result, cwd } = await run({
-    FAKE_BOB_FIXTURE: fx('review-ok.ndjson'),
+    BOB_FAKE_FIXTURE: fx('review-ok.ndjson'),
   });
   assert.strictEqual(
     fs.readFileSync(path.join(cwd, 'agent-output.txt'), 'utf8'),
@@ -198,7 +198,7 @@ test('attempt_completion line is appended', async () => {
   ];
   const file = path.join(tmp(), 'completion.ndjson');
   fs.writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
-  const { result } = await run({ FAKE_BOB_FIXTURE: file });
+  const { result } = await run({ BOB_FAKE_FIXTURE: file });
   assert.ok(
     result.text.endsWith('[attempt_completion] Result: No issues found.')
   );
@@ -208,7 +208,7 @@ test('attempt_completion line is appended', async () => {
 
 test('object session_costs are summed', async () => {
   await assert.rejects(
-    run({ FAKE_BOB_FIXTURE: fx('review-cost-limit.ndjson') }),
+    run({ BOB_FAKE_FIXTURE: fx('review-cost-limit.ndjson') }),
     (err) => {
       assert.strictEqual(err.stats.session_costs, 1);
       return true;
@@ -218,7 +218,7 @@ test('object session_costs are summed', async () => {
 
 test('cost-limit fixture rejects with kind cost-limit and stats', async () => {
   await assert.rejects(
-    run({ FAKE_BOB_FIXTURE: fx('review-cost-limit.ndjson') }),
+    run({ BOB_FAKE_FIXTURE: fx('review-cost-limit.ndjson') }),
     (err) => {
       assert.ok(err instanceof AgentRunError);
       assert.strictEqual(err.kind, 'cost-limit');
@@ -230,7 +230,7 @@ test('cost-limit fixture rejects with kind cost-limit and stats', async () => {
 
 test('non-zero exit rejects with kind exit', async () => {
   await assert.rejects(
-    run({ FAKE_BOB_FIXTURE: fx('review-ok.ndjson'), FAKE_BOB_EXIT: '3' }),
+    run({ BOB_FAKE_FIXTURE: fx('review-ok.ndjson'), BOB_FAKE_EXIT: '3' }),
     (err) => {
       assert.ok(err instanceof AgentRunError);
       assert.strictEqual(err.kind, 'exit');
@@ -245,7 +245,7 @@ test('timeout rejects with kind timeout and the child is gone', async () => {
   let caught;
   await assert.rejects(
     run(
-      { FAKE_BOB_FIXTURE: fx('review-ok.ndjson'), FAKE_BOB_SLEEP_MS: '5000' },
+      { BOB_FAKE_FIXTURE: fx('review-ok.ndjson'), BOB_FAKE_SLEEP_MS: '5000' },
       { timeout: 1500 }
     ),
     (err) => {
@@ -264,7 +264,7 @@ test('timeout rejects with kind timeout and the child is gone', async () => {
 
 test('no result event falls back to raw text and null stats', async () => {
   const { result, cwd } = await run({
-    FAKE_BOB_FIXTURE: fx('review-no-result.txt'),
+    BOB_FAKE_FIXTURE: fx('review-no-result.txt'),
   });
   assert.strictEqual(result.format, 'text');
   assert.strictEqual(result.stats, null);
@@ -281,9 +281,9 @@ test('no result event falls back to raw text and null stats', async () => {
 test('pretty format omits --format and still runs', async () => {
   const { result, cwd } = await run(
     {
-      FAKE_BOB_FIXTURE: fx('review-no-result.txt'),
-      FAKE_BOB_ALLOW_PRETTY: '1',
-      FAKE_BOB_ARGS: '1',
+      BOB_FAKE_FIXTURE: fx('review-no-result.txt'),
+      BOB_FAKE_ALLOW_PRETTY: '1',
+      BOB_FAKE_ARGS: '1',
     },
     { format: 'pretty' }
   );
@@ -356,7 +356,7 @@ test('buildAgentArgs: stream-json, caps and pretty', () => {
 
 test('turn-limit fixture rejects with kind turn-limit and stats', async () => {
   await assert.rejects(
-    run({ FAKE_BOB_FIXTURE: fx('review-turn-limit.ndjson') }),
+    run({ BOB_FAKE_FIXTURE: fx('review-turn-limit.ndjson') }),
     (err) => {
       assert.strictEqual(err.kind, 'turn-limit');
       assert.strictEqual(err.stats.task_id, 'task-turns-0003');
@@ -371,7 +371,7 @@ test('a success run with a warning still resolves', async () => {
     { type: 'error', severity: 'warning', message: 'Tool returned no output' },
     { type: 'result', status: 'success', stats: { session_costs: 0.2 } },
   ]);
-  const { result } = await run({ FAKE_BOB_FIXTURE: file });
+  const { result } = await run({ BOB_FAKE_FIXTURE: file });
   assert.strictEqual(result.status, 'success');
   assert.strictEqual(result.text, 'Done.');
 });
@@ -382,7 +382,7 @@ test('a success run with a limit-worded error event still resolves', async () =>
     { type: 'error', severity: 'error', message: 'Turn limit nearly reached' },
     { type: 'result', status: 'success', stats: { session_costs: 0.2 } },
   ]);
-  const { result } = await run({ FAKE_BOB_FIXTURE: file });
+  const { result } = await run({ BOB_FAKE_FIXTURE: file });
   assert.strictEqual(result.status, 'success');
 });
 
@@ -410,7 +410,7 @@ test('delta messages are joined without a gap', async () => {
     { type: 'message', role: 'assistant', content: 'second message' },
     { type: 'result', status: 'success', stats: {} },
   ]);
-  const { result } = await run({ FAKE_BOB_FIXTURE: file });
+  const { result } = await run({ BOB_FAKE_FIXTURE: file });
   assert.strictEqual(
     result.text,
     'BEGIN_REVIEW_JSON {"a":1}\nEND_REVIEW_JSON\n\nsecond message'
@@ -430,7 +430,7 @@ test('a delta after a tool call starts a new message', async () => {
     { type: 'message', role: 'assistant', content: 'Verified', delta: true },
     { type: 'result', status: 'success', stats: {} },
   ]);
-  const { result } = await run({ FAKE_BOB_FIXTURE: file });
+  const { result } = await run({ BOB_FAKE_FIXTURE: file });
   assert.strictEqual(result.text, 'pending\n\nVerified');
 });
 
@@ -449,7 +449,7 @@ test('duplicate result events: the last one wins', async () => {
     { type: 'result', status: 'success', stats: { session_costs: 0.1 } },
     { type: 'result', status: 'success', stats: { session_costs: 0.3 } },
   ]);
-  const { result } = await run({ FAKE_BOB_FIXTURE: file });
+  const { result } = await run({ BOB_FAKE_FIXTURE: file });
   assert.strictEqual(result.stats.session_costs, 0.3);
 });
 
@@ -468,19 +468,82 @@ test('only the last attempt_completion result is appended', async () => {
     ...done('c2', 'second'),
     { type: 'result', status: 'success', stats: {} },
   ]);
-  const { result } = await run({ FAKE_BOB_FIXTURE: file });
+  const { result } = await run({ BOB_FAKE_FIXTURE: file });
   assert.strictEqual(result.text, '[attempt_completion] Result: second');
 });
 
 test('the home option sets HOME for the child; the default leaves it alone', async () => {
   const home = tmp();
   const env = {
-    FAKE_BOB_FIXTURE: fx('review-ok.ndjson'),
-    FAKE_BOB_EXPECT_HOME: home,
+    BOB_FAKE_FIXTURE: fx('review-ok.ndjson'),
+    BOB_FAKE_EXPECT_HOME: home,
   };
   const { result } = await run(env, { home });
   assert.strictEqual(result.status, 'success');
   await assert.rejects(run(env), (err) => err.kind === 'exit');
+});
+
+test('the child sees an allowlist: its own keys and the colour variables, none of the harness secrets', async () => {
+  const marker = path.join(tmp(), 'bob-marker.json');
+  const home = tmp();
+  await run(
+    {
+      BOB_FAKE_FIXTURE: fx('review-ok.ndjson'),
+      BOB_FAKE_MARKER: marker,
+      BOB_API_KEY: 'bob-secret',
+      BOB_TEAM_ID: 'team-1',
+      ANTHROPIC_API_KEY: 'sk-ant-test',
+      CLAUDE_MODEL: 'claude-test',
+      GITHUB_AI_AGENT_TOKEN: 'gh-secret',
+      ES_PASSWORD: 'es-secret',
+      SLACK_WEBHOOK_URL: 'https://hooks.example/secret',
+      CONSOLE_PASSWORD: 'console-secret',
+      https_proxy: 'http://proxy.example:8080',
+      ALL_PROXY: 'http://all.example:8080',
+      NODE_ENV: 'production',
+    },
+    { home }
+  );
+  const m = JSON.parse(fs.readFileSync(marker, 'utf8'));
+  for (const k of [
+    'GITHUB_AI_AGENT_TOKEN',
+    'ES_PASSWORD',
+    'SLACK_WEBHOOK_URL',
+    'CONSOLE_PASSWORD',
+    'ANTHROPIC_API_KEY',
+    'CLAUDE_MODEL',
+  ]) {
+    assert.ok(!m.envKeys.includes(k), `${k} reached the child`);
+  }
+  for (const k of [
+    'BOB_API_KEY',
+    'BOB_TEAM_ID',
+    'HOME',
+    'PATH',
+    'NO_COLOR',
+    'FORCE_COLOR',
+    'CI',
+    'TERM',
+    'https_proxy',
+    'ALL_PROXY',
+    'NODE_ENV',
+  ]) {
+    assert.ok(m.envKeys.includes(k), `${k} did not reach the child`);
+  }
+  assert.strictEqual(m.home, home, 'HOME is the per-review home');
+  assert.deepStrictEqual(
+    m.envKeys
+      .filter((k) => !/^(BOB_|__CF_)/.test(k)) // macOS adds __CF_*
+      .sort(),
+    m.envKeys
+      .filter((k) =>
+        /^(PATH|HOME|TMPDIR|LANG|LC_ALL|TERM|USER|LOGNAME|SHELL|NO_COLOR|FORCE_COLOR|CI|NODE_ENV|(HTTPS?|NO|ALL)_PROXY|SSL_CERT_FILE|NODE_EXTRA_CA_CERTS)$/i.test(
+          k
+        )
+      )
+      .sort(),
+    'only allowlisted names'
+  );
 });
 
 // ── Claude, through the fake claude in tests/fixtures/bin ────────────────────

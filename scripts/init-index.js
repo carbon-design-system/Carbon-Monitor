@@ -152,6 +152,16 @@ const INDEX_MAPPING = {
         prs_requested: { type: 'integer' },
         prs_fetch_failed: { type: 'integer' },
         target_mode: { type: 'keyword' },
+        coverage: {
+          properties: {
+            files_total: { type: 'integer' },
+            files_reviewed: { type: 'integer' },
+            files_omitted: { type: 'integer' },
+            diff_chars_total: { type: 'long' },
+            diff_chars_reviewed: { type: 'long' },
+            partial: { type: 'boolean' },
+          },
+        },
         error: { type: 'text' },
       },
     },

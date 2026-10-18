@@ -388,7 +388,7 @@ end.
         ▼
   reviewPRs()                                    src/index.js
         │
-        ├─► GitHub: select open PRs, fetch diff + linked issue
+        ├─► GitHub: select open PRs, fetch changed files and patches + linked issue
         │
         ├─► buildReviewBundle()                  src/reviewBundle.js
         │      creates  $BOB_WORKSPACE_ROOT/<owner>__<repo>__pull-N-XXXX/
@@ -404,9 +404,17 @@ end.
         │               get_charts · labs_search · code_audit
         │
         ├─► parseReviewOutput()                  src/reviewParser.js
-        └─► post inline + summary comments, apply the AIReviewed label
+        └─► post one review of inline comments, then the summary (or verdict) comment, apply the AIReviewed label
         └─► Slack digest (scheduled runs only, when SLACK_WEBHOOK_URL is set)
 ```
+
+The diff is assembled from each file's patch (`pulls.listFiles`, 70 files a page,
+3,000 at most). Whole files are fitted to the input budget in class order:
+source, config and style first, then tests, stories and docs, then generated
+files. What does not fit is listed under `## Files Not Reviewed` in the request
+file and in the PR comment (see
+[Partial reviews](REVIEW_OUTPUT.md#partial-reviews)). If no file fits, no agent
+runs: the PR gets a Not Reviewed comment and the label.
 
 **Container portability fixes** that make this work off a Mac:
 
@@ -423,14 +431,18 @@ already trusted the folder, so one code path serves both environments.
 
 **Per-run state.** Two reviews must share no file. Bob gets a private `HOME`
 (`<bundle>/home/.bob/`, seeded from the real `~/.bob`). Claude gets a private
-`CLAUDE_CONFIG_DIR` (`<bundle>/claude-config`) and keeps the real `HOME`; its
-child environment is an allowlist, so the harness's secrets never reach it. The
-details are in [HARNESS.md §1](HARNESS.md#reviews-in-flight) and
+`CLAUDE_CONFIG_DIR` (`<bundle>/claude-config`) and keeps the real `HOME`. For
+both, the child environment is an allowlist (for Bob, plus every `BOB_*`
+variable; for Claude, plus `ANTHROPIC_*` and `CLAUDE_*`), so the harness's
+secrets never reach it. The details are in
+[HARNESS.md §1](HARNESS.md#reviews-in-flight),
+[CONFIGURATION.md](CONFIGURATION.md#bob-shell) and
 [CONFIGURATION.md](CONFIGURATION.md#claude-code).
 
 **Attribution.** The summary comment names the agent that ran, taken from the
 adapter's `displayName`: `Reviewed by: IBM Bob` or `Reviewed by: Claude`, and
-the same name on the `Agent:` line. Logs, telemetry and readiness reasons use the
+the same name on the `Agent:` line. The short Looks Good comment has the
+`Reviewed by:` line only. Logs, telemetry and readiness reasons use the
 agent id (`bob`, `claude`).
 
 ---
@@ -663,8 +675,9 @@ src/
 │   ├── claude.js             Claude adapter
 │   └── common.js             Carbon MCP names, evidence helper
 ├── reviewBundle.js           builds the agent workspace  [getWorkspaceRoot]
-├── reviewPrompt.js           review prompt; summary and inline comment text
-├── githubClient.js           PRs, diffs, comments, labels
+├── reviewCoverage.js         assembles the diff from patches; picks the files that fit
+├── reviewPrompt.js           review prompt; the comment texts (inline, summary, Looks Good)
+├── githubClient.js           PRs, files with patches, comments, labels
 ├── reviewParser.js           parses agent output into findings
 ├── diffMapper.js             maps findings to diff line numbers
 ├── slackNotifier.js          end-of-run digest to a Slack webhook

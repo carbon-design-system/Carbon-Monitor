@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Node.js >= 22.15.0 to work on the code; Bob Shell itself needs Node.js 24 or later
-- Bob Shell
+- One review agent: Bob Shell with `BOB_API_KEY`, or Claude Code CLI 2.1.259 or later with `ANTHROPIC_API_KEY` (see `docs/CONFIGURATION.md`)
 - For deploys only: zsh, podman, the ibmcloud CLI with the `code-engine` and `container-registry` plugins, and kubectl
 
 ## Setup

@@ -2,7 +2,9 @@
  * Format review comments according to Carbon PR review spec
  */
 
-const { CHARS_PER_TOKEN } = require('./constants');
+const constants = require('./constants');
+const { CHARS_PER_TOKEN } = constants;
+const { MAX_LISTED_FILES } = require('./reviewCoverage');
 const { escapeAtSign } = require('./textUtils');
 const agents = require('./agents');
 
@@ -92,6 +94,163 @@ function formatInlineComment(finding) {
 }
 
 // ---------------------------------------------------------------------------
+// renderNitList / formatLooksGoodComment
+// ---------------------------------------------------------------------------
+
+// Title and location only: a nit body is not worth a reader's attention.
+function renderNitList(nits) {
+  if (!nits || nits.length === 0) return '';
+  const items = nits.map((f) => {
+    // `<` would let a title such as </details> close the block; a backtick would end the code span
+    const title = escapeAtSign(
+      String(f.title || '')
+        .replace(/\s+/g, ' ')
+        .replace(/</g, '&lt;')
+        .trim()
+    );
+    const file = String(f.file || '').replace(/`/g, '');
+    const where = file ? ` — \`${file}${f.line ? `:${f.line}` : ''}\`` : '';
+    return `- ${title}${where}`;
+  });
+  const label = `${nits.length} optional nit${nits.length === 1 ? '' : 's'}`;
+  return `<details>\n<summary>${label}</summary>\n\n${items.join('\n')}\n\n</details>`;
+}
+
+const count = (n) => n.toLocaleString('en-US');
+
+const kb = (chars) =>
+  chars < 1e6
+    ? `${chars === 0 ? 0 : Math.max(1, Math.round(chars / 1e3))} KB`
+    : `${(chars / 1e6).toFixed(1)} MB`;
+
+/**
+ * The note that tells an author which files the review did not cover.
+ * Empty unless the review was partial.
+ *
+ * @param {Object} coverage - From the review bundle: the counts, and `omitted` as [{filename, reason}]
+ * @param {string} filesUrl - The PR's Files changed URL
+ * @returns {string}
+ */
+// Why the review is partial, in the author's terms: size (the budget, the file cap or
+// GitHub's listing limit) or files GitHub gives no diff for.
+function coverageReason(coverage, none) {
+  const reasons = new Set((coverage.omitted || []).map((o) => o.reason));
+  const size =
+    reasons.has('over-budget') ||
+    reasons.has('over-file-cap') ||
+    (coverage.beyond_listing || 0) > 0;
+  if (size) {
+    return none
+      ? 'this pull request is larger than the review budget, so none of its files could be reviewed'
+      : 'this pull request is larger than the review budget, so not every file could be reviewed';
+  }
+  if (reasons.has('no-patch')) {
+    return none
+      ? 'GitHub provides no diff for any changed file (binary, mode change or too large), so none could be reviewed'
+      : 'GitHub provides no diff for some files (binary, mode change or too large), so not every file could be reviewed';
+  }
+  return none
+    ? 'none of its files could be reviewed'
+    : 'not every file could be reviewed';
+}
+
+function formatCoverageNote(coverage, filesUrl) {
+  if (!coverage?.partial) return '';
+  // Authors read the note before the numbers, so say why first.
+  const none = coverage.diff_chars_reviewed === 0;
+  const files = `${count(coverage.files_reviewed)} of ${count(coverage.files_total)} changed files`;
+  let note = `> ⚠️ **Partial review:** ${coverageReason(coverage, none)}`;
+  if (none) {
+    // Not even one line of any file fit: the agent did not run
+    note += ` (${files}).\n`;
+    note += `> The full set is in the [Files changed](${filesUrl}) tab.`;
+  } else {
+    note += `.\n> ${files} were reviewed (${kb(coverage.diff_chars_reviewed)} of ${kb(coverage.diff_chars_total)} of diff). Findings cover the reviewed files only;\n`;
+    note += `> the full set is in the [Files changed](${filesUrl}) tab.`;
+  }
+
+  const omitted = coverage.omitted || [];
+  const beyond = coverage.beyond_listing || 0;
+  if (omitted.length === 0 && beyond === 0) return note;
+
+  const groups = [
+    ['over-budget', 'Over the diff size budget'],
+    ['no-patch', 'No diff from GitHub, binary, mode change or too large'],
+    ['over-file-cap', `Over the ${constants.MAX_FILES_PER_PR}-file cap`],
+  ];
+  // GitHub rejects a comment over 65,536 characters, so a long list is cut and counted
+  let room = MAX_LISTED_FILES;
+  const sections = [];
+  for (const [reason, heading] of groups) {
+    const names = omitted.filter((o) => o.reason === reason);
+    if (names.length === 0) continue;
+    const shown = names.slice(0, room);
+    room -= shown.length;
+    const items = shown.map((o) => `- \`${o.filename.replace(/`/g, '')}\``);
+    if (shown.length < names.length) {
+      items.push(`- and ${count(names.length - shown.length)} more`);
+    }
+    sections.push(
+      `**${heading} (${count(names.length)})**\n${items.join('\n')}`
+    );
+  }
+  if (beyond > 0) {
+    sections.push(
+      `**Beyond GitHub's 3,000-file listing (${count(beyond)})**, names unavailable`
+    );
+  }
+  return `${note}\n\n<details>\n<summary>Files not reviewed (${count(coverage.files_omitted)})</summary>\n\n${sections.join('\n\n')}\n\n</details>`;
+}
+
+/**
+ * The comment for a PR the agent never saw because no file fit the diff budget:
+ * a verdict line and the partial note, so the PR is not left without an answer.
+ *
+ * @param {Object} options
+ * @param {string} options.commitSha - Head commit SHA
+ * @param {Object} options.coverage  - From the review bundle
+ * @param {string} options.filesUrl  - The PR's Files changed URL
+ * @returns {string}
+ */
+function formatNotReviewedComment({ commitSha, coverage, filesUrl }) {
+  return `[AI agent review — Carbon grounded] · **Not Reviewed** · Commit: ${commitSha.substring(0, 7)}\n\n${formatCoverageNote(coverage, filesUrl)}\n`;
+}
+
+/**
+ * The comment for a clean PR: a verdict line, the agent's summary and, when
+ * there are nits, a collapsed list. Nothing else, so a clean PR reads as quiet.
+ *
+ * @param {Object}  options
+ * @param {string}  options.agent             - Agent id (an id from src/agents)
+ * @param {string}  [options.agentName]       - Name shown in the comment; defaults to the id
+ * @param {string}  options.summaryMarkdown   - Agent's 1-3 sentence summary
+ * @param {string}  options.commitSha         - Head commit SHA
+ * @param {Array}   [options.nitFindings]     - Findings listed in the collapsed block
+ * @param {Object}  [options.coverage]        - Review coverage; a partial review adds its note
+ * @param {string}  [options.filesUrl]        - The PR's Files changed URL, linked from that note
+ * @returns {string}
+ */
+function formatLooksGoodComment({
+  agent,
+  agentName = agent,
+  summaryMarkdown,
+  commitSha,
+  nitFindings = [],
+  coverage = null,
+  filesUrl = '',
+}) {
+  const parts = [
+    `[AI agent review — Carbon grounded] · **${RECOMMENDATION_LABELS['looks-good']}** · Reviewed by: ${agentName} · Commit: ${commitSha.substring(0, 7)}`,
+    escapeAtSign(summaryMarkdown),
+  ];
+  const coverageNote = formatCoverageNote(coverage, filesUrl);
+  if (coverageNote) parts.push(coverageNote);
+  const nits = renderNitList(nitFindings);
+  if (nits) parts.push(nits);
+  return parts.join('\n\n') + '\n';
+}
+
+// ---------------------------------------------------------------------------
 // formatSummaryComment
 // ---------------------------------------------------------------------------
 
@@ -114,6 +273,9 @@ function formatInlineComment(finding) {
  * @param {string}  [options.recommendationRationale] - One sentence from computeRecommendation
  * @param {string|null} [options.catalogueWarning] - Non-null when agent skipped Step 1 catalogue
  * @param {Array}   [options.findingsTable]       - Typed array from parser: [{area,category,severity,title,file}]
+ * @param {Array}   [options.nitFindings]         - Nit findings, listed collapsed after the summary
+ * @param {Object}  [options.coverage]            - Review coverage; a partial review adds its note
+ * @param {string}  [options.filesUrl]            - The PR's Files changed URL, linked from that note
  * @returns {string} - Formatted summary comment
  */
 function formatSummaryComment({
@@ -129,6 +291,9 @@ function formatSummaryComment({
   recommendationRationale = '',
   catalogueWarning = null,
   findingsTable = [],
+  nitFindings = [],
+  coverage = null,
+  filesUrl = '',
 }) {
   const recLabel = RECOMMENDATION_LABELS[recommendation] || recommendation;
   const recAdvice = RECOMMENDATION_ADVICE[recommendation] || '';
@@ -144,14 +309,19 @@ function formatSummaryComment({
   }
   comment += `${recAdvice}\n\n`;
 
+  const coverageNote = formatCoverageNote(coverage, filesUrl);
+  if (coverageNote) comment += coverageNote + '\n\n';
+
   // ── Catalogue reliability warning (rendered separately — never in summaryMarkdown) ──
   if (catalogueWarning) {
     comment += `> ⚠️ **Review Reliability Note:** ${catalogueWarning}\n\n`;
   }
 
   // ── Findings table (rendered from typed array — no Markdown in agent JSON) ──
-  if (findingsTable && findingsTable.length > 0) {
-    comment += `<details>\n<summary>Findings (${findingsTable.length})</summary>\n\n`;
+  // Nits are listed once, in the collapsed nit list
+  const rows = (findingsTable || []).filter((r) => r.severity !== 'nit');
+  if (rows.length > 0) {
+    comment += `<details>\n<summary>Findings (${rows.length})</summary>\n\n`;
 
     // Legend for the Category column.
     //
@@ -169,7 +339,7 @@ function formatSummaryComment({
 
     comment += `| Area | Category | Severity | Finding | File |\n`;
     comment += `|------|----------|----------|---------|------|\n`;
-    for (const row of findingsTable) {
+    for (const row of rows) {
       // Sanitise cell values: strip pipes and newlines, then escape @ signs
       const safe = (v) =>
         escapeAtSign(
@@ -185,6 +355,9 @@ function formatSummaryComment({
   // ── Agent summary (verbatim — this field is never mutated after parse) ──
   comment += `## Summary\n\n`;
   comment += escapeAtSign(summaryMarkdown) + '\n\n';
+
+  const nitList = renderNitList(nitFindings);
+  if (nitList) comment += nitList + '\n\n';
 
   // ── Details dropdown — open (unconditional) ─────────────────────────────
   comment += '\n<details>\n<summary>Details</summary>\n\n';
@@ -607,6 +780,9 @@ findingsTable rules:
 
 module.exports = {
   formatSummaryComment,
+  formatLooksGoodComment,
+  formatCoverageNote,
+  formatNotReviewedComment,
   formatInlineComment,
   buildReviewPrompt,
   estimateTokenUsage,

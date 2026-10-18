@@ -13,7 +13,36 @@ const path = require('path');
 const root = path.join(__dirname, '..', '..');
 const fixtures = __dirname;
 
-function startMockGithub() {
+// Every PR changes this one file unless o.files[pr] says otherwise. The patch is
+// what GitHub sends: no diff --git header, and the finding at line 42 is position 3.
+const DEFAULT_FILES = [
+  {
+    filename: 'Button.stories.js',
+    status: 'modified',
+    additions: 1,
+    deletions: 0,
+    changes: 1,
+    patch: '@@ -40,2 +40,3 @@\n a\n+b\n c',
+  },
+];
+
+// A modified file whose assembled diff is exactly `total` characters.
+function fileOfSize(filename, total) {
+  const { fileDiff } = require(path.join(root, 'src', 'reviewCoverage'));
+  const base = {
+    filename,
+    status: 'modified',
+    additions: 1,
+    deletions: 0,
+    changes: 1,
+    patch: '@@ -1 +1 @@\n+',
+  };
+  const pad = total - fileDiff(base).length;
+  return { ...base, patch: base.patch + 'x'.repeat(pad) };
+}
+
+// o.files: { [pr]: file[] } replaces a PR's file list; o.changedFiles: { [pr]: n } sets its changed_files.
+function startMockGithub(o = {}) {
   const writes = [];
   const server = http.createServer((req, res) => {
     const chunks = [];
@@ -47,12 +76,6 @@ function startMockGithub() {
       const n = Number(id);
 
       if (req.method === 'GET' && area === 'pulls' && !sub) {
-        if ((req.headers.accept || '').includes('diff')) {
-          res.writeHead(200, { 'content-type': 'text/plain' });
-          return res.end(
-            'diff --git a/Button.stories.js b/Button.stories.js\n--- a/Button.stories.js\n+++ b/Button.stories.js\n@@ -40,2 +40,3 @@\n a\n+b\n c\n'
-          );
-        }
         return json(200, {
           number: n,
           title: `Mock PR ${n}`,
@@ -65,23 +88,30 @@ function startMockGithub() {
           html_url: `https://github.com/mock/mock/pull/${n}`,
           head: { sha: `sha${n}` },
           labels: [],
+          changed_files:
+            o.changedFiles?.[n] ?? (o.files?.[n] || DEFAULT_FILES).length,
         });
       }
       if (req.method === 'GET' && area === 'pulls' && sub === 'files') {
-        return json(200, [
-          {
-            filename: 'Button.stories.js',
-            status: 'modified',
-            additions: 1,
-            deletions: 0,
-          },
-        ]);
+        const perPage = Number(url.searchParams.get('per_page')) || 30;
+        const page = Number(url.searchParams.get('page')) || 1;
+        const all = o.files?.[n] || DEFAULT_FILES;
+        return json(200, all.slice((page - 1) * perPage, page * perPage));
       }
       if (req.method === 'POST' && area === 'issues' && sub === 'comments') {
         return json(201, { id: 1, body: '' });
       }
       if (req.method === 'POST' && area === 'issues' && sub === 'labels') {
         return json(200, [{ name: 'AIReviewed' }]);
+      }
+      if (req.method === 'POST' && area === 'pulls' && sub === 'reviews') {
+        if (o.rejectReviews) {
+          return json(422, {
+            message: 'Unprocessable Entity',
+            errors: ['Pull request review thread position is invalid'],
+          });
+        }
+        return json(200, { id: 3, state: 'COMMENTED' });
       }
       if (req.method === 'POST' && area === 'pulls' && sub === 'comments') {
         return json(201, { id: 2, pull_request_review_id: 3 });
@@ -104,7 +134,8 @@ function startMockGithub() {
   );
 }
 
-// spec: { [pr]: { source: 'review-ok' | 'review-cost-limit', cost, sleepMs, emptyFirstRuns } }
+// spec: { [pr]: { source: 'review-ok' | 'review-cost-limit', cost, severity, sleepMs, emptyFirstRuns } }
+// severity replaces every "major" in the fixture: 'nit' gives green, 'blocking' red, none yellow.
 // For agent 'claude' the sources are tests/fixtures/claude/*.ndjson.
 function writeFixtures(dir, spec, agent = 'bob') {
   for (const [pr, s] of Object.entries(spec)) {
@@ -132,6 +163,12 @@ function writeFixtures(dir, spec, agent = 'bob') {
           `"session_costs":${s.cost}`
         );
       }
+    }
+    if (s.severity) {
+      body = body.replace(
+        /(\\"severity\\": \\")major(\\")/g,
+        `$1${s.severity}$2`
+      );
     }
     const directive = {};
     for (const k of ['sleepMs', 'emptyFirstRuns']) {
@@ -189,11 +226,18 @@ function install() {
  * @param {number} [o.bobTimeoutMs] - override runAgent's 10 minute timeout
  * @param {Object|Function} [o.balance] - fake getBalance() result, or a function of its options
  * @param {Object[]} [o.ledgerSeed] - ledger entries present before the run
+ * @param {boolean} [o.rejectReviews] - the mock answers 422 to grouped reviews
+ * @param {Object} [o.files] - { [pr]: file[] } a PR's changed files, served paged; see DEFAULT_FILES
+ * @param {Object} [o.changedFiles] - { [pr]: n } the changed_files the mock reports for a PR
  * @param {Function} fn - async ({ reviewPRs, reviewLog }) => value
  */
 async function sandbox(o, fn) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'concurrency-'));
-  const mock = await startMockGithub();
+  const mock = await startMockGithub({
+    rejectReviews: o.rejectReviews,
+    files: o.files,
+    changedFiles: o.changedFiles,
+  });
   const fixtureDir = path.join(tmp, 'fixtures');
   fs.mkdirSync(fixtureDir);
   writeFixtures(fixtureDir, o.fixtures, o.agent || 'bob');
@@ -226,8 +270,8 @@ async function sandbox(o, fn) {
     GITHUB_API_BASE_URL: mock.url,
     BOB_WORKSPACE_ROOT: path.join(tmp, 'ws'),
     CREDIT_LEDGER_PATH: path.join(tmp, 'ledger.jsonl'),
-    FAKE_BOB_FIXTURE_DIR: fixtureDir,
-    FAKE_BOB_LOG: path.join(tmp, 'bob-runs.jsonl'),
+    BOB_FAKE_FIXTURE_DIR: fixtureDir,
+    BOB_FAKE_LOG: path.join(tmp, 'bob-runs.jsonl'),
     CLAUDE_FAKE_FIXTURE_DIR: fixtureDir,
     CLAUDE_FAKE_LOG: path.join(tmp, 'claude-runs.jsonl'),
     ...(o.agent === 'claude'
@@ -247,8 +291,8 @@ async function sandbox(o, fn) {
     'BOB_MAX_TURNS',
     'BOB_DISABLE_TOOL_GROUPS',
     'GITHUB_AI_AGENT_PR_NUMBER',
-    'FAKE_BOB_FIXTURE',
-    'FAKE_BOB_SLEEP_MS',
+    'BOB_FAKE_FIXTURE',
+    'BOB_FAKE_SLEEP_MS',
     'CLAUDE_FAKE_FIXTURE',
     'CLAUDE_FAKE_SLEEP_MS',
     'CLAUDE_FAKE_EXIT',
@@ -321,6 +365,14 @@ async function sandbox(o, fn) {
     mock.writes.filter(
       (w) => w.path.endsWith(`/issues/${pr}/comments`) && w.method === 'POST'
     );
+  const reviews = (pr) =>
+    mock.writes.filter(
+      (w) => w.path.endsWith(`/pulls/${pr}/reviews`) && w.method === 'POST'
+    );
+  const inlineComments = (pr) =>
+    mock.writes.filter(
+      (w) => w.path.endsWith(`/pulls/${pr}/comments`) && w.method === 'POST'
+    );
   const labels = (pr) =>
     mock.writes.filter(
       (w) => w.path.endsWith(`/issues/${pr}/labels`) && w.method === 'POST'
@@ -331,9 +383,11 @@ async function sandbox(o, fn) {
     startedAt,
     writes: mock.writes,
     comments,
+    reviews,
+    inlineComments,
     labels,
     ledger: readJsonl(env.CREDIT_LEDGER_PATH),
-    bobRuns: readJsonl(env.FAKE_BOB_LOG),
+    bobRuns: readJsonl(env.BOB_FAKE_LOG),
     claudeRuns: readJsonl(env.CLAUDE_FAKE_LOG),
     bundles,
     cleanup: async () => {
@@ -374,4 +428,10 @@ async function runBatch(o) {
   };
 }
 
-module.exports = { runBatch, sandbox, startMockGithub };
+module.exports = {
+  runBatch,
+  sandbox,
+  startMockGithub,
+  DEFAULT_FILES,
+  fileOfSize,
+};

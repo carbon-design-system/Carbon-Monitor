@@ -8,6 +8,8 @@
  *  2. A parse-failure retry is billed and recorded, not only the first run
  *  3. A budget stop still records the spend and posts nothing
  *  4. A scheduled run is not metered by default and skips at a low monthly budget
+ *  5. A PR too big for the diff budget gets a partial review: the files that fit, one inline
+ *     comment, the partial note, the coverage in the event and the digest line
  */
 
 process.env.GITHUB_AI_AGENT_CLI = 'claude';
@@ -19,8 +21,14 @@ const path = require('path');
 const indexed = [];
 require('../src/observability/esClient').esCall = async (fn) =>
   fn({ index: async (doc) => indexed.push(doc.document) });
-const { runBatch } = require('./fixtures/concurrencyHarness');
+const {
+  runBatch,
+  fileOfSize,
+  DEFAULT_FILES,
+} = require('./fixtures/concurrencyHarness');
 const constants = require('../src/constants');
+const { fileDiff } = require('../src/reviewCoverage');
+const { _buildPayload } = require('../src/slackNotifier');
 
 let passed = 0;
 let failed = 0;
@@ -56,9 +64,11 @@ async function main() {
   await test('a review posts one comment and one label, and the failing one posts none', () => {
     for (const pr of [1, 2]) {
       assert.strictEqual(batch.comments(pr).length, 1, `comments on #${pr}`);
+      assert.strictEqual(batch.reviews(pr).length, 1, `reviews on #${pr}`);
       assert.strictEqual(batch.labels(pr).length, 1, `labels on #${pr}`);
     }
     assert.strictEqual(batch.comments(3).length, 0);
+    assert.strictEqual(batch.reviews(3).length, 0);
     assert.strictEqual(batch.labels(3).length, 0);
     assert.strictEqual(batch.claudeRuns.length, 4, 'one, two (retry), one');
   });
@@ -219,6 +229,7 @@ async function main() {
   await test('a scheduled run is not metered by default, however much was spent', () => {
     assert.strictEqual(unmetered.claudeRuns.length, 1);
     assert.strictEqual(unmetered.comments(1).length, 1);
+    assert.strictEqual(unmetered.reviews(1).length, 1);
   });
   await unmetered.cleanup();
 
@@ -239,6 +250,108 @@ async function main() {
     assert.ok(has(budgeted.lines, /PR #1 skipped — Claude budget at 5%/));
   });
   await budgeted.cleanup();
+
+  // Button.stories.js is class 1, so it comes after the sources; 25 of them
+  // (2,040 characters each) leave room for it and not for a 26th.
+  const sources = Array.from({ length: 150 }, (_, i) =>
+    fileOfSize(`src/gen/File${String(i).padStart(3, '0')}.js`, 2040)
+  );
+  const files = [
+    ...DEFAULT_FILES,
+    ...sources,
+    // GitHub reports a modified binary as changes 0 with no patch
+    {
+      filename: 'assets/logo.png',
+      status: 'modified',
+      additions: 0,
+      deletions: 0,
+      changes: 0,
+    },
+  ];
+  const fullBudget = constants.MAX_DIFF_CHARS;
+  constants.MAX_DIFF_CHARS = 52000;
+  let partial;
+  try {
+    partial = await runBatch({
+      prNumbers: [7],
+      concurrency: 1,
+      agent: 'claude',
+      fixtures: { 7: {} },
+      files: { 7: files },
+    });
+  } finally {
+    constants.MAX_DIFF_CHARS = fullBudget;
+  }
+  await test('a PR over the diff budget is reviewed in part and the partial note says so', () => {
+    const stories = fileDiff(DEFAULT_FILES[0]).length;
+    assert.strictEqual(partial.comments(7).length, 1);
+    const body = partial.comments(7)[0].body.body;
+    assert.ok(body.includes('26 of 152 changed files were reviewed'), body);
+    assert.ok(body.includes('<summary>Files not reviewed (126)</summary>'));
+    assert.ok(body.includes('**Over the diff size budget (125)**'));
+    assert.ok(body.includes('- `assets/logo.png`'));
+    assert.strictEqual(partial.reviews(7).length, 1);
+    const review = partial.reviews(7)[0].body;
+    assert.deepStrictEqual(
+      review.comments.map(({ path, position }) => ({ path, position })),
+      [{ path: 'Button.stories.js', position: 3 }]
+    );
+    assert.strictEqual(partial.inlineComments(7).length, 0);
+    assert.strictEqual(partial.labels(7).length, 1);
+
+    const event = indexed.find(
+      (d) => d.event_type === 'pr_review_completed' && d.pr_number === 7
+    );
+    assert.deepStrictEqual(event.payload.coverage, {
+      files_total: 152,
+      files_reviewed: 26,
+      files_omitted: 126,
+      diff_chars_total: 150 * 2040 + stories,
+      diff_chars_reviewed: 25 * 2040 + stories,
+      partial: true,
+    });
+
+    const result = partial.digest.results.find((r) => r.prNumber === 7);
+    const digest = _buildPayload({
+      startedAt: Date.now(),
+      repo: 'mock/mock',
+      results: [result],
+    })
+      .blocks.map((b) => b.text?.text || '')
+      .join('\n');
+    assert.ok(
+      digest.includes('1 issue found · partial review: 26 of 152 files'),
+      digest
+    );
+  });
+  await test('the request file names what was left out and keeps the finding mappable', () => {
+    const md = fs.readFileSync(
+      path.join(partial.bundles[7].dir, 'PR_REVIEW_REQUEST.md'),
+      'utf8'
+    );
+    assert.ok(md.includes('## Files Not Reviewed'));
+    assert.ok(
+      md.includes('- `src/gen/File149.js` — over the diff size budget')
+    );
+    assert.ok(
+      md.includes(
+        '- `assets/logo.png` — no diff from GitHub (binary, mode change or too large)'
+      )
+    );
+    assert.ok(!md.includes('diff truncated'));
+    const changed = md.slice(
+      md.indexOf('## Changed Files'),
+      md.indexOf('## Files Not Reviewed')
+    );
+    assert.strictEqual(changed.match(/^- `/gm).length, 26);
+    assert.ok(
+      has(
+        partial.lines,
+        /Diff: \d+ characters, 26 of 152 files \(partial review\)/
+      )
+    );
+  });
+  await partial.cleanup();
 
   console.log(`\n  ${passed} passed, ${failed} failed\n`);
   process.exit(failed > 0 ? 1 : 0);

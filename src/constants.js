@@ -64,8 +64,8 @@ const N_DAYS_SINCE_PR_CREATED = Number(
 );
 const MAX_PRS_PER_RUN = Number(process.env.GITHUB_AI_AGENT_MAX_PRS || 10);
 
-// PRs over this file count are skipped in auto mode and labelled AIReviewed.
-// This is a review-quality cap, not a GitHub API limit — override via env var.
+// Most files one review includes; the rest are listed as not reviewed. It bounds
+// the per-file catalogue and is not a GitHub limit.
 const MAX_FILES_PER_PR = Number(process.env.GITHUB_AI_AGENT_MAX_FILES || 300);
 
 // Input budget is in tokens so it can be read against the model's context

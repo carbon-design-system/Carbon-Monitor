@@ -121,6 +121,10 @@ async function emitEvent({
     parts.push(`findings=${payload.findings_total}`);
   if (payload.token_total != null)
     parts.push(`tokens=${payload.token_total.toLocaleString()}`);
+  if (payload.coverage?.partial)
+    parts.push(
+      `coverage=${payload.coverage.files_reviewed}/${payload.coverage.files_total}`
+    );
   if (payload.duration_ms != null)
     parts.push(`duration=${Math.round(payload.duration_ms / 1000)}s`);
   if (payload.prs_reviewed != null)

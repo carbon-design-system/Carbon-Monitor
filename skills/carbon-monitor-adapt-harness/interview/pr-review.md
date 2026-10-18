@@ -36,7 +36,8 @@ SPEC section 2.
    when Elasticsearch is configured; otherwise off, which the code already
    supports.)
 10. **Comment wording.** Anything in the posted comments that must change:
-    language, disclaimer, the review header. (Default: keep.)
+    language, disclaimer, the review header. There are three kinds: the inline
+    review, the summary and the short Looks Good comment. (Default: keep.)
 
 Branch one is expected to produce a SPEC where most decisions are **configure**
 and the only **modify** rows are the rubric, the MCP endpoint and, for an agent

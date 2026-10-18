@@ -17,10 +17,10 @@
  * Usage:
  *   GITHUB_AI_AGENT_TOKEN=ghp_... node scripts/create-test-pr.js
  *
- * The script commits the changed files plus ORIGINAL_DIFF.patch and
- * ORIGINAL_FILES.json so Carbon Monitor's index.js prefers those over the
- * GitHub-generated diff (which only shows the metadata files) when reviewing
- * the PR.
+ * The script commits the changed files plus ORIGINAL_FILES.json so Carbon
+ * Monitor's index.js prefers its files, and the per-file diffs in their `patch`
+ * fields, over the GitHub file list (which only shows the metadata files) when
+ * reviewing the PR.
  *
  * It also closes any open PRs whose head branch matches the test prefix so
  * stale branches do not get picked up by Carbon Monitor before they are labelled.
@@ -287,8 +287,6 @@ const BANNER_DIFF =
     .join('\n') +
   '\n';
 
-const COMBINED_DIFF = STORIES_DIFF + '\n' + BANNER_DIFF;
-
 // ORIGINAL_FILES.json — mirrors the shape Carbon Monitor expects from
 // client.fetchPRFiles() so splitFindings() can resolve filenames.
 const ORIGINAL_FILES = [
@@ -415,7 +413,7 @@ async function main() {
     );
   }
 
-  const [storiesBlob, bannerBlob, diffBlob, filesBlob] = await Promise.all([
+  const [storiesBlob, bannerBlob, filesBlob] = await Promise.all([
     ghFetch(`/repos/${OWNER}/${REPO}/git/blobs`, {
       method: 'POST',
       body: { content: STORIES_AFTER, encoding: 'utf-8' },
@@ -423,10 +421,6 @@ async function main() {
     ghFetch(`/repos/${OWNER}/${REPO}/git/blobs`, {
       method: 'POST',
       body: { content: BANNER_COMPONENT, encoding: 'utf-8' },
-    }),
-    ghFetch(`/repos/${OWNER}/${REPO}/git/blobs`, {
-      method: 'POST',
-      body: { content: COMBINED_DIFF, encoding: 'utf-8' },
     }),
     ghFetch(`/repos/${OWNER}/${REPO}/git/blobs`, {
       method: 'POST',
@@ -455,12 +449,6 @@ async function main() {
           mode: '100644',
           type: 'blob',
           sha: bannerBlob.sha,
-        },
-        {
-          path: 'ORIGINAL_DIFF.patch',
-          mode: '100644',
-          type: 'blob',
-          sha: diffBlob.sha,
         },
         {
           path: 'ORIGINAL_FILES.json',

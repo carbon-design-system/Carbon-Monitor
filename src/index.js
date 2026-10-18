@@ -49,6 +49,7 @@ const { randomUUID } = require('crypto');
 const { checkStartup } = require('./config/env');
 const { createGitHubClient, createOctokit } = require('./githubClient');
 const { buildReviewBundle } = require('./reviewBundle');
+const { LISTING_LIMIT } = require('./reviewCoverage');
 const {
   runAgent,
   getConfiguredAgent,
@@ -61,6 +62,8 @@ const {
 } = require('./reviewParser');
 const {
   formatSummaryComment,
+  formatLooksGoodComment,
+  formatNotReviewedComment,
   formatInlineComment,
   estimateTokenUsage,
 } = require('./reviewPrompt');
@@ -77,7 +80,6 @@ const {
   REVIEW_AGENT,
   N_DAYS_SINCE_PR_CREATED,
   MAX_PRS_PER_RUN,
-  MAX_FILES_PER_PR,
   REVIEW_CONCURRENCY,
 } = require('./constants');
 
@@ -698,9 +700,8 @@ async function reviewPRs(options = {}) {
         console.log(`   URL: ${pr.html_url}`);
         console.log(`${'='.repeat(80)}\n`);
 
-        // Fetch changed files FIRST — needed for the size gate before paying
-        // the cost of fetching the diff.
-        let filesFromTestFixture = false;
+        // Test PRs from create-test-pr.js carry their files, with real patches, in
+        // ORIGINAL_FILES.json; any other PR lists them from GitHub.
         let files;
         try {
           const { data: filesFile } = await octokit.rest.repos.getContent({
@@ -712,7 +713,6 @@ async function reviewPRs(options = {}) {
           files = JSON.parse(
             Buffer.from(filesFile.content, 'base64').toString('utf8')
           );
-          filesFromTestFixture = true;
           console.log(
             `✅ Files: ${files.length} changed (from ORIGINAL_FILES.json)`
           );
@@ -728,77 +728,6 @@ async function reviewPRs(options = {}) {
           console.log(`   - ${f.filename} (+${f.additions}/-${f.deletions})`)
         );
 
-        // Size gate — auto mode only. Explicit mode (--pr N) bypasses this so
-        // the operator can force-review any PR regardless of size.
-        if (
-          target.mode === 'auto' &&
-          !filesFromTestFixture &&
-          files.length > MAX_FILES_PER_PR
-        ) {
-          console.warn(
-            `⏭️  PR #${pr.number} skipped — ${files.length} files exceeds MAX_FILES_PER_PR (${MAX_FILES_PER_PR})`
-          );
-
-          await emitEvent({
-            event_type: 'pr_skipped_too_large',
-            correlation_id: correlationId,
-            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
-            pr_number: pr.number,
-            agent: REVIEW_AGENT,
-            payload: { file_count: files.length, limit: MAX_FILES_PER_PR },
-          });
-
-          // Label first — it is the skip gate. Comment only posts if label succeeds,
-          // preventing repeated comments on subsequent runs if labelling fails.
-          let labelAdded = false;
-          try {
-            await client.addReviewedLabel({
-              owner: GITHUB_OWNER,
-              repo: GITHUB_REPO,
-              pullNumber: pr.number,
-              label: REVIEW_LABEL,
-            });
-            labelAdded = true;
-            console.log('✅ AIReviewed label added (too-large skip)');
-          } catch (labelErr) {
-            console.warn(
-              `⚠️  Could not add AIReviewed label to PR #${pr.number}: ${labelErr.message}`
-            );
-          }
-
-          const postSummary =
-            process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
-          if (labelAdded && postSummary) {
-            const baseUrl = (process.env.BASE_URL || '').trim();
-            const consoleRef = baseUrl
-              ? `the [Carbon Monitor console](${baseUrl})`
-              : 'the Carbon Monitor console';
-            try {
-              await client.postSummaryComment({
-                owner: GITHUB_OWNER,
-                repo: GITHUB_REPO,
-                pullNumber: pr.number,
-                body: `## Carbon Monitor — Review Skipped\n\nThis PR has **${files.length} changed files**, which exceeds the ${MAX_FILES_PER_PR}-file limit for automatic review. It has been marked as \`AIReviewed\` and will not be re-queued.\n\nTo request a manual AI review, visit ${consoleRef} and enter this PR number directly.`,
-              });
-            } catch (commentErr) {
-              console.warn(
-                `⚠️  Could not post skip comment on PR #${pr.number}: ${commentErr.message}`
-              );
-            }
-          }
-
-          prResults.push({
-            prNumber: pr.number,
-            prUrl: pr.html_url,
-            skipped: true,
-            reason: `${files.length} files exceeds limit of ${MAX_FILES_PER_PR}`,
-          });
-
-          return prResults; // bundle is still null — cleanupBundle(null) is a no-op
-        }
-
-        // pr_review_started is emitted here, after the size gate, so it only
-        // fires for PRs that will actually be reviewed.
         await emitEvent({
           event_type: 'pr_review_started',
           correlation_id: correlationId,
@@ -808,40 +737,95 @@ async function reviewPRs(options = {}) {
           commit_sha: pr.head.sha,
         });
 
-        // Fetch PR diff — prefer ORIGINAL_DIFF.patch if present (test PRs created
-        // by create-test-pr.js embed the real Carbon diff there to preserve - lines)
-        let diff;
-        try {
-          const { data: patchFile } = await octokit.rest.repos.getContent({
-            owner: GITHUB_OWNER,
-            repo: GITHUB_REPO,
-            path: 'ORIGINAL_DIFF.patch',
-            ref: pr.head.sha,
-          });
-          diff = Buffer.from(patchFile.content, 'base64').toString('utf8');
-          console.log(
-            `✅ Diff: ${diff.length} characters (from ORIGINAL_DIFF.patch)`
-          );
-        } catch {
-          diff = await client.fetchPRDiff({
-            owner: GITHUB_OWNER,
-            repo: GITHUB_REPO,
-            pullNumber: pr.number,
-          });
-          console.log(`✅ Diff: ${diff.length} characters`);
+        // A full listing may be cut short; the PR itself says how many files there are.
+        let changedFilesTotal;
+        if (files.length === LISTING_LIMIT) {
+          try {
+            ({ changed_files: changedFilesTotal } = await client.fetchSinglePR({
+              owner: GITHUB_OWNER,
+              repo: GITHUB_REPO,
+              pullNumber: pr.number,
+            }));
+          } catch (countErr) {
+            console.warn(
+              `⚠️  Could not read PR #${pr.number}'s file count: ${countErr.message}`
+            );
+          }
         }
 
-        // Build review bundle
+        // Build review bundle; it assembles the diff from the files' patches
         bundle = await buildReviewBundle({
           owner: GITHUB_OWNER,
           repo: GITHUB_REPO,
           pr,
-          diff,
           files,
           client,
           agent,
+          changedFilesTotal,
         });
         console.log(`✅ Bundle: ${bundle.dir}`);
+        const { coverage } = bundle;
+        console.log(
+          `✅ Diff: ${bundle.diff.length} characters, ${coverage.files_reviewed} of ${coverage.files_total} files${coverage.partial ? ' (partial review)' : ''}`
+        );
+        // The event and the digest carry the counts, not the omitted names
+        const coverageFields = {
+          files_total: coverage.files_total,
+          files_reviewed: coverage.files_reviewed,
+          files_omitted: coverage.files_omitted,
+          diff_chars_total: coverage.diff_chars_total,
+          diff_chars_reviewed: coverage.diff_chars_reviewed,
+          partial: coverage.partial,
+        };
+
+        // Not even a line of any file fits: no agent runs, but the author is told and the
+        // label is set, or the PR would be picked again on every run.
+        if (bundle.diff === '' && coverage.partial) {
+          console.warn(
+            `⚠️  PR #${pr.number}: no changed file fits the diff budget, so no agent runs`
+          );
+          await emitEvent({
+            event_type: 'pr_review_completed',
+            correlation_id: correlationId,
+            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            pr_number: pr.number,
+            agent: REVIEW_AGENT,
+            commit_sha: pr.head.sha,
+            payload: {
+              pr_title: pr.title,
+              findings_total: 0,
+              runs: 0,
+              durationMs: Date.now() - prStartedAt,
+              coverage: coverageFields,
+            },
+          });
+          if (process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false') {
+            await client.postSummaryComment({
+              owner: GITHUB_OWNER,
+              repo: GITHUB_REPO,
+              pullNumber: pr.number,
+              body: formatNotReviewedComment({
+                commitSha: pr.head.sha,
+                coverage,
+                filesUrl: `${pr.html_url}/files`,
+              }),
+            });
+          }
+          await client.addReviewedLabel({
+            owner: GITHUB_OWNER,
+            repo: GITHUB_REPO,
+            pullNumber: pr.number,
+            label: REVIEW_LABEL,
+          });
+          prResults.push({
+            prNumber: pr.number,
+            prUrl: pr.html_url,
+            skipped: true,
+            reason: `Nothing fit the diff budget (0 of ${coverage.files_total} files reviewed)`,
+            coverage: coverageFields,
+          });
+          return prResults;
+        }
 
         // Two agent processes must share no file, so each review gets its own
         // HOME (Bob) or config directory (Claude).
@@ -1187,15 +1171,21 @@ async function reviewPRs(options = {}) {
           });
         }
 
+        // Nits are never inline: a convention-only remark is not worth a diff comment
+        const nitFindings = review.findings.filter((f) => f.severity === 'nit');
+        const nonNitFindings = review.findings.filter(
+          (f) => f.severity !== 'nit'
+        );
+
         // Split findings into inline-able and summary-only
         const { inlineFindings, summaryFindings } = splitFindings(
-          review.findings,
-          diff,
+          nonNitFindings,
+          bundle.diff,
           files,
           bundle.mdDiffStartLine
         );
         console.log(
-          `✅ Inline: ${inlineFindings.length}, Summary: ${summaryFindings.length}`
+          `✅ Inline: ${inlineFindings.length}, Summary: ${summaryFindings.length}, Nits: ${nitFindings.length}`
         );
 
         // Post inline review comments if any (check env flag)
@@ -1254,13 +1244,20 @@ async function reviewPRs(options = {}) {
             summaryFindings.push(...inlineFindings);
             inlineFindings.length = 0;
           }
+        } else if (inlineFindings.length > 0) {
+          // The kill switch must not lose findings: they move to the summary.
+          console.log(
+            `ℹ️  Inline comments disabled, including ${inlineFindings.length} finding(s) in the summary`
+          );
+          summaryFindings.push(...inlineFindings);
+          inlineFindings.length = 0;
         }
 
         // Exact counts from the agent's result record, else the character estimate.
         const tokenUsage = tokensFromStats(finalRun.stats, adapter) || {
           ...estimateTokenUsage({
             prompt: bundle.prompt,
-            diff: diff,
+            diff: bundle.diff,
             agentOutput: agentOutput,
           }),
           source: 'estimate',
@@ -1327,6 +1324,7 @@ async function reviewPRs(options = {}) {
                 ? balanceAfter.remaining
                 : null,
             durationMs: Date.now() - prStartedAt,
+            coverage: coverageFields,
           },
         });
 
@@ -1337,20 +1335,35 @@ async function reviewPRs(options = {}) {
         const postSummary =
           process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false';
         if (postSummary) {
-          const commentBody = formatSummaryComment({
-            agent,
-            agentName: adapter.displayName,
-            summaryMarkdown: review.summaryMarkdown,
-            prNumber: pr.number,
-            commitSha: pr.head.sha,
-            inlineFindings,
-            summaryFindings,
-            tokenUsage,
-            recommendation: review.recommendation,
-            recommendationRationale: review.recommendationRationale,
-            catalogueWarning: review.catalogueWarning,
-            findingsTable: review.findingsTable,
-          });
+          // The attempt_completion fallback says looks-good with a warning; a quiet comment would drop it
+          const commentBody =
+            review.recommendation === 'looks-good' && !review.catalogueWarning
+              ? formatLooksGoodComment({
+                  agent,
+                  agentName: adapter.displayName,
+                  summaryMarkdown: review.summaryMarkdown,
+                  commitSha: pr.head.sha,
+                  nitFindings,
+                  coverage,
+                  filesUrl: `${pr.html_url}/files`,
+                })
+              : formatSummaryComment({
+                  agent,
+                  agentName: adapter.displayName,
+                  summaryMarkdown: review.summaryMarkdown,
+                  prNumber: pr.number,
+                  commitSha: pr.head.sha,
+                  inlineFindings,
+                  summaryFindings,
+                  tokenUsage,
+                  recommendation: review.recommendation,
+                  recommendationRationale: review.recommendationRationale,
+                  catalogueWarning: review.catalogueWarning,
+                  findingsTable: review.findingsTable,
+                  nitFindings,
+                  coverage,
+                  filesUrl: `${pr.html_url}/files`,
+                });
 
           await client.postSummaryComment({
             owner: GITHUB_OWNER,
@@ -1381,6 +1394,7 @@ async function reviewPRs(options = {}) {
           findingsCount: review.findings.length,
           summary: review.summaryMarkdown,
           recommendation: review.recommendation,
+          coverage: coverageFields,
         });
       } catch (prError) {
         console.error(

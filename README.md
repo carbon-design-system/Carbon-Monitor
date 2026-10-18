@@ -8,10 +8,11 @@ Carbon Monitor is two things. It is a working reviewer for the
 `carbon-design-system/carbon` monorepo: each open pull request goes through an AI
 CLI agent (IBM Bob by default, or Claude), every Carbon-specific claim (component
 props, tokens, icons, accessibility patterns) is verified against the Carbon MCP
-server, and the result lands on the PR as inline comments and a summary with a
-recommendation. It is also a harness for running any agent on a schedule in IBM
-Cloud, with cost tracking, telemetry and a Slack report, that you can point at
-your own repository or your own job.
+server, and the result lands on the PR as one review of inline comments and a
+summary with a recommendation. A clean PR gets one short verdict comment
+instead. It is also a harness for running any agent on a schedule in IBM Cloud, with cost
+tracking, telemetry and a Slack report, that you can point at your own
+repository or your own job.
 
 <p align="center">
   <a href="#quick-start"><strong>Quick start</strong></a> ·
@@ -44,14 +45,14 @@ agent's own unit. Each agent runs in its own private configuration directory, so
 
 ## What it does
 
-| Stage      | What happens                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Fetch**  | Queries GitHub for open PRs, excluding drafts, bot-authored PRs (Dependabot, Renovate), PRs older than 21 days and PRs already labelled `AIReviewed`. Up to 10 PRs per run. Both limits are configurable.                                                                                                                                                                                                        |
-| **Bundle** | Builds a temporary workspace per PR: `PR_REVIEW_REQUEST.md` (description, changed files, full unified diff), `pr.json` / `files.json` / `diff.patch`, the agent rules (`.bob/rules/01-output.md` for Bob, `CLAUDE.md` for Claude), and the Carbon Builder skill. A `Closes #N`, `Fixes #N` or `Resolves #N` reference pulls in the linked issue (and its parent) as acceptance criteria, capped at 5,000 tokens. |
-| **Review** | Runs the selected agent in the bundle: `bob run --trust --accept-license [--team-id …] "<prompt>"` or `claude -p … "<prompt>"`. The agent writes a visible catalogue of every suspicious item per file, classified as Category 1 (Carbon API, needs MCP) or Category 2 (visible in the diff).                                                                                                                    |
-| **Verify** | Resolves every catalogue item. Category 1 items are checked with the Carbon Builder skill and Carbon MCP tools (`code_search`, `docs_search`, `get_charts`, `labs_search`, `code_audit`); Category 2 items from the diff alone. The parser flags runs that skipped the catalogue or hid their resolutions.                                                                                                       |
-| **Post**   | Findings that map to a diff line become inline review comments. The rest, plus the summary and recommendation, go in one PR comment. The `AIReviewed` label is added.                                                                                                                                                                                                                                            |
-| **Report** | Scheduled runs post a digest to Slack when `SLACK_WEBHOOK_URL` is set. Review events are written to Elasticsearch for the Kibana dashboard.                                                                                                                                                                                                                                                                      |
+| Stage      | What happens                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Fetch**  | Queries GitHub for open PRs, excluding drafts, bot-authored PRs (Dependabot, Renovate), PRs older than 21 days and PRs already labelled `AIReviewed`. Up to 10 PRs per run. Both limits are configurable.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Bundle** | Builds a temporary workspace per PR: `PR_REVIEW_REQUEST.md` (description, changed files, the unified diff, and a list of files left out), `pr.json` / `files.json` / `diff.patch`, the agent rules (`.bob/rules/01-output.md` for Bob, `CLAUDE.md` for Claude), and the Carbon Builder skill. A `Closes #N`, `Fixes #N` or `Resolves #N` reference pulls in the linked issue (and its parent) as acceptance criteria, capped at 5,000 tokens. The diff is assembled from each file's patch as whole files fitted to the input budget, tests and docs after source, so no PR is skipped for its size; what does not fit is listed under Files Not Reviewed. |
+| **Review** | Runs the selected agent in the bundle: `bob run --trust --accept-license [--team-id …] "<prompt>"` or `claude -p … "<prompt>"`. The agent writes a visible catalogue of every suspicious item per file, classified as Category 1 (Carbon API, needs MCP) or Category 2 (visible in the diff).                                                                                                                                                                                                                                                                                                                                                              |
+| **Verify** | Resolves every catalogue item. Category 1 items are checked with the Carbon Builder skill and Carbon MCP tools (`code_search`, `docs_search`, `get_charts`, `labs_search`, `code_audit`); Category 2 items from the diff alone. The parser flags runs that skipped the catalogue or hid their resolutions.                                                                                                                                                                                                                                                                                                                                                 |
+| **Post**   | Findings of `minor` severity or above that map to a diff line go out as inline comments in one GitHub review. The rest, plus the summary and recommendation, go in one PR comment, with any nits in a collapsed list; nits are never inline. A clean PR gets one short verdict comment and no review. A partial review says so in that comment and lists the files it did not cover. If no file fits the budget, no agent runs and the PR gets a Not Reviewed comment. The `AIReviewed` label is added.                                                                                                                                                    |
+| **Report** | Scheduled runs post a digest to Slack when `SLACK_WEBHOOK_URL` is set. Review events are written to Elasticsearch for the Kibana dashboard.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Built as a harness
 
@@ -104,6 +105,13 @@ swap notes and two finished example SPECs are in [docs/adapt-harness](docs/adapt
 
 <p align="center"><em>The summary comment on a reviewed PR, followed by the AIReviewed label.</em></p>
 
+A PR with nothing above `nit` gets a much shorter comment: a verdict line, the
+agent's summary and, when there are nits, a collapsed list of them with title and
+location. It carries no recommendation section, findings table or token usage, and
+the PR gets no inline comments. Nits are never inline on any PR. If the review's
+reliability is in doubt, the PR gets the full summary comment with a reliability
+note instead.
+
 Every review ends in one of three recommendations:
 
 | Value                    | Meaning                                                             |
@@ -121,8 +129,9 @@ Each finding carries a severity:
 | `minor`    | Maintainability risk or subtle behaviour difference — not immediately breaking |
 | `nit`      | Convention / hygiene — no functional consequence                               |
 
-The inline and summary comment formats, and the reliability checks behind the
-recommendation, are in [docs/REVIEW_OUTPUT.md](docs/REVIEW_OUTPUT.md).
+The inline, summary and Looks Good comment formats, the partial-review note, and
+the reliability checks behind the recommendation, are in
+[docs/REVIEW_OUTPUT.md](docs/REVIEW_OUTPUT.md).
 
 ## See it running
 
@@ -258,14 +267,14 @@ token permissions are in [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md).
 ```
 POST /api/review/trigger          202 Accepted at once
   └─► reviewPRs()                 src/index.js
-        ├─► GitHub: select open PRs, fetch diff + linked issue
+        ├─► GitHub: select open PRs, fetch changed files and patches + linked issue
         ├─► buildReviewBundle()   src/reviewBundle.js
         ├─► runAgent()            src/agentRunner.js, through src/agents/<agent>.js
         │     bob run --trust --accept-license [--team-id …] "<prompt>"
         │     claude -p --output-format stream-json … "<prompt>"
         │     └─► Carbon MCP: code_search · docs_search · get_charts · labs_search · code_audit
         ├─► parseReviewOutput()   src/reviewParser.js
-        ├─► post inline + summary comments, apply the AIReviewed label
+        ├─► post one review of inline comments, then the summary (or verdict) comment, apply the AIReviewed label
         └─► Slack digest (scheduled runs only, when SLACK_WEBHOOK_URL is set)
 ```
 
@@ -314,27 +323,27 @@ read status and trigger a review. See
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Operator console**  | Status tiles for the agent CLI, Carbon MCP, GitHub and Elasticsearch that say what is wrong, a Reviews panel to run the latest PRs or a named list, and a live log of the current or last run.                                                                                                                                                                                         |
 | **Scheduled reviews** | One daily run, configured in **Settings → Scheduled reviews**. Off on a fresh install. `npm start` also runs a single pass and exits, so an external scheduler can drive it.                                                                                                                                                                                                           |
-| **Slack digest**      | Set `SLACK_WEBHOOK_URL` to a Slack incoming webhook. The digest fires after scheduled runs only; runs started from the console do not post.                                                                                                                                                                                                                                            |
+| **Slack digest**      | Set `SLACK_WEBHOOK_URL` to a Slack incoming webhook. The digest fires after scheduled runs only; runs started from the console do not post. A partial review shows as `partial review: N of M files` on its line.                                                                                                                                                                      |
 | **Kibana dashboard**  | Review metrics from Elasticsearch, when `ES_URL` is set. Setup is in [kibana/README.md](kibana/README.md).                                                                                                                                                                                                                                                                             |
 | **Cost tracking**     | Bob: the Bobcoins balance and per-review spend; scheduled reviews pause themselves, and alert Slack, when the balance falls below `BOB_CREDITS_LOW_PCT` (default 10%). Claude: per-review spend in dollars and the month so far; with `CLAUDE_MONTHLY_BUDGET_USD` set, scheduled reviews pause below `CLAUDE_BUDGET_LOW_PCT` (default 10%) of it, and without it they are not metered. |
 
 ## Documentation
 
-| Document                                                                             | Covers                                                                                           |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                                         | Container image, Carbon MCP token refresh, authentication, Code Engine deployment, module map    |
-| [docs/HARNESS.md](docs/HARNESS.md)                                                   | Harness versus task layer, every extension point, the agent adapters, the names that change      |
-| [skills/carbon-monitor-adapt-harness](skills/carbon-monitor-adapt-harness/README.md) | The skill that interviews you and writes a SPEC for your own repository, job or agent            |
-| [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md)                                       | The reviewing GitHub account (i.e. machine user), its token permissions, and why it needs Triage |
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md)                                       | Environment variables, Bob Shell, Claude Code, Carbon MCP and Carbon Builder setup               |
-| [docs/API.md](docs/API.md)                                                           | REST endpoints and the full review trigger contract                                              |
-| [docs/REVIEW_OUTPUT.md](docs/REVIEW_OUTPUT.md)                                       | Inline and summary comment formats, recommendations, reliability checks                          |
-| [docs/INLINE_COMMENTS.md](docs/INLINE_COMMENTS.md)                                   | How findings are mapped to diff lines                                                            |
-| [docs/TOKEN_USAGE_TRACKING.md](docs/TOKEN_USAGE_TRACKING.md)                         | Token usage estimates in the summary comment                                                     |
-| [docs/MCP_TOKEN_REFRESH.md](docs/MCP_TOKEN_REFRESH.md)                               | Manual Carbon MCP token refresh, the fallback to IBMid sign-in                                   |
-| [kibana/README.md](kibana/README.md)                                                 | Kibana dashboard setup                                                                           |
-| [CONTRIBUTING.md](CONTRIBUTING.md)                                                   | Setup, tests and pull request guidelines                                                         |
-| [SECURITY.md](SECURITY.md)                                                           | Reporting a vulnerability                                                                        |
+| Document                                                                             | Covers                                                                                               |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                                         | Container image, Carbon MCP token refresh, authentication, Code Engine deployment, module map        |
+| [docs/HARNESS.md](docs/HARNESS.md)                                                   | Harness versus task layer, every extension point, the agent adapters, the names that change          |
+| [skills/carbon-monitor-adapt-harness](skills/carbon-monitor-adapt-harness/README.md) | The skill that interviews you and writes a SPEC for your own repository, job or agent                |
+| [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md)                                       | The reviewing GitHub account (i.e. machine user), its token permissions, and why it needs Triage     |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md)                                       | Environment variables, Bob Shell, Claude Code, Carbon MCP and Carbon Builder setup                   |
+| [docs/API.md](docs/API.md)                                                           | REST endpoints and the full review trigger contract                                                  |
+| [docs/REVIEW_OUTPUT.md](docs/REVIEW_OUTPUT.md)                                       | Inline, summary and Looks Good comment formats, partial reviews, recommendations, reliability checks |
+| [docs/INLINE_COMMENTS.md](docs/INLINE_COMMENTS.md)                                   | How findings are mapped to diff lines                                                                |
+| [docs/TOKEN_USAGE_TRACKING.md](docs/TOKEN_USAGE_TRACKING.md)                         | Token usage estimates in the summary comment                                                         |
+| [docs/MCP_TOKEN_REFRESH.md](docs/MCP_TOKEN_REFRESH.md)                               | Manual Carbon MCP token refresh, the fallback to IBMid sign-in                                       |
+| [kibana/README.md](kibana/README.md)                                                 | Kibana dashboard setup                                                                               |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                                                   | Setup, tests and pull request guidelines                                                             |
+| [SECURITY.md](SECURITY.md)                                                           | Reporting a vulnerability                                                                            |
 
 ## Troubleshooting
 
@@ -348,6 +357,14 @@ IBMid from the console, or call `POST /api/mcp/refresh`.
 
 **No PRs to review.** Expected when every open PR already has the `AIReviewed`
 label, or none was opened within the `DAYS_BACK` window.
+
+**A comment says "Partial review".** The PR did not fit the diff budget
+(`GITHUB_AI_AGENT_MAX_INPUT_TOKENS`) or the file cap (`GITHUB_AI_AGENT_MAX_FILES`,
+default 300), so the comment lists the files that were not reviewed. Raising
+either limit covers more; see
+[Partial reviews](docs/REVIEW_OUTPUT.md#partial-reviews). If not even one line of
+any file fits, no agent runs: the PR gets a Not Reviewed comment and the
+`AIReviewed` label.
 
 **Claude: no API key.** With `GITHUB_AI_AGENT_CLI=claude` and
 no `ANTHROPIC_API_KEY`, the log and `GET /api/ready` `warnings` say
@@ -404,7 +421,7 @@ The review prompt in [`src/reviewPrompt.js`](src/reviewPrompt.js) (`buildReviewP
 
 ### Changing the comment format
 
-Summary comment rendering is in [`formatSummaryComment`](src/reviewPrompt.js) and inline comment rendering in [`formatInlineComment`](src/reviewPrompt.js).
+Summary comment rendering is in [`formatSummaryComment`](src/reviewPrompt.js), the clean-PR comment in [`formatLooksGoodComment`](src/reviewPrompt.js) and inline comment rendering in [`formatInlineComment`](src/reviewPrompt.js).
 
 ### Adjusting finding filters
 

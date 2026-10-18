@@ -1,10 +1,13 @@
 #!/usr/bin/env node
-// Fake Bob for offline tests: replays a fixture in split chunks.
-// FAKE_BOB_FIXTURE_DIR picks <dir>/<pr>.ndjson from PR_REVIEW_REQUEST.md in the
-// cwd (fallback FAKE_BOB_FIXTURE). A first line `#fake-bob {json}` is a
+// Fake Bob for offline tests: replays a fixture in split chunks. Its controls are
+// BOB_FAKE_* because the adapter's env allowlist passes the BOB_ prefix and nothing
+// else of ours.
+// BOB_FAKE_FIXTURE_DIR picks <dir>/<pr>.ndjson from PR_REVIEW_REQUEST.md in the
+// cwd (fallback BOB_FAKE_FIXTURE). A first line `#fake-bob {json}` is a
 // directive, not stream data: { sleepMs, emptyFirstRuns }.
-// FAKE_BOB_EXPECT_HOME fails the run when HOME differs (per-run HOME isolation).
-// FAKE_BOB_LOG appends one JSON line per run with pid, HOME, start and end.
+// BOB_FAKE_EXPECT_HOME fails the run when HOME differs (per-run HOME isolation).
+// BOB_FAKE_MARKER writes the child's view of its environment (key names only).
+// BOB_FAKE_LOG appends one JSON line per run with pid, HOME, start and end.
 const fs = require('fs');
 const path = require('path');
 
@@ -14,24 +17,24 @@ if (argv.includes('--version')) {
   process.exit(0);
 }
 const i = argv.indexOf('--format');
-if (process.env.FAKE_BOB_ALLOW_PRETTY !== '1') {
+if (process.env.BOB_FAKE_ALLOW_PRETTY !== '1') {
   if (i === -1 || argv[i + 1] !== 'stream-json') {
     process.stderr.write('fake bob: expected --format stream-json\n');
     process.exit(97);
   }
 }
 if (
-  process.env.FAKE_BOB_EXPECT_HOME &&
-  process.env.HOME !== process.env.FAKE_BOB_EXPECT_HOME
+  process.env.BOB_FAKE_EXPECT_HOME &&
+  process.env.HOME !== process.env.BOB_FAKE_EXPECT_HOME
 ) {
   process.stderr.write(
-    `fake bob: HOME is ${process.env.HOME}, expected ${process.env.FAKE_BOB_EXPECT_HOME}\n`
+    `fake bob: HOME is ${process.env.HOME}, expected ${process.env.BOB_FAKE_EXPECT_HOME}\n`
   );
   process.exit(98);
 }
 
 process.stderr.write(`fake-bob pid=${process.pid}\n`);
-if (process.env.FAKE_BOB_ARGS === '1') {
+if (process.env.BOB_FAKE_ARGS === '1') {
   process.stderr.write(`fake-bob args=${JSON.stringify(argv)}\n`);
 }
 
@@ -49,9 +52,9 @@ function prNumber() {
 (async () => {
   const startedAt = Date.now();
   const pr = prNumber();
-  const dir = process.env.FAKE_BOB_FIXTURE_DIR;
+  const dir = process.env.BOB_FAKE_FIXTURE_DIR;
   const file =
-    dir && pr ? path.join(dir, `${pr}.ndjson`) : process.env.FAKE_BOB_FIXTURE;
+    dir && pr ? path.join(dir, `${pr}.ndjson`) : process.env.BOB_FAKE_FIXTURE;
   let data = file ? fs.readFileSync(file) : Buffer.alloc(0);
 
   let directive = {};
@@ -61,6 +64,18 @@ function prNumber() {
     data = data.subarray(end + 1);
   }
 
+  if (process.env.BOB_FAKE_MARKER) {
+    fs.writeFileSync(
+      process.env.BOB_FAKE_MARKER,
+      JSON.stringify({
+        home: process.env.HOME,
+        envKeys: Object.keys(process.env).sort(),
+        args: argv,
+        pr,
+        pid: process.pid,
+      })
+    );
+  }
   fs.writeFileSync(
     'fake-bob-env.json',
     JSON.stringify({ home: process.env.HOME, pid: process.pid, pr })
@@ -81,16 +96,16 @@ function prNumber() {
   }
 
   await sleep(
-    directive.sleepMs ?? (Number(process.env.FAKE_BOB_SLEEP_MS) || 0)
+    directive.sleepMs ?? (Number(process.env.BOB_FAKE_SLEEP_MS) || 0)
   );
   // 37-byte chunks land mid-line and mid-UTF-8 sequence, exercising the carry.
   for (let o = 0; o < data.length; o += 37) {
     process.stdout.write(data.subarray(o, o + 37));
     await sleep(1);
   }
-  if (process.env.FAKE_BOB_LOG) {
+  if (process.env.BOB_FAKE_LOG) {
     fs.appendFileSync(
-      process.env.FAKE_BOB_LOG,
+      process.env.BOB_FAKE_LOG,
       JSON.stringify({
         pr,
         pid: process.pid,
@@ -101,5 +116,5 @@ function prNumber() {
     );
   }
   // Let stdout drain; process.exit() right after a pipe write can drop the tail.
-  process.exitCode = Number(process.env.FAKE_BOB_EXIT) || 0;
+  process.exitCode = Number(process.env.BOB_FAKE_EXIT) || 0;
 })();
