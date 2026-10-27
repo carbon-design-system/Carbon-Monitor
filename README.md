@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/images/hero.png" width="100%" alt="Carbon Monitor: Agentic AI pull request reviews, grounded by Carbon MCP. IBM Bob, Claude, Carbon MCP, GitHub. PR reviews today, supports IBM Bob and Claude, adaptive agent harness."></p>
+<p align="center"><img src="docs/images/hero.png" width="100%" alt="Carbon Monitor: Agentic AI pull request reviews, grounded by Carbon MCP. IBM Bob, Claude, Carbon MCP, GitHub. supports IBM Bob and Claude, adapt the pattern to any repo or a different job with the bundled skill."></p>
 
 # Carbon Monitor
 
@@ -12,11 +12,13 @@ server, and the result lands on the PR as one review of inline comments and a
 summary with a recommendation. A clean PR gets one short verdict comment
 instead. It is also a harness for running any agent on a schedule in IBM Cloud, with cost
 tracking, telemetry and a Slack report, that you can point at your own
-repository or your own job.
+repository or your own job. A skill adapts it for you. It asks up to ten
+questions and writes the SPEC you build from, and you keep the Cloud deploy,
+cost caps, telemetry and Slack report as they are.
 
 <p align="center">
   <a href="#quick-start"><strong>Quick start</strong></a> ·
-  <a href="#built-as-a-harness"><strong>Reuse the harness</strong></a> ·
+  <a href="#adapt-it-with-a-skill"><strong>Adapt it with a skill</strong></a> ·
   <a href="#how-a-review-works"><strong>How a review works</strong></a> ·
   <a href="#deploy"><strong>Deploy</strong></a> ·
   <a href="docs/ARCHITECTURE.md"><strong>Architecture</strong></a> ·
@@ -54,7 +56,7 @@ agent's own unit. Each agent runs in its own private configuration directory, so
 | **Post**   | Findings of `minor` severity or above that map to a diff line go out as inline comments in one GitHub review. The rest, plus the summary and recommendation, go in one PR comment, with any nits in a collapsed list; nits are never inline. A clean PR gets one short verdict comment and no review. A partial review says so in that comment and lists the files it did not cover. If no file fits the budget, no agent runs and the PR gets a Not Reviewed comment. The `AIReviewed` label is added.                                                                                                                                                    |
 | **Report** | Scheduled runs post a digest to Slack when `SLACK_WEBHOOK_URL` is set. Review events are written to Elasticsearch for the Kibana dashboard.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
-## Built as a harness
+## Adapt it with a skill
 
 The agent is IBM Bob or Claude. Carbon Monitor is the harness around it:
 everything that runs it on a schedule in IBM Cloud, pays for it, logs it, and
