@@ -26,11 +26,15 @@ const {
   formatInlineComment,
   formatSummaryComment,
   formatLooksGoodComment,
+  formatNotReviewedComment,
   buildReviewPrompt,
 } = require('../src/reviewPrompt');
 const agents = require('../src/agents');
 
 const ZWS = '\u200B'; // zero-width space inserted by escapeAtSign
+const INLINE_PROMPT = '_Rate this finding 👍 / 👎. Replies help us improve._';
+const SUMMARY_PROMPT =
+  '_Was this review helpful? React with 👍 / 👎, or reply with feedback._';
 
 let passed = 0;
 let failed = 0;
@@ -372,7 +376,58 @@ async function main() {
     const { nitFindings, ...rest } = summaryArgs;
     const result = formatSummaryComment(rest);
     assert.ok(!result.includes('optional nit'));
-    assert.ok(result.includes('One finding and a nit.\n\n\n<details>'));
+    assert.ok(
+      result.includes(
+        `One finding and a nit.\n\n${SUMMARY_PROMPT}\n\n\n<details>`
+      )
+    );
+  });
+
+  await test('the summary feedback line sits before Details, so it shows collapsed', () => {
+    const result = formatSummaryComment(summaryArgs);
+    const at = result.indexOf(SUMMARY_PROMPT);
+    assert.ok(at > result.indexOf('## Summary'));
+    assert.ok(at < result.indexOf('<summary>Details</summary>'));
+    assert.strictEqual(result.split(SUMMARY_PROMPT).length - 1, 1);
+  });
+
+  await test('an inline comment ends with the feedback line, after the verification badge', () => {
+    const result = formatInlineComment({
+      title: 'Missing label',
+      severity: 'major',
+      body: 'Add an aria-label.',
+      carbonVerified: true,
+      verificationSource: 'carbon-mcp',
+    });
+    assert.ok(
+      result.endsWith(`*✓ Verified with Carbon MCP*\n\n${INLINE_PROMPT}\n`)
+    );
+    assert.strictEqual(result.split(INLINE_PROMPT).length - 1, 1);
+  });
+
+  await test('the Looks Good comment carries no feedback line', () => {
+    const result = formatLooksGoodComment({
+      agent: 'bob',
+      summaryMarkdown: 'Fine.',
+      commitSha: 'abc1234def5678',
+      nitFindings: [nit('Rename the story', 'src/b.stories.js', 40)],
+    });
+    assert.ok(!result.includes('👍'));
+  });
+
+  await test('the Not Reviewed comment carries no feedback line', () => {
+    const result = formatNotReviewedComment({
+      commitSha: 'abc1234def5678',
+      coverage: {
+        partial: true,
+        diff_chars_reviewed: 0,
+        files_reviewed: 0,
+        files_total: 1,
+        omitted: [],
+      },
+      filesUrl: 'https://example.test/files',
+    });
+    assert.ok(!result.includes('👍'));
   });
 
   // ── 11. Prompt per agent ─────────────────────────────────────────────────────

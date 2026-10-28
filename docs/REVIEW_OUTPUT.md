@@ -20,7 +20,11 @@ Interactive select elements inside a composite component must have an
 accessible label. Add aria-label="Time zone" (or equivalent) to the element.
 
 *✓ Verified with Carbon Builder + MCP*
+
+_Rate this finding 👍 / 👎. Replies help us improve._
 ```
+
+The last line asks the reader to react or reply. GitHub keeps the reactions and replies on the comment, so Carbon Monitor does not collect them.
 
 ### Summary comment (PR issue comment)
 
@@ -62,6 +66,8 @@ This PR updates the time picker Figma Code Connect mappings. 1 blocking finding:
 
 </details>
 
+_Was this review helpful? React with 👍 / 👎, or reply with feedback._
+
 <details>
 <summary>Details</summary>
 
@@ -90,7 +96,7 @@ Review artifacts:
 *An AI agent generated this review. Human review is advised before acting on any findings.*
 ```
 
-The nit list shows only when the review has nits. It gives each nit's title and `file:line`, not its body. Nits are not counted in the review artifacts.
+The nit list shows only when the review has nits. It gives each nit's title and `file:line`, not its body. Nits are not counted in the review artifacts. The feedback line sits outside the Details block, so it shows without expanding anything.
 
 The agent is named by its display name, `IBM Bob` or `Claude`, on the `Reviewed by:` line and the `Agent:` line.
 
@@ -114,7 +120,7 @@ This PR renames two stories and updates their snapshots.
 </details>
 ```
 
-Without nits the comment is the first two paragraphs only. One nit reads `1 optional nit`, and a nit with no line number shows `file` alone. A nits-only review whose reliability is in doubt gets the full summary comment instead, with the reliability note and the nit list, and no inline comments.
+Without nits the comment is the first two paragraphs only. It carries no feedback line, and neither does the Not Reviewed comment: a clean PR reads as quiet. One nit reads `1 optional nit`, and a nit with no line number shows `file` alone. A nits-only review whose reliability is in doubt gets the full summary comment instead, with the reliability note and the nit list, and no inline comments.
 
 ### Partial reviews
 

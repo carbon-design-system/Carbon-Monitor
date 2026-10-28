@@ -61,6 +61,12 @@ const SEVERITY_GUIDANCE = {
   nit: 'Optional — provided for completeness.',
 };
 
+// Asks for GitHub reactions and replies; GitHub keeps the answers, so nothing is collected here
+const INLINE_FEEDBACK_PROMPT =
+  '_Rate this finding 👍 / 👎. Replies help us improve._';
+const SUMMARY_FEEDBACK_PROMPT =
+  '_Was this review helpful? React with 👍 / 👎, or reply with feedback._';
+
 // ---------------------------------------------------------------------------
 // formatInlineComment
 // ---------------------------------------------------------------------------
@@ -89,6 +95,8 @@ function formatInlineComment(finding) {
   ) {
     comment += `*✓ Verified with Carbon MCP*\n`;
   }
+
+  comment += `\n${INLINE_FEEDBACK_PROMPT}\n`;
 
   return comment;
 }
@@ -358,6 +366,9 @@ function formatSummaryComment({
 
   const nitList = renderNitList(nitFindings);
   if (nitList) comment += nitList + '\n\n';
+
+  // Outside Details so it shows without expanding anything
+  comment += SUMMARY_FEEDBACK_PROMPT + '\n\n';
 
   // ── Details dropdown — open (unconditional) ─────────────────────────────
   comment += '\n<details>\n<summary>Details</summary>\n\n';
