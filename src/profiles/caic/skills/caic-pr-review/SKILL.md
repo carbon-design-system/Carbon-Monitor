@@ -44,11 +44,11 @@ Before writing any finding, check this list:
 Findings in this section require a Carbon MCP call with the correct
 `filters.component_type` before reporting.
 
-| Path pattern | Carbon package at runtime | MCP component_type |
-|---|---|---|
-| `packages/ai-chat/src/**` | `@carbon/web-components` (via `@lit/react` wrappers) | `"Web Components"` |
-| `packages/ai-chat-components/src/**` (Lit elements) | `@carbon/web-components` | `"Web Components"` |
-| `packages/ai-chat-components/**/__stories__/*-react.{stories.jsx,mdx}` | `@carbon/react` | `"React"` |
+| Path pattern                                                           | Carbon package at runtime                            | MCP component_type |
+| ---------------------------------------------------------------------- | ---------------------------------------------------- | ------------------ |
+| `packages/ai-chat/src/**`                                              | `@carbon/web-components` (via `@lit/react` wrappers) | `"Web Components"` |
+| `packages/ai-chat-components/src/**` (Lit elements)                    | `@carbon/web-components`                             | `"Web Components"` |
+| `packages/ai-chat-components/**/__stories__/*-react.{stories.jsx,mdx}` | `@carbon/react`                                      | `"React"`          |
 
 **F4 (Blocker):** A `+` line adding a `@carbon/react` import into
 `packages/ai-chat/src/` or into a Lit element under
@@ -148,11 +148,11 @@ Exclude: lockfiles, `dist/`, `es-custom/`, `custom-elements.json`,
 `telemetry.yml`, `*.snap`, `*.test.*`, `*_spec.*`, `*.spec.*`, examples,
 `.md`/`.mdx` docs.
 
-| Counted lines | Severity |
-|---|---|
-| ≤ 200 | No finding |
-| 201–400 | Important — suggest a useful split |
-| > 400 | Blocker — unless the PR description explains why it must stay together |
+| Counted lines | Severity                                                               |
+| ------------- | ---------------------------------------------------------------------- |
+| ≤ 200         | No finding                                                             |
+| 201–400       | Important — suggest a useful split                                     |
+| > 400         | Blocker — unless the PR description explains why it must stay together |
 
 ---
 
@@ -165,6 +165,7 @@ Every finding must follow this pattern:
 3. **Imperative fix:** a clear action the author can take.
 
 Rules:
+
 - No hedging ("might", "could potentially"). State the finding directly.
 - Name the file path and the line from the diff.
 - Run a **refute step** before shipping a Blocker or Important: read enough of
@@ -176,9 +177,9 @@ Rules:
 ## Severity mapping
 
 | caic label | Output contract value |
-|---|---|
-| Blocker | `blocking` |
-| Important | `major` |
-| Nit | `nit` |
+| ---------- | --------------------- |
+| Blocker    | `blocking`            |
+| Important  | `major`               |
+| Nit        | `nit`                 |
 
 `minor` is not used in v1.

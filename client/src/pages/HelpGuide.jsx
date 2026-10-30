@@ -120,8 +120,8 @@ function HelpGuide() {
                 and reviews stop if it runs out. When multiple deployments share
                 an account, the balance gauge reflects the account-wide budget,
                 while the history table below records reviews from this app.
-                Claude spends dollars. Set an optional monthly budget to see
-                the remaining share. Without one, the tile reads &ldquo;Not
+                Claude spends dollars. Set an optional monthly budget to see the
+                remaining share. Without one, the tile reads &ldquo;Not
                 metered&rdquo;.
               </p>
             </AccordionItem>

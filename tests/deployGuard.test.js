@@ -11,7 +11,12 @@ const os = require('os');
 
 // ── skip if zsh is missing ────────────────────────────────────────────────────
 const ZSH = (() => {
-  try { execFileSync('which', ['zsh'], { stdio: 'pipe' }); return 'zsh'; } catch { return null; }
+  try {
+    execFileSync('which', ['zsh'], { stdio: 'pipe' });
+    return 'zsh';
+  } catch {
+    return null;
+  }
 })();
 
 if (!ZSH) {
@@ -24,8 +29,13 @@ let passed = 0;
 let failed = 0;
 
 function assert(label, ok) {
-  if (ok) { console.log(`  ✅ ${label}`); passed++; }
-  else     { console.error(`  ❌ ${label}`); failed++; }
+  if (ok) {
+    console.log(`  ✅ ${label}`);
+    passed++;
+  } else {
+    console.error(`  ❌ ${label}`);
+    failed++;
+  }
 }
 
 /**
@@ -40,7 +50,7 @@ function runGuard(liveEnv, fileEnv, extra = {}) {
   // Build a fake JSON blob that ibmcloud would return. The awk in the guard
   // only looks for "name" / "value" pairs in a flat scan — matching CE JSON.
   const buildJson = (env) => {
-    if (!env) return '';   // empty → app not found
+    if (!env) return ''; // empty → app not found
     const pairs = Object.entries(env)
       .map(([k, v]) => `    {"name":"${k}","value":"${v}"}`)
       .join(',\n');
@@ -52,15 +62,16 @@ function runGuard(liveEnv, fileEnv, extra = {}) {
   // Write a stub ibmcloud script to a temp dir
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dg-test-'));
   const stubPath = path.join(tmpDir, 'ibmcloud');
-  fs.writeFileSync(stubPath,
+  fs.writeFileSync(
+    stubPath,
     '#!/bin/sh\n' +
-    // ibmcloud ce app get --name X --output json → $1=ce $2=app $3=get $6=--output
-    'if [ "$1" = "ce" ] && [ "$2" = "app" ] && [ "$3" = "get" ] && [ "$6" = "--output" ]; then\n' +
-    (liveJson
-      ? '  printf \'%s\\n\' ' + JSON.stringify(liveJson) + '\n  exit 0\n'
-      : '  exit 1\n') +  // non-zero → app not found
-    'fi\n' +
-    'exit 0\n'
+      // ibmcloud ce app get --name X --output json → $1=ce $2=app $3=get $6=--output
+      'if [ "$1" = "ce" ] && [ "$2" = "app" ] && [ "$3" = "get" ] && [ "$6" = "--output" ]; then\n' +
+      (liveJson
+        ? "  printf '%s\\n' " + JSON.stringify(liveJson) + '\n  exit 0\n'
+        : '  exit 1\n') + // non-zero → app not found
+      'fi\n' +
+      'exit 0\n'
   );
   fs.chmodSync(stubPath, 0o755);
 
@@ -74,8 +85,8 @@ function runGuard(liveEnv, fileEnv, extra = {}) {
     'set -euo pipefail',
     'export PATH=' + JSON.stringify(tmpDir) + ':$PATH',
     "RED=''; GRN=''; YLW=''; BLU=''; CLR=''",
-    "warn(){ print -r -- \"WARN: $*\" >&2; }",
-    "die(){ print -r -- \"DIE: $*\" >&2; exit 1; }",
+    'warn(){ print -r -- "WARN: $*" >&2; }',
+    'die(){ print -r -- "DIE: $*" >&2; exit 1; }',
     'source ' + JSON.stringify(guardPath),
     'check_deploy_target \\',
     '  "my-app" \\',
@@ -100,7 +111,9 @@ function runGuard(liveEnv, fileEnv, extra = {}) {
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
-console.log('\n── AC-19: deploy guard ──────────────────────────────────────────────');
+console.log(
+  '\n── AC-19: deploy guard ──────────────────────────────────────────────'
+);
 
 // 1. App does not exist → guard passes (no ibmcloud output, exit 1 from stub)
 {
@@ -110,8 +123,16 @@ console.log('\n── AC-19: deploy guard ────────────�
 
 // 2. Matching values → proceeds
 {
-  const live = { GITHUB_AI_AGENT_REPO: 'carbon', REVIEW_PROFILE: 'core', ES_INDEX_PREFIX: '' };
-  const file = { GITHUB_AI_AGENT_REPO: 'carbon', REVIEW_PROFILE: 'core', ES_INDEX_PREFIX: '' };
+  const live = {
+    GITHUB_AI_AGENT_REPO: 'carbon',
+    REVIEW_PROFILE: 'core',
+    ES_INDEX_PREFIX: '',
+  };
+  const file = {
+    GITHUB_AI_AGENT_REPO: 'carbon',
+    REVIEW_PROFILE: 'core',
+    ES_INDEX_PREFIX: '',
+  };
   const r = runGuard(live, file);
   assert('matching values → proceeds (exit 0)', r.code === 0);
   assert('matching values → no DIE output', !r.stderr.includes('DIE:'));
@@ -119,46 +140,100 @@ console.log('\n── AC-19: deploy guard ────────────�
 
 // 3. Repo mismatch → aborts
 {
-  const live = { GITHUB_AI_AGENT_REPO: 'carbon', REVIEW_PROFILE: '', ES_INDEX_PREFIX: '' };
-  const file = { GITHUB_AI_AGENT_REPO: 'carbon-ai-chat', REVIEW_PROFILE: '', ES_INDEX_PREFIX: '' };
+  const live = {
+    GITHUB_AI_AGENT_REPO: 'carbon',
+    REVIEW_PROFILE: '',
+    ES_INDEX_PREFIX: '',
+  };
+  const file = {
+    GITHUB_AI_AGENT_REPO: 'carbon-ai-chat',
+    REVIEW_PROFILE: '',
+    ES_INDEX_PREFIX: '',
+  };
   const r = runGuard(live, file);
   assert('repo mismatch → exit non-zero', r.code !== 0);
-  assert('repo mismatch → DIE message mentions GITHUB_AI_AGENT_REPO', r.stderr.includes('GITHUB_AI_AGENT_REPO'));
+  assert(
+    'repo mismatch → DIE message mentions GITHUB_AI_AGENT_REPO',
+    r.stderr.includes('GITHUB_AI_AGENT_REPO')
+  );
 }
 
 // 4. Profile mismatch → aborts
 {
-  const live = { GITHUB_AI_AGENT_REPO: 'carbon', REVIEW_PROFILE: 'core', ES_INDEX_PREFIX: '' };
-  const file = { GITHUB_AI_AGENT_REPO: 'carbon', REVIEW_PROFILE: 'caic', ES_INDEX_PREFIX: '' };
+  const live = {
+    GITHUB_AI_AGENT_REPO: 'carbon',
+    REVIEW_PROFILE: 'core',
+    ES_INDEX_PREFIX: '',
+  };
+  const file = {
+    GITHUB_AI_AGENT_REPO: 'carbon',
+    REVIEW_PROFILE: 'caic',
+    ES_INDEX_PREFIX: '',
+  };
   const r = runGuard(live, file);
   assert('profile mismatch → exit non-zero', r.code !== 0);
-  assert('profile mismatch → DIE message mentions REVIEW_PROFILE', r.stderr.includes('REVIEW_PROFILE'));
+  assert(
+    'profile mismatch → DIE message mentions REVIEW_PROFILE',
+    r.stderr.includes('REVIEW_PROFILE')
+  );
 }
 
 // 5. ES_INDEX_PREFIX mismatch → aborts
 {
-  const live = { GITHUB_AI_AGENT_REPO: 'carbon', REVIEW_PROFILE: '', ES_INDEX_PREFIX: '' };
-  const file = { GITHUB_AI_AGENT_REPO: 'carbon', REVIEW_PROFILE: '', ES_INDEX_PREFIX: 'carbon-monitor-caic' };
+  const live = {
+    GITHUB_AI_AGENT_REPO: 'carbon',
+    REVIEW_PROFILE: '',
+    ES_INDEX_PREFIX: '',
+  };
+  const file = {
+    GITHUB_AI_AGENT_REPO: 'carbon',
+    REVIEW_PROFILE: '',
+    ES_INDEX_PREFIX: 'carbon-monitor-caic',
+  };
   const r = runGuard(live, file);
   assert('prefix mismatch → exit non-zero', r.code !== 0);
-  assert('prefix mismatch → DIE message mentions ES_INDEX_PREFIX', r.stderr.includes('ES_INDEX_PREFIX'));
+  assert(
+    'prefix mismatch → DIE message mentions ES_INDEX_PREFIX',
+    r.stderr.includes('ES_INDEX_PREFIX')
+  );
 }
 
 // 6. Mismatch + DEPLOY_ALLOW_TARGET_CHANGE=1 → proceeds with warning
 {
-  const live = { GITHUB_AI_AGENT_REPO: 'carbon', REVIEW_PROFILE: 'core', ES_INDEX_PREFIX: '' };
-  const file = { GITHUB_AI_AGENT_REPO: 'carbon-ai-chat', REVIEW_PROFILE: 'caic', ES_INDEX_PREFIX: 'carbon-monitor-caic' };
+  const live = {
+    GITHUB_AI_AGENT_REPO: 'carbon',
+    REVIEW_PROFILE: 'core',
+    ES_INDEX_PREFIX: '',
+  };
+  const file = {
+    GITHUB_AI_AGENT_REPO: 'carbon-ai-chat',
+    REVIEW_PROFILE: 'caic',
+    ES_INDEX_PREFIX: 'carbon-monitor-caic',
+  };
   const r = runGuard(live, file, { DEPLOY_ALLOW_TARGET_CHANGE: '1' });
-  assert('DEPLOY_ALLOW_TARGET_CHANGE=1 + mismatch → proceeds (exit 0)', r.code === 0);
-  assert('DEPLOY_ALLOW_TARGET_CHANGE=1 + mismatch → WARN emitted', r.stderr.includes('WARN:'));
+  assert(
+    'DEPLOY_ALLOW_TARGET_CHANGE=1 + mismatch → proceeds (exit 0)',
+    r.code === 0
+  );
+  assert(
+    'DEPLOY_ALLOW_TARGET_CHANGE=1 + mismatch → WARN emitted',
+    r.stderr.includes('WARN:')
+  );
 }
 
 // 7. Empty REVIEW_PROFILE in live and env both normalize to "core" → not a mismatch
 {
   const live = { GITHUB_AI_AGENT_REPO: 'carbon', ES_INDEX_PREFIX: '' }; // no REVIEW_PROFILE key
-  const file = { GITHUB_AI_AGENT_REPO: 'carbon', REVIEW_PROFILE: 'core', ES_INDEX_PREFIX: '' };
+  const file = {
+    GITHUB_AI_AGENT_REPO: 'carbon',
+    REVIEW_PROFILE: 'core',
+    ES_INDEX_PREFIX: '',
+  };
   const r = runGuard(live, file);
-  assert('empty live REVIEW_PROFILE vs core env → not a mismatch (exit 0)', r.code === 0);
+  assert(
+    'empty live REVIEW_PROFILE vs core env → not a mismatch (exit 0)',
+    r.code === 0
+  );
 }
 
 // ── summary ───────────────────────────────────────────────────────────────────

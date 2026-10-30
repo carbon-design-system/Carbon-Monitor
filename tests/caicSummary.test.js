@@ -6,7 +6,10 @@
 // AC-11: caic review with a Cat 1 finding → "Carbon verification:" line IS present.
 
 const assert = require('assert');
-const { formatSummaryComment, formatLooksGoodComment } = require('../src/reviewPrompt');
+const {
+  formatSummaryComment,
+  formatLooksGoodComment,
+} = require('../src/reviewPrompt');
 const profiles = require('../src/profiles');
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -75,7 +78,9 @@ function makeSummaryArgs(overrides = {}) {
 }
 
 // ── AC-10: no Cat 1 → no Carbon verification line ────────────────────────────
-console.log('\n── AC-10: caic no Cat 1 → header is CAIC, no Carbon verification ────');
+console.log(
+  '\n── AC-10: caic no Cat 1 → header is CAIC, no Carbon verification ────'
+);
 
 test('formatSummaryComment with caic headerLabel starts [AI agent review - CAIC]', () => {
   const comment = formatSummaryComment({
@@ -128,7 +133,9 @@ test('profile.showCarbonVerification(reviewWithOnlyCat2Findings()) returns false
 });
 
 // ── AC-11: Cat 1 finding → Carbon verification line present ──────────────────
-console.log('\n── AC-11: caic with Cat 1 → Carbon verification line is present ─────');
+console.log(
+  '\n── AC-11: caic with Cat 1 → Carbon verification line is present ─────'
+);
 
 test('formatSummaryComment with showCarbonVerification=true has Carbon verification line', () => {
   const comment = formatSummaryComment({
@@ -156,7 +163,9 @@ test('profile.showCarbonVerification(reviewWithCat1Finding()) returns true', () 
 });
 
 // ── AC-4 guard: core path byte-identical ─────────────────────────────────────
-console.log('\n── AC-4 guard: core formatSummaryComment is unchanged ────────────────');
+console.log(
+  '\n── AC-4 guard: core formatSummaryComment is unchanged ────────────────'
+);
 
 test('core formatSummaryComment (no headerLabel) still starts [AI agent review \u2014 Carbon grounded]', () => {
   const comment = formatSummaryComment(makeSummaryArgs());

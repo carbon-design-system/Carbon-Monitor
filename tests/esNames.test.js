@@ -48,7 +48,9 @@ function withPrefix(prefix, fn) {
 const JAN_2025 = new Date('2025-01-15T12:00:00Z');
 
 // ── AC-5: Empty prefix → today's literals ─────────────────────────────────────
-console.log('\n── AC-5: empty prefix gives core literals ─────────────────────');
+console.log(
+  '\n── AC-5: empty prefix gives core literals ─────────────────────'
+);
 
 test('eventsIndex() with no prefix matches characterization snapshot', () => {
   withPrefix(undefined, (n) => {
@@ -59,7 +61,10 @@ test('eventsIndex() with no prefix matches characterization snapshot', () => {
 
 test('eventsIndex() with empty string prefix matches characterization snapshot', () => {
   withPrefix('', (n) => {
-    assert.strictEqual(n.eventsIndex(JAN_2025), 'carbon-monitor-events-2025.01');
+    assert.strictEqual(
+      n.eventsIndex(JAN_2025),
+      'carbon-monitor-events-2025.01'
+    );
   });
 });
 
@@ -100,7 +105,9 @@ test('mcpStateIndexDefault() with no prefix is carbon-monitor-mcp-state', () => 
 });
 
 // ── AC-9: Caic prefix → disjoint names ────────────────────────────────────────
-console.log('\n── AC-9: caic prefix produces disjoint names ──────────────────');
+console.log(
+  '\n── AC-9: caic prefix produces disjoint names ──────────────────'
+);
 
 const CAIC_PREFIX = 'carbon-monitor-caic';
 
@@ -161,36 +168,53 @@ test('no core name matches the caic wildcard carbon-monitor-caic-events-*', () =
 
 test('caic eventsIndex() does not match core template pattern carbon-monitor-events-template', () => {
   withPrefix(CAIC_PREFIX, (n) => {
-    assert.notStrictEqual(n.eventsIndex(JAN_2025), 'carbon-monitor-events-template');
+    assert.notStrictEqual(
+      n.eventsIndex(JAN_2025),
+      'carbon-monitor-events-template'
+    );
     assert.notStrictEqual(n.eventsTemplate(), 'carbon-monitor-events-template');
   });
 });
 
 test('caic scheduleIndex() is different from core scheduleIndex()', () => {
   let coreSchedule, caicSchedule;
-  withPrefix(undefined, (n) => { coreSchedule = n.scheduleIndex(); });
-  withPrefix(CAIC_PREFIX, (n) => { caicSchedule = n.scheduleIndex(); });
+  withPrefix(undefined, (n) => {
+    coreSchedule = n.scheduleIndex();
+  });
+  withPrefix(CAIC_PREFIX, (n) => {
+    caicSchedule = n.scheduleIndex();
+  });
   assert.notStrictEqual(caicSchedule, coreSchedule);
   assert.strictEqual(caicSchedule, 'carbon-monitor-caic-schedule');
 });
 
 test('caic mcpStateIndexDefault() is different from core mcpStateIndexDefault()', () => {
   let coreMcp, caicMcp;
-  withPrefix(undefined, (n) => { coreMcp = n.mcpStateIndexDefault(); });
-  withPrefix(CAIC_PREFIX, (n) => { caicMcp = n.mcpStateIndexDefault(); });
+  withPrefix(undefined, (n) => {
+    coreMcp = n.mcpStateIndexDefault();
+  });
+  withPrefix(CAIC_PREFIX, (n) => {
+    caicMcp = n.mcpStateIndexDefault();
+  });
   assert.notStrictEqual(caicMcp, coreMcp);
   assert.strictEqual(caicMcp, 'carbon-monitor-caic-mcp-state');
 });
 
 // ── AC-18: schedule defaults to disabled; ES index follows the prefix ──────────
-console.log('\n── AC-18: schedule default-off and index follows prefix ───────');
+console.log(
+  '\n── AC-18: schedule default-off and index follows prefix ───────'
+);
 
 test('scheduleManager defaultState() has enabled: false', () => {
   delete require.cache[require.resolve('../src/api/scheduleManager.js')];
   delete require.cache[require.resolve('../src/esNames.js')];
   const sm = require('../src/api/scheduleManager.js');
   const state = sm.defaultState();
-  assert.strictEqual(state.enabled, false, 'defaultState() must have enabled: false');
+  assert.strictEqual(
+    state.enabled,
+    false,
+    'defaultState() must have enabled: false'
+  );
   delete require.cache[require.resolve('../src/api/scheduleManager.js')];
 });
 

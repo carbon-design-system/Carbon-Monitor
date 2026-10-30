@@ -84,7 +84,10 @@ const {
   formatNotReviewedComment,
 } = require('../src/reviewPrompt');
 const { classify } = require('../src/reviewCoverage');
-const { parseReviewOutput, computeRecommendation } = require('../src/reviewParser');
+const {
+  parseReviewOutput,
+  computeRecommendation,
+} = require('../src/reviewParser');
 
 // ── Model-output corpus ───────────────────────────────────────────────────────
 
@@ -199,7 +202,9 @@ async function main() {
   const COMMIT = 'abc1234def56';
 
   // ── AC-1: Core prompt ───────────────────────────────────────────────────────
-  console.log('\n── AC-1: core prompt ──────────────────────────────────────────');
+  console.log(
+    '\n── AC-1: core prompt ──────────────────────────────────────────'
+  );
 
   await test('buildReviewPrompt (bob) produces the pinned snapshot', () => {
     const prompt = buildReviewPrompt({
@@ -220,10 +225,18 @@ async function main() {
   });
 
   // ── AC-2: Bob bundle file set ───────────────────────────────────────────────
-  console.log('\n── AC-2: Bob bundle file set ──────────────────────────────────');
+  console.log(
+    '\n── AC-2: Bob bundle file set ──────────────────────────────────'
+  );
 
   await test('Bob bundle holds carbon-builder and the rules file', async () => {
-    const skillSource = path.join(__dirname, '..', '.bob', 'skills', 'carbon-builder');
+    const skillSource = path.join(
+      __dirname,
+      '..',
+      '.bob',
+      'skills',
+      'carbon-builder'
+    );
     if (!fs.existsSync(skillSource)) {
       console.log('    ⚠️  carbon-builder skill not present — skipping');
       return;
@@ -251,14 +264,19 @@ async function main() {
       }
 
       const publicFiles = walk(tmpDir, tmpDir).filter((f) => f !== '.env');
-      assertSnapshot('bob-bundle-files.json', JSON.stringify(publicFiles, null, 2));
+      assertSnapshot(
+        'bob-bundle-files.json',
+        JSON.stringify(publicFiles, null, 2)
+      );
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
   // ── AC-3: Parser corpus ─────────────────────────────────────────────────────
-  console.log('\n── AC-3: parser corpus ────────────────────────────────────────');
+  console.log(
+    '\n── AC-3: parser corpus ────────────────────────────────────────'
+  );
 
   for (const { name, input } of CORPUS) {
     await test(`parser snapshot: ${name}`, () => {
@@ -291,7 +309,9 @@ async function main() {
   });
 
   // ── AC-4: Comment text ──────────────────────────────────────────────────────
-  console.log('\n── AC-4: comment text ─────────────────────────────────────────');
+  console.log(
+    '\n── AC-4: comment text ─────────────────────────────────────────'
+  );
 
   const baseSummary = {
     agent: 'bob',
@@ -317,7 +337,10 @@ async function main() {
 
   await test('formatSummaryComment includes "Carbon verification:" line', () => {
     const text = formatSummaryComment(baseSummary);
-    assert.ok(text.includes('Carbon verification:'), 'Expected "Carbon verification:" line');
+    assert.ok(
+      text.includes('Carbon verification:'),
+      'Expected "Carbon verification:" line'
+    );
   });
 
   await test('formatLooksGoodComment snapshot', () => {
@@ -385,7 +408,9 @@ async function main() {
   });
 
   // ── AC-5: ES name literals ──────────────────────────────────────────────────
-  console.log('\n── AC-5: Elasticsearch name literals ──────────────────────────');
+  console.log(
+    '\n── AC-5: Elasticsearch name literals ──────────────────────────'
+  );
 
   await test('hardcoded ES name literals match the pinned snapshot', () => {
     // These are the literal strings that Task 5 must produce when ES_INDEX_PREFIX is empty.
@@ -405,10 +430,15 @@ async function main() {
   });
 
   // ── AC-6: classify() corpus ─────────────────────────────────────────────────
-  console.log('\n── AC-6: classify() corpus ────────────────────────────────────');
+  console.log(
+    '\n── AC-6: classify() corpus ────────────────────────────────────'
+  );
 
   await test('classify() corpus matches pinned snapshot', () => {
-    const results = CLASSIFY_CORPUS.map((f) => ({ file: f, class: classify(f) }));
+    const results = CLASSIFY_CORPUS.map((f) => ({
+      file: f,
+      class: classify(f),
+    }));
     assertSnapshot('classify-corpus.json', JSON.stringify(results, null, 2));
   });
 

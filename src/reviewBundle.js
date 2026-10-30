@@ -248,7 +248,8 @@ async function buildReviewBundle({
       maxFiles: constants.MAX_FILES_PER_PR,
       filesUrl: `https://github.com/${owner}/${repo}/pull/${pr.number}/files`,
       changedFilesTotal,
-      extraPatterns: profile && profile.id !== 'core' ? profile.extraPatterns : undefined,
+      extraPatterns:
+        profile && profile.id !== 'core' ? profile.extraPatterns : undefined,
     });
 
     // Without `patch`: the diff is in diff.patch, and the raw patches would double the file
@@ -385,7 +386,12 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
     await adapter.prepareBundle(tempDir, { rules, skillSource, extraSkills });
 
     // 6. Create review prompt using the detailed prompt builder
-    const prompt = buildReviewPrompt({ owner, repo, agent: adapter.id, profile });
+    const prompt = buildReviewPrompt({
+      owner,
+      repo,
+      agent: adapter.id,
+      profile,
+    });
 
     // Return bundle object (no settingsPath needed - using global config)
     return {

@@ -213,7 +213,12 @@ function formatCoverageNote(coverage, filesUrl) {
  * @param {string} [options.headerLabel] - Override the header tag; defaults to core text
  * @returns {string}
  */
-function formatNotReviewedComment({ commitSha, coverage, filesUrl, headerLabel = 'AI agent review \u2014 Carbon grounded' }) {
+function formatNotReviewedComment({
+  commitSha,
+  coverage,
+  filesUrl,
+  headerLabel = 'AI agent review \u2014 Carbon grounded',
+}) {
   return `[${headerLabel}] · **Not Reviewed** · Commit: ${commitSha.substring(0, 7)}\n\n${formatCoverageNote(coverage, filesUrl)}\n`;
 }
 
@@ -456,7 +461,11 @@ function buildReviewPrompt({ owner, repo, agent, profile }) {
   // Early branch: non-core profiles supply their own prompt builder. The caic
   // prompt lives in src/profiles/caic/prompt.js and is added in Task 8.
   // Until then, resolve() returns a stub with no buildPrompt, so core runs.
-  if (profile && profile.id !== 'core' && typeof profile.buildPrompt === 'function') {
+  if (
+    profile &&
+    profile.id !== 'core' &&
+    typeof profile.buildPrompt === 'function'
+  ) {
     return profile.buildPrompt({ owner, repo, agent });
   }
 

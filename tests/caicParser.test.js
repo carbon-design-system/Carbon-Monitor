@@ -49,7 +49,9 @@ function makeAgentOutput({ hasCatalogue = true, findings = [] } = {}) {
 }
 
 // ── AC-12: convention finding with not-carbon-specific is kept ────────────────
-console.log('\n── AC-12: not-carbon-specific finding passes the filter ─────────────');
+console.log(
+  '\n── AC-12: not-carbon-specific finding passes the filter ─────────────'
+);
 
 test('caic "hardcoded cds--" finding with verificationSource not-carbon-specific is kept', () => {
   const conventionFinding = {
@@ -70,9 +72,16 @@ test('caic "hardcoded cds--" finding with verificationSource not-carbon-specific
   });
 
   assert.ok(review, 'parseReviewOutput must return a result');
-  assert.strictEqual(review.findings.length, 1, 'Convention finding must not be filtered');
+  assert.strictEqual(
+    review.findings.length,
+    1,
+    'Convention finding must not be filtered'
+  );
   assert.strictEqual(review.findings[0].title, conventionFinding.title);
-  assert.strictEqual(review.findings[0].verificationSource, 'not-carbon-specific');
+  assert.strictEqual(
+    review.findings[0].verificationSource,
+    'not-carbon-specific'
+  );
 });
 
 test('Carbon-specific finding with no MCP evidence is still dropped (regression guard)', () => {
@@ -89,7 +98,7 @@ test('Carbon-specific finding with no MCP evidence is still dropped (regression 
 
   const output = makeAgentOutput({ findings: [carbonFinding] });
   const review = parseReviewOutput(output, {
-    skillReads: [],  // no skill reads → carbon-builder findings dropped
+    skillReads: [], // no skill reads → carbon-builder findings dropped
     skillDir: '.bob/skills/carbon-builder/',
     readTool: 'read_file',
   });
@@ -123,7 +132,9 @@ test('both a convention finding and a filtered Carbon finding in same output —
     mcpEvidence: '',
   };
 
-  const output = makeAgentOutput({ findings: [conventionFinding, carbonFinding] });
+  const output = makeAgentOutput({
+    findings: [conventionFinding, carbonFinding],
+  });
   const review = parseReviewOutput(output, {
     skillReads: [],
     skillDir: '.bob/skills/carbon-builder/',
@@ -133,11 +144,16 @@ test('both a convention finding and a filtered Carbon finding in same output —
   assert.ok(review);
   // Only the convention finding survives
   assert.strictEqual(review.findings.length, 1);
-  assert.strictEqual(review.findings[0].verificationSource, 'not-carbon-specific');
+  assert.strictEqual(
+    review.findings[0].verificationSource,
+    'not-carbon-specific'
+  );
 });
 
 // ── AC-13: no catalogue line → unreliable ─────────────────────────────────────
-console.log('\n── AC-13: no catalogue line → unreliable + suggested-improvements ──');
+console.log(
+  '\n── AC-13: no catalogue line → unreliable + suggested-improvements ──'
+);
 
 test('output with no catalogue line → hasCatalogue is false', () => {
   const output = makeAgentOutput({ hasCatalogue: false });

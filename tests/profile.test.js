@@ -57,7 +57,9 @@ function loadProfiles() {
 }
 
 // ── AC-16: SKILL.md frontmatter and resolve fail-fast ─────────────────────────
-console.log('\n── AC-16: skill file validation ───────────────────────────────');
+console.log(
+  '\n── AC-16: skill file validation ───────────────────────────────'
+);
 
 const SKILL_DIR = path.join(
   __dirname,
@@ -74,7 +76,9 @@ test('caic skill directory name matches SKILL.md `name:` field (when skill exist
   if (!fs.existsSync(SKILL_FILE)) {
     // Skill not yet written (Task 7) — skip the content check but verify the
     // resolve() throw, which is the other half of AC-16.
-    console.log('    ⚠️  skill not yet created — content check deferred to Task 7');
+    console.log(
+      '    ⚠️  skill not yet created — content check deferred to Task 7'
+    );
     return;
   }
   const content = fs.readFileSync(SKILL_FILE, 'utf8');
@@ -89,7 +93,9 @@ test('caic skill directory name matches SKILL.md `name:` field (when skill exist
 
 test('caic skill SKILL.md has a non-empty `description:` field (when skill exists)', () => {
   if (!fs.existsSync(SKILL_FILE)) {
-    console.log('    ⚠️  skill not yet created — content check deferred to Task 7');
+    console.log(
+      '    ⚠️  skill not yet created — content check deferred to Task 7'
+    );
     return;
   }
   const content = fs.readFileSync(SKILL_FILE, 'utf8');
@@ -120,7 +126,10 @@ test('profiles.resolve("bob") for caic throws when skill file is missing', () =>
           `Error should name the skill; got: ${err.message}`
         );
       }
-      assert.ok(threw, 'profiles.resolve("bob") should throw when SKILL.md is missing');
+      assert.ok(
+        threw,
+        'profiles.resolve("bob") should throw when SKILL.md is missing'
+      );
     });
   } finally {
     if (exists) fs.renameSync(SKILL_FILE + '.bak', SKILL_FILE);
@@ -128,14 +137,19 @@ test('profiles.resolve("bob") for caic throws when skill file is missing', () =>
 });
 
 // ── AC-17: caic + claude = startup error; core + claude = unchanged ───────────
-console.log('\n── AC-17: caic rejects Claude; core with Claude is unchanged ──');
+console.log(
+  '\n── AC-17: caic rejects Claude; core with Claude is unchanged ──'
+);
 
 test('profiles.resolve("claude") with REVIEW_PROFILE=caic throws with a clear message', () => {
   // Create a stub skill file so the check doesn't fail before the agent check.
   const skillExists = fs.existsSync(SKILL_FILE);
   if (!skillExists) {
     fs.mkdirSync(SKILL_DIR, { recursive: true });
-    fs.writeFileSync(SKILL_FILE, '---\nname: caic-pr-review\ndescription: stub\n---\n');
+    fs.writeFileSync(
+      SKILL_FILE,
+      '---\nname: caic-pr-review\ndescription: stub\n---\n'
+    );
   }
   try {
     withEnv({ REVIEW_PROFILE: 'caic' }, () => {
@@ -165,7 +179,11 @@ test('profiles.resolve("claude") with REVIEW_PROFILE=core returns the core profi
   withEnv({ REVIEW_PROFILE: 'core' }, () => {
     const profiles = loadProfiles();
     const p = profiles.resolve('claude');
-    assert.strictEqual(p.id, 'core', 'core profile should be returned for Claude');
+    assert.strictEqual(
+      p.id,
+      'core',
+      'core profile should be returned for Claude'
+    );
   });
 });
 

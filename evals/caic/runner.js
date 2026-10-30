@@ -43,7 +43,9 @@ if (prIdx !== -1) {
 }
 
 if (!RUN_ALL_MANIFEST && prNumbers.length === 0) {
-  console.error('Usage: node evals/caic/runner.js --pr <n> [<n> ...] | --manifest');
+  console.error(
+    'Usage: node evals/caic/runner.js --pr <n> [<n> ...] | --manifest'
+  );
   process.exit(1);
 }
 
@@ -52,13 +54,19 @@ const owner = process.env.GITHUB_AI_AGENT_OWNER;
 const repo = process.env.GITHUB_AI_AGENT_REPO;
 
 if (!owner || !repo) {
-  console.error('GITHUB_AI_AGENT_OWNER and GITHUB_AI_AGENT_REPO must be set (point at the scratch repo).');
+  console.error(
+    'GITHUB_AI_AGENT_OWNER and GITHUB_AI_AGENT_REPO must be set (point at the scratch repo).'
+  );
   process.exit(1);
 }
 
 if (`${owner}/${repo}` !== MANIFEST.repo) {
-  console.warn(`⚠  Running against ${owner}/${repo}, but manifest targets ${MANIFEST.repo}.`);
-  console.warn('   Set GITHUB_AI_AGENT_OWNER=Chance-Gong GITHUB_AI_AGENT_REPO=caic-pr-review-test');
+  console.warn(
+    `⚠  Running against ${owner}/${repo}, but manifest targets ${MANIFEST.repo}.`
+  );
+  console.warn(
+    '   Set GITHUB_AI_AGENT_OWNER=Chance-Gong GITHUB_AI_AGENT_REPO=caic-pr-review-test'
+  );
 }
 
 // ── resolve PR list when --manifest is used ───────────────────────────────────
@@ -78,7 +86,9 @@ async function resolveManifestPrs() {
 
 // ── run one PR via src/index.js ───────────────────────────────────────────────
 function runReview(prNumber) {
-  console.log(`\n── Running PR #${prNumber} (profile=${profile}) ──────────────────`);
+  console.log(
+    `\n── Running PR #${prNumber} (profile=${profile}) ──────────────────`
+  );
   const result = spawnSync(
     process.execPath,
     [path.resolve(__dirname, '../../src/index.js'), '--pr', String(prNumber)],
@@ -95,12 +105,25 @@ function runReview(prNumber) {
 function readLastCosts(n) {
   const ledgerPath =
     process.env.CREDIT_LEDGER_PATH ||
-    path.join(os.tmpdir ? os.tmpdir() : '/tmp', 'carbon-monitor-credit-ledger.jsonl');
+    path.join(
+      os.tmpdir ? os.tmpdir() : '/tmp',
+      'carbon-monitor-credit-ledger.jsonl'
+    );
   if (!fs.existsSync(ledgerPath)) return [];
-  const lines = fs.readFileSync(ledgerPath, 'utf8').trim().split('\n').filter(Boolean);
+  const lines = fs
+    .readFileSync(ledgerPath, 'utf8')
+    .trim()
+    .split('\n')
+    .filter(Boolean);
   return lines
     .slice(-n)
-    .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+    .map((l) => {
+      try {
+        return JSON.parse(l);
+      } catch {
+        return null;
+      }
+    })
     .filter(Boolean);
 }
 
@@ -145,7 +168,9 @@ const os = require('os');
   if (RUN_ALL_MANIFEST) {
     console.log('Resolving open PRs matching manifest branches...');
     toRun = await resolveManifestPrs();
-    console.log(`Found ${toRun.length} open manifest PR(s): ${toRun.join(', ')}`);
+    console.log(
+      `Found ${toRun.length} open manifest PR(s): ${toRun.join(', ')}`
+    );
   }
 
   if (toRun.length === 0) {
@@ -181,13 +206,19 @@ const os = require('os');
     const mean = total / costs.length;
     runRecord.meanCostPerReview = mean;
     runRecord.totalCost = total;
-    console.log(`\n── Cost summary ──────────────────────────────────────────────`);
+    console.log(
+      `\n── Cost summary ──────────────────────────────────────────────`
+    );
     console.log(`  Reviews: ${costs.length}`);
-    console.log(`  Mean cost per review: ${mean.toFixed(2)} (units: ${costs[0]?.unit || 'unknown'})`);
+    console.log(
+      `  Mean cost per review: ${mean.toFixed(2)} (units: ${costs[0]?.unit || 'unknown'})`
+    );
     console.log(`  Total for this run: ${total.toFixed(2)}`);
     const full52 = mean * 52;
     console.log(`  Projected total for 52 reviews: ${full52.toFixed(2)}`);
-    console.log(`\n  ⚠  Pilot gate: confirm the projected cost is acceptable before running all 26 PRs.`);
+    console.log(
+      `\n  ⚠  Pilot gate: confirm the projected cost is acceptable before running all 26 PRs.`
+    );
   }
 
   const outPath = path.join(resultsDir, `${runId}.json`);
@@ -196,7 +227,9 @@ const os = require('os');
 
   const failed = runRecord.reviews.filter((r) => !r.success);
   if (failed.length > 0) {
-    console.error(`\n${failed.length} review(s) failed: PR #${failed.map((r) => r.prNumber).join(', #')}`);
+    console.error(
+      `\n${failed.length} review(s) failed: PR #${failed.map((r) => r.prNumber).join(', #')}`
+    );
     process.exit(1);
   }
   console.log(`\n✅ All ${toRun.length} review(s) complete.`);

@@ -823,7 +823,9 @@ async function reviewPRs(options = {}) {
                 commitSha: pr.head.sha,
                 coverage,
                 filesUrl: `${pr.html_url}/files`,
-                ...(profile.headerLabel ? { headerLabel: profile.headerLabel } : {}),
+                ...(profile.headerLabel
+                  ? { headerLabel: profile.headerLabel }
+                  : {}),
               }),
             });
           }
@@ -1378,7 +1380,9 @@ async function reviewPRs(options = {}) {
                   nitFindings,
                   coverage,
                   filesUrl: `${pr.html_url}/files`,
-                  ...(profile.headerLabel ? { headerLabel: profile.headerLabel } : {}),
+                  ...(profile.headerLabel
+                    ? { headerLabel: profile.headerLabel }
+                    : {}),
                 })
               : formatSummaryComment({
                   agent,
@@ -1396,15 +1400,18 @@ async function reviewPRs(options = {}) {
                   nitFindings,
                   coverage,
                   filesUrl: `${pr.html_url}/files`,
-                  ...(profile.headerLabel ? { headerLabel: profile.headerLabel } : {}),
-                  ...((() => {
+                  ...(profile.headerLabel
+                    ? { headerLabel: profile.headerLabel }
+                    : {}),
+                  ...(() => {
                     // showCarbonVerification may be a static boolean (core) or a
                     // function(review) → bool (caic: true only when Cat 1 present).
                     const scv = profile.showCarbonVerification;
-                    const val =
-                      typeof scv === 'function' ? scv(review) : scv;
-                    return val !== undefined ? { showCarbonVerification: val } : {};
-                  })()),
+                    const val = typeof scv === 'function' ? scv(review) : scv;
+                    return val !== undefined
+                      ? { showCarbonVerification: val }
+                      : {};
+                  })(),
                 });
 
           await client.postSummaryComment({

@@ -31,7 +31,9 @@ function test(label, fn) {
 const { CAIC } = require('../src/profiles');
 
 // ── AC-14: caic extra patterns ────────────────────────────────────────────────
-console.log('\n── AC-14: caic extra coverage patterns ──────────────────────────────');
+console.log(
+  '\n── AC-14: caic extra coverage patterns ──────────────────────────────'
+);
 
 // Generated (class 2) with caic patterns
 const GENERATED_PATHS = [
@@ -77,7 +79,11 @@ const PATHS_WITHOUT_EXTRA = [
 for (const p of PATHS_WITHOUT_EXTRA) {
   test(`"${p}" without extra patterns → class 0 (source) as today`, () => {
     const cls = classify(p); // no extra arg
-    assert.strictEqual(cls, 0, `Expected 0 (source) without extra patterns, got ${cls}`);
+    assert.strictEqual(
+      cls,
+      0,
+      `Expected 0 (source) without extra patterns, got ${cls}`
+    );
   });
 }
 

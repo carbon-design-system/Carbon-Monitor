@@ -110,7 +110,10 @@ function createBranch(branch, sha) {
     });
     console.log(`  → created branch ${branch}`);
   } catch (err) {
-    if (err.message.includes('already exists') || err.message.includes('Reference already exists')) {
+    if (
+      err.message.includes('already exists') ||
+      err.message.includes('Reference already exists')
+    ) {
       console.log(`  → branch ${branch} already exists, reusing`);
     } else {
       throw err;
@@ -129,10 +132,15 @@ function createPr(branch, title, body) {
     });
     return pr.number;
   } catch (err) {
-    if (err.message.includes('already exists') || err.message.includes('A pull request already exists')) {
+    if (
+      err.message.includes('already exists') ||
+      err.message.includes('A pull request already exists')
+    ) {
       console.log(`  → PR already exists for ${branch}`);
       // Find existing PR number
-      const prs = ghApi(`repos/${REPO}/pulls?head=Chance-Gong:${branch}&state=open`);
+      const prs = ghApi(
+        `repos/${REPO}/pulls?head=Chance-Gong:${branch}&state=open`
+      );
       return prs && prs.length > 0 ? prs[0].number : null;
     }
     throw err;
@@ -164,20 +172,23 @@ function createPr(branch, title, body) {
       }
 
       // 3. Open the PR
-      const prNumber = createPr(
-        pr.branch,
-        pr.title,
-        pr.description || ''
-      );
+      const prNumber = createPr(pr.branch, pr.title, pr.description || '');
       console.log(`  ✅ PR #${prNumber}: ${pr.title}`);
       results.push({ id: pr.id, prNumber, branch: pr.branch, status: 'ok' });
     } catch (err) {
       console.error(`  ❌ ${pr.id} failed: ${err.message}`);
-      results.push({ id: pr.id, branch: pr.branch, status: 'error', error: err.message });
+      results.push({
+        id: pr.id,
+        branch: pr.branch,
+        status: 'error',
+        error: err.message,
+      });
     }
   }
 
-  console.log('\n── Summary ──────────────────────────────────────────────────────');
+  console.log(
+    '\n── Summary ──────────────────────────────────────────────────────'
+  );
   for (const r of results) {
     const icon = r.status === 'ok' ? '✅' : '❌';
     const detail = r.status === 'ok' ? `PR #${r.prNumber}` : r.error;
