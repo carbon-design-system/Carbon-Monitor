@@ -1,0 +1,18 @@
+[
+  ".bob/rules/01-output.md",
+  ".bob/skills/carbon-builder/README.md",
+  ".bob/skills/carbon-builder/SKILL.md",
+  ".bob/skills/carbon-builder/references/accessibility-rules.md",
+  ".bob/skills/carbon-builder/references/ai-chat-protocols.md",
+  ".bob/skills/carbon-builder/references/carbon-labs.md",
+  ".bob/skills/carbon-builder/references/charts-protocols.md",
+  ".bob/skills/carbon-builder/references/code-audit-protocols.md",
+  ".bob/skills/carbon-builder/references/common-pitfalls.md",
+  ".bob/skills/carbon-builder/references/data-model.md",
+  ".bob/skills/carbon-builder/references/error-recovery.md",
+  ".bob/skills/carbon-builder/references/framework-rules.md",
+  ".bob/skills/carbon-builder/references/grid-system.md",
+  ".bob/skills/carbon-builder/references/implementation-guardrails.md",
+  ".bob/skills/carbon-builder/references/query-protocols.md",
+  ".bob/skills/carbon-builder/references/result-validation.md"
+]

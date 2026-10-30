@@ -36,7 +36,7 @@
     "test:posting": "node tests/reviewPosting.test.js",
     "test:coverage": "node tests/reviewCoverage.test.js",
     "test:runner": "node tests/agentRunner.test.js && node tests/evidence.test.js && node tests/test-bad-escape.js && node tests/test-truncation-edge-cases.js && node tests/tokenUsage.test.js",
-    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js && node tests/linkedIssue.test.js && node tests/prTargeting.test.js && node tests/sessionAuth.test.js && node tests/apiAuth.test.js && node tests/htmlEscape.test.js && node tests/readiness.test.js && node tests/healthChecks.test.js && node tests/githubClient.test.js && node tests/mcpConnection.test.js && node tests/creditsEs.test.js && node tests/bobCredits.test.js && node tests/spend.test.js && node tests/reviewTargeting.test.js && node tests/reviewablePrs.test.js && node tests/scheduleManager.test.js && node tests/slackNotifier.test.js && node tests/reviewPrompt.test.js && node tests/agents.test.js && node tests/agentRunner.test.js && node tests/evidence.test.js && node tests/test-bad-escape.js && node tests/test-truncation-edge-cases.js && node tests/tokenUsage.test.js && node tests/concurrency.test.js && node tests/claudeReview.test.js && node tests/reviewPosting.test.js && node tests/reviewCoverage.test.js",
+    "test:all": "node tests/test-parser.js && node tests/test-diff-mapper.js && node tests/carbonBuilderAuthority.test.js && node tests/hasCatalogue.test.js && node tests/linkedIssue.test.js && node tests/prTargeting.test.js && node tests/sessionAuth.test.js && node tests/apiAuth.test.js && node tests/htmlEscape.test.js && node tests/readiness.test.js && node tests/healthChecks.test.js && node tests/githubClient.test.js && node tests/mcpConnection.test.js && node tests/creditsEs.test.js && node tests/bobCredits.test.js && node tests/spend.test.js && node tests/reviewTargeting.test.js && node tests/reviewablePrs.test.js && node tests/scheduleManager.test.js && node tests/slackNotifier.test.js && node tests/reviewPrompt.test.js && node tests/agents.test.js && node tests/agentRunner.test.js && node tests/evidence.test.js && node tests/test-bad-escape.js && node tests/test-truncation-edge-cases.js && node tests/tokenUsage.test.js && node tests/concurrency.test.js && node tests/claudeReview.test.js && node tests/reviewPosting.test.js && node tests/reviewCoverage.test.js && node tests/characterization.core.test.js && node tests/profile.test.js && node tests/esNames.test.js && node tests/deployGuard.test.js && node tests/caicBundle.test.js && node tests/caicSummary.test.js && node tests/caicCoverage.test.js && node tests/caicParser.test.js",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -83,5 +83,6 @@
   },
   "engines": {
     "node": ">=22.15.0"
-  }
+  },
+  "packageManager": "pnpm@10.14.0+sha512.ad27a79641b49c3e481a16a805baa71817a04bbe06a38d17e60e2eaee83f6a146c6a688125f5792e48dd5ba30e7da52a5cda4c3992b9ccf333f9ce223af84748"
 }

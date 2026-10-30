@@ -1,0 +1,118 @@
+[
+  {
+    "file": "dist/index.js",
+    "class": 2
+  },
+  {
+    "file": "es/button/index.js",
+    "class": 2
+  },
+  {
+    "file": "lib/utils.js",
+    "class": 2
+  },
+  {
+    "file": "__snapshots__/button.snap",
+    "class": 2
+  },
+  {
+    "file": "src/button.snap",
+    "class": 2
+  },
+  {
+    "file": "src/button.min.js",
+    "class": 2
+  },
+  {
+    "file": "src/button.min.css",
+    "class": 2
+  },
+  {
+    "file": "src/button.map",
+    "class": 2
+  },
+  {
+    "file": "package-lock.json",
+    "class": 2
+  },
+  {
+    "file": "yarn.lock",
+    "class": 2
+  },
+  {
+    "file": "pnpm-lock.yaml",
+    "class": 2
+  },
+  {
+    "file": "__tests__/button.test.js",
+    "class": 1
+  },
+  {
+    "file": "__testfixtures__/input.md",
+    "class": 1
+  },
+  {
+    "file": "src/button.test.js",
+    "class": 1
+  },
+  {
+    "file": "src/button.spec.js",
+    "class": 1
+  },
+  {
+    "file": "src/button-test.js",
+    "class": 1
+  },
+  {
+    "file": "src/button.stories.js",
+    "class": 1
+  },
+  {
+    "file": "src/README.md",
+    "class": 1
+  },
+  {
+    "file": "docs/guide.txt",
+    "class": 1
+  },
+  {
+    "file": "src/notes.rst",
+    "class": 1
+  },
+  {
+    "file": "src/CHANGELOG.mdx",
+    "class": 1
+  },
+  {
+    "file": "src/button.js",
+    "class": 0
+  },
+  {
+    "file": "src/components/Modal.tsx",
+    "class": 0
+  },
+  {
+    "file": "packages/react/src/index.ts",
+    "class": 0
+  },
+  {
+    "file": "src/styles.scss",
+    "class": 0
+  },
+  {
+    "file": "src/figma.config.ts",
+    "class": 0
+  },
+  {
+    "file": "src/api/server.js",
+    "class": 0
+  },
+  {
+    "file": "package.json",
+    "class": 0
+  },
+  {
+    "file": "__tests__/button.snap",
+    "class": 2
+  }
+]

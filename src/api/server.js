@@ -32,6 +32,7 @@ const sessionAuth = require('./sessionAuth');
 const bobCredits = require('./bobCredits');
 const creditLedger = require('./creditLedger');
 const { esCall } = require('../observability/esClient');
+const esNames = require('../esNames');
 const reviewLog = require('./reviewLog');
 const {
   startProgress,
@@ -542,7 +543,8 @@ function handleConfig(req, res) {
 
 // ── Bobcoins ────────────────────────────────────────────────────────────────
 
-const CREDIT_EVENTS_INDEX = 'carbon-monitor-events-*';
+// Derived at call time so ES_INDEX_PREFIX is picked up after .env loads.
+const getCreditEventsIndex = () => esNames.eventsWildcard();
 // The root agent term keeps a deployment that switched agents from adding one
 // agent's unit to the other's.
 const creditEventFilter = (adapter) => [
@@ -558,7 +560,7 @@ let agentCreditsCache = null;
 
 function creditSearchQuery(adapter, size, sort) {
   return {
-    index: CREDIT_EVENTS_INDEX,
+    index: getCreditEventsIndex(),
     size,
     ...(sort ? { sort } : {}),
     query: { bool: { filter: creditEventFilter(adapter) } },

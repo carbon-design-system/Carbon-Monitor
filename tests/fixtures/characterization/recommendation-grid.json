@@ -1,0 +1,170 @@
+[
+  {
+    "blocking": 0,
+    "major": 0,
+    "minor": 0,
+    "nit": 0,
+    "recommendation": "looks-good"
+  },
+  {
+    "blocking": 0,
+    "major": 0,
+    "minor": 0,
+    "nit": 1,
+    "recommendation": "looks-good"
+  },
+  {
+    "blocking": 0,
+    "major": 0,
+    "minor": 1,
+    "nit": 0,
+    "recommendation": "suggested-improvements"
+  },
+  {
+    "blocking": 0,
+    "major": 0,
+    "minor": 1,
+    "nit": 1,
+    "recommendation": "suggested-improvements"
+  },
+  {
+    "blocking": 0,
+    "major": 1,
+    "minor": 0,
+    "nit": 0,
+    "recommendation": "suggested-improvements"
+  },
+  {
+    "blocking": 0,
+    "major": 1,
+    "minor": 0,
+    "nit": 1,
+    "recommendation": "suggested-improvements"
+  },
+  {
+    "blocking": 0,
+    "major": 1,
+    "minor": 1,
+    "nit": 0,
+    "recommendation": "suggested-improvements"
+  },
+  {
+    "blocking": 0,
+    "major": 1,
+    "minor": 1,
+    "nit": 1,
+    "recommendation": "suggested-improvements"
+  },
+  {
+    "blocking": 0,
+    "major": 2,
+    "minor": 0,
+    "nit": 0,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 0,
+    "major": 2,
+    "minor": 0,
+    "nit": 1,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 0,
+    "major": 2,
+    "minor": 1,
+    "nit": 0,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 0,
+    "major": 2,
+    "minor": 1,
+    "nit": 1,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 1,
+    "major": 0,
+    "minor": 0,
+    "nit": 0,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 1,
+    "major": 0,
+    "minor": 0,
+    "nit": 1,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 1,
+    "major": 0,
+    "minor": 1,
+    "nit": 0,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 1,
+    "major": 0,
+    "minor": 1,
+    "nit": 1,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 1,
+    "major": 1,
+    "minor": 0,
+    "nit": 0,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 1,
+    "major": 1,
+    "minor": 0,
+    "nit": 1,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 1,
+    "major": 1,
+    "minor": 1,
+    "nit": 0,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 1,
+    "major": 1,
+    "minor": 1,
+    "nit": 1,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 1,
+    "major": 2,
+    "minor": 0,
+    "nit": 0,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 1,
+    "major": 2,
+    "minor": 0,
+    "nit": 1,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 1,
+    "major": 2,
+    "minor": 1,
+    "nit": 0,
+    "recommendation": "consider-revising"
+  },
+  {
+    "blocking": 1,
+    "major": 2,
+    "minor": 1,
+    "nit": 1,
+    "recommendation": "consider-revising"
+  }
+]

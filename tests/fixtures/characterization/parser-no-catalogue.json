@@ -1,0 +1,18 @@
+{
+  "summaryMarkdown": "No catalogue.",
+  "findings": [],
+  "verificationStats": {
+    "total": 0,
+    "carbonSpecific": 0,
+    "carbonVerified": 0,
+    "carbonBuilderVerified": 0,
+    "carbonBuilderRejected": 0,
+    "filtered": 0,
+    "skillFilesRead": []
+  },
+  "hasCatalogue": false,
+  "recommendation": "suggested-improvements",
+  "recommendationRationale": "Review reliability is uncertain — no Step 1 file catalogue was detected in the agent output.",
+  "catalogueWarning": "No file catalogue was found in this review's output. The agent may have skipped Step 1 analysis. Zero findings here cannot be confirmed as a clean review — re-running is recommended.",
+  "findingsTable": []
+}

@@ -10,7 +10,8 @@ set -euo pipefail
 
 export NODE_ENV=production
 
-[ -f .env ] && set -o allexport && source .env && set +o allexport
+: "${DEPLOY_ENV_FILE:=.env}"
+[ -f "${DEPLOY_ENV_FILE}" ] && set -o allexport && source "${DEPLOY_ENV_FILE}" && set +o allexport
 
 # -------- Config (override via env or .env) --------
 # REGION, RESOURCE_GROUP, PROJECT and NAMESPACE are read from .env.
@@ -85,6 +86,9 @@ ok()  { print -P "${GRN}✔${CLR} $*"; }
 warn(){ print -P "${YLW}⚠${CLR} $*"; }
 die() { print -P "${RED}✘${CLR} $*" >&2; exit 1; }
 need(){ command -v "$1" >/dev/null 2>&1 || die "Missing command '$1'"; }
+
+# Guard function (sourced; uses die/warn defined above).
+source "${0:A:h}/scripts/deployGuard.sh"
 
 need ibmcloud
 need podman
@@ -382,10 +386,28 @@ log "Deploying immutable image: ${DEPLOY_IMAGE}"
 #
 # Code Engine exposes no flag for target-burst-capacity, so ANY `app update`
 # after the kubectl patch mints a fresh revision and silently strips TBC=0.
+# -------- Printed target --------
+log "Deploy target:"
+log "  App:     ${APP}"
+log "  Repo:    ${GITHUB_AI_AGENT_OWNER:-carbon-design-system}/${GITHUB_AI_AGENT_REPO:-carbon}"
+log "  Profile: ${REVIEW_PROFILE:-core}"
+log "  Prefix:  ${ES_INDEX_PREFIX:-(none, using core literal names)}"
+log "  EnvFile: ${DEPLOY_ENV_FILE}"
+
 log "Ensuring app '${APP}' exists..."
 APP_EXISTS=0
 if ibmcloud ce app list | awk 'NR>1 {print $1}' | grep -qx "$APP"; then
   APP_EXISTS=1
+fi
+
+# -------- Target guard --------
+# Aborts if the live app targets a different repo/profile/prefix than the env file,
+# unless DEPLOY_ALLOW_TARGET_CHANGE=1.
+if [ "$APP_EXISTS" = "1" ]; then
+  check_deploy_target "$APP" \
+    "${GITHUB_AI_AGENT_REPO:-carbon}" \
+    "${REVIEW_PROFILE:-}" \
+    "${ES_INDEX_PREFIX:-}"
 fi
 
 # An app's URL is stable for its lifetime, so it is resolved BEFORE the write and
@@ -472,6 +494,10 @@ COMMON_FLAGS=(
   # Durable Carbon MCP state lives in Elasticsearch
   # (readState/writeState) and the 'carbon-monitor-mcp-state' index.
   --env "MCP_STATE_BACKEND=${MCP_STATE_BACKEND:-elasticsearch}"
+  --env "REVIEW_PROFILE=${REVIEW_PROFILE:-}"
+  --env "ES_INDEX_PREFIX=${ES_INDEX_PREFIX:-}"
+  --env "MCP_STATE_INDEX=${MCP_STATE_INDEX:-}"
+  --env "MCP_STATE_DOC_ID=${MCP_STATE_DOC_ID:-}"
 )
 
 if [ "$APP_EXISTS" = "1" ]; then
