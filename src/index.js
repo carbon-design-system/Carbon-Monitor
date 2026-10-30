@@ -68,6 +68,7 @@ const {
   estimateTokenUsage,
 } = require('./reviewPrompt');
 const { splitFindings } = require('./diffMapper');
+const profiles = require('./profiles');
 const { emitEvent } = require('./observability/eventService');
 const bobCredits = require('./api/bobCredits');
 const creditLedger = require('./api/creditLedger');
@@ -549,6 +550,16 @@ async function reviewPRs(options = {}) {
     return;
   }
 
+  // Resolve the active profile once. A startup error here (unknown profile,
+  // caic + non-Bob agent, missing skill files) surfaces before any PR is touched.
+  let profile;
+  try {
+    profile = profiles.resolve(agent);
+  } catch (profileErr) {
+    console.error(`❌ Profile error: ${profileErr.message}`);
+    return;
+  }
+
   // Check if agent is available
   const available = await isAgentAvailable(agent);
   if (!available) {
@@ -579,6 +590,7 @@ async function reviewPRs(options = {}) {
     correlation_id: correlationId,
     repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
     agent: REVIEW_AGENT,
+    profile: profile.id,
   });
 
   // PRs named explicitly but not fetchable. Counted rather than thrown so the
@@ -735,6 +747,7 @@ async function reviewPRs(options = {}) {
           pr_number: pr.number,
           agent: REVIEW_AGENT,
           commit_sha: pr.head.sha,
+          profile: profile.id,
         });
 
         // A full listing may be cut short; the PR itself says how many files there are.
@@ -762,6 +775,7 @@ async function reviewPRs(options = {}) {
           client,
           agent,
           changedFilesTotal,
+          profile,
         });
         console.log(`✅ Bundle: ${bundle.dir}`);
         const { coverage } = bundle;
@@ -791,6 +805,7 @@ async function reviewPRs(options = {}) {
             pr_number: pr.number,
             agent: REVIEW_AGENT,
             commit_sha: pr.head.sha,
+            profile: profile.id,
             payload: {
               pr_title: pr.title,
               findings_total: 0,
@@ -808,6 +823,7 @@ async function reviewPRs(options = {}) {
                 commitSha: pr.head.sha,
                 coverage,
                 filesUrl: `${pr.html_url}/files`,
+                ...(profile.headerLabel ? { headerLabel: profile.headerLabel } : {}),
               }),
             });
           }
@@ -1281,6 +1297,7 @@ async function reviewPRs(options = {}) {
           pr_number: pr.number,
           agent: REVIEW_AGENT,
           commit_sha: pr.head.sha,
+          profile: profile.id,
           payload: {
             // pr_title is stored so Kibana runtime fields can extract any embedded
             // identifiers (e.g. original Carbon PR numbers in test PR titles).
@@ -1317,6 +1334,21 @@ async function reviewPRs(options = {}) {
               : null,
             tool_calls: observed ? evidence.total : null,
             mcp_tool_calls: observed ? sumCalls(evidence.mcpCalls) : null,
+            // extra_skills_used: Bob use_skill calls for profile-specific skills.
+            // Only populated when the profile has extra skills (non-empty list).
+            ...(profile.extraSkills && profile.extraSkills.length > 0
+              ? {
+                  extra_skills_used: (finalRun.toolCalls || [])
+                    .filter(
+                      (c) =>
+                        c.name === 'use_skill' &&
+                        profile.extraSkills.some(
+                          (s) => s.name === (c.params || {}).skill_name
+                        )
+                    )
+                    .map((c) => (c.params || {}).skill_name),
+                }
+              : {}),
             runs,
             coinsSpent: totalSpent,
             remainingAfter:
@@ -1346,6 +1378,7 @@ async function reviewPRs(options = {}) {
                   nitFindings,
                   coverage,
                   filesUrl: `${pr.html_url}/files`,
+                  ...(profile.headerLabel ? { headerLabel: profile.headerLabel } : {}),
                 })
               : formatSummaryComment({
                   agent,
@@ -1363,6 +1396,15 @@ async function reviewPRs(options = {}) {
                   nitFindings,
                   coverage,
                   filesUrl: `${pr.html_url}/files`,
+                  ...(profile.headerLabel ? { headerLabel: profile.headerLabel } : {}),
+                  ...((() => {
+                    // showCarbonVerification may be a static boolean (core) or a
+                    // function(review) → bool (caic: true only when Cat 1 present).
+                    const scv = profile.showCarbonVerification;
+                    const val =
+                      typeof scv === 'function' ? scv(review) : scv;
+                    return val !== undefined ? { showCarbonVerification: val } : {};
+                  })()),
                 });
 
           await client.postSummaryComment({
@@ -1492,6 +1534,7 @@ async function reviewPRs(options = {}) {
       correlation_id: correlationId,
       repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
       agent: REVIEW_AGENT,
+      profile: profile.id,
       payload: {
         prs_reviewed: prsReviewedThisRun,
         duration_ms: runDurationMs,

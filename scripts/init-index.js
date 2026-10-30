@@ -27,6 +27,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const esNames = require('../src/esNames');
 
 const DRY = process.argv.includes('--dry-run');
 
@@ -40,15 +41,14 @@ const RETENTION = Math.max(
   parseInt(process.env.EVENTS_RETENTION_DAYS || '180', 10)
 );
 
-const ALIAS = 'carbon-monitor-events';
-const TEMPLATE = 'carbon-monitor-events-template';
-const ILM_NAME = 'carbon-monitor-events-ilm';
+// Names are derived from ES_INDEX_PREFIX so this script can bootstrap both
+// the core and the caic index by setting that variable before running.
+const ALIAS = esNames.eventsAlias();
+const TEMPLATE = esNames.eventsTemplate();
+const ILM_NAME = esNames.eventsIlm();
 
 function currentMonthIndex() {
-  const now = new Date();
-  const yyyy = now.getUTCFullYear();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-  return `${ALIAS}-${yyyy}.${mm}`;
+  return esNames.eventsIndex();
 }
 
 // ── Client ────────────────────────────────────────────────────────────────────
@@ -111,6 +111,7 @@ const INDEX_MAPPING = {
       fields: { keyword: { type: 'keyword', ignore_above: 512 } },
     },
     agent: { type: 'keyword' },
+    profile: { type: 'keyword' },
     commit_sha: { type: 'keyword' },
     payload: {
       dynamic: true,

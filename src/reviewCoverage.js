@@ -43,11 +43,14 @@ function fileDiff(file) {
  * 0 source, config and style; 1 tests, stories and docs; 2 generated.
  * Generated wins, so a snapshot under __tests__ is class 2.
  * @param {string} filename
+ * @param {{ generated?: RegExp, support?: RegExp }} [extra] - Optional extra patterns (caic profile).
  * @returns {0|1|2}
  */
-function classify(filename) {
+function classify(filename, extra) {
   if (GENERATED.test(filename)) return 2;
+  if (extra && extra.generated && extra.generated.test(filename)) return 2;
   if (SUPPORT.test(filename)) return 1;
+  if (extra && extra.support && extra.support.test(filename)) return 1;
   return 0;
 }
 
@@ -179,6 +182,7 @@ function cutFile(file, text, room, filesUrl) {
  * @param {number} options.maxFiles            - Most files in one review; not a positive number means none
  * @param {string} [options.filesUrl]          - The PR's Files changed URL, named in a truncation marker
  * @param {number} [options.changedFilesTotal] - GitHub's changed_files, read when the listing is full
+ * @param {{ generated?: RegExp, support?: RegExp }} [options.extraPatterns] - Optional extra classify patterns (caic profile).
  * @returns {{diff: string, reviewed: Array, omitted: Array, coverage: Object}}
  */
 function selectCoverage({
@@ -187,9 +191,10 @@ function selectCoverage({
   maxFiles,
   filesUrl = 'the Files changed tab',
   changedFilesTotal,
+  extraPatterns,
 }) {
   const texts = files.map(fileDiff);
-  const classes = files.map((f) => classify(f.filename));
+  const classes = files.map((f) => classify(f.filename, extraPatterns));
   const changesOf = (f) => f.changes ?? (f.additions || 0) + (f.deletions || 0);
   // A mistyped budget or cap (NaN) or a cap of 0 means none, as the old code skipped truncation on NaN.
   const budget = Number.isFinite(maxChars) ? maxChars : Infinity;

@@ -1,0 +1,18 @@
+{
+  "summaryMarkdown": "Looks good.",
+  "findings": [],
+  "verificationStats": {
+    "total": 0,
+    "carbonSpecific": 0,
+    "carbonVerified": 0,
+    "carbonBuilderVerified": 0,
+    "carbonBuilderRejected": 0,
+    "filtered": 0,
+    "skillFilesRead": []
+  },
+  "hasCatalogue": true,
+  "recommendation": "looks-good",
+  "recommendationRationale": "No issues found.",
+  "catalogueWarning": null,
+  "findingsTable": []
+}

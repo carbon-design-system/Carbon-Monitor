@@ -1,0 +1,498 @@
+{
+  "repo": "Chance-Gong/caic-pr-review-test",
+  "baseRef": "main",
+  "upstreamCommit": "88dddbd425c9fdd5eb1520c521d914a36809dbb5",
+  "note": "Eval PRs for caic-pr-review. Created by scripts/create-caic-eval-prs.js. Score with evals/caic/runner.js.",
+  "prs": [
+    {
+      "id": "A1",
+      "branch": "eval/a1-react-import",
+      "title": "A1: @carbon/react import in packages/ai-chat/src/",
+      "description": "Adds a Carbon React import into the ai-chat runtime source — blocked by the Web Components-only rule.",
+      "defect": {
+        "file": "packages/ai-chat/src/index.ts",
+        "line": 3,
+        "rule": "F4",
+        "severity": "blocking",
+        "description": "@carbon/react import added to packages/ai-chat/src/ — must use @carbon/web-components only"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/index.ts",
+          "content": "import '@carbon/react';\nexport { formatMessage } from './chat/utils/format-message';\nexport type { MessageInput } from './chat/utils/format-message';\n"
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "branch": "eval/a2-hardcoded-cds",
+      "title": "A2: hardcoded cds-- prefix in SCSS",
+      "description": "Uses a literal cds-- class string instead of #{$prefix}--.",
+      "defect": {
+        "file": "packages/ai-chat-components/src/components/chat-button/chat-button.scss",
+        "line": 4,
+        "rule": "N1",
+        "severity": "blocking",
+        "description": "Hardcoded cds-- class literal in SCSS"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat-components/src/components/chat-button/chat-button.scss",
+          "content": "@use '@carbon/styles/scss/config' as *;\n@use '@carbon/styles/scss/spacing' as *;\n\n.cds--example-chat-button {\n  margin-inline-start: $spacing-05;\n  padding-block: $spacing-03;\n}\n\n.#{$prefix}--example-chat-button__label {\n  padding-inline: $spacing-05;\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "A3",
+      "branch": "eval/a3-physical-css",
+      "title": "A3: physical CSS directional properties",
+      "description": "Replaces logical properties with physical margin-left / padding-top.",
+      "defect": {
+        "file": "packages/ai-chat-components/src/components/chat-button/chat-button.scss",
+        "line": 4,
+        "rule": "S3",
+        "severity": "major",
+        "description": "padding-left and margin-left used instead of CSS logical properties"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat-components/src/components/chat-button/chat-button.scss",
+          "content": "@use '@carbon/styles/scss/config' as *;\n@use '@carbon/styles/scss/spacing' as *;\n\n.#{$prefix}--example-chat-button {\n  margin-left: $spacing-05;\n  padding-top: $spacing-03;\n  padding-bottom: $spacing-03;\n}\n\n.#{$prefix}--example-chat-button__label {\n  padding-inline: $spacing-05;\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "A4",
+      "branch": "eval/a4-descendant-selector",
+      "title": "A4: descendant selector in SCSS",
+      "description": "Adds nested SCSS using a descendant combinator instead of BEM modifiers.",
+      "defect": {
+        "file": "packages/ai-chat-components/src/components/chat-button/chat-button.scss",
+        "line": 8,
+        "rule": "S2",
+        "severity": "major",
+        "description": "Descendant selector .#{$prefix}--example-chat-button .label used instead of BEM modifier"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat-components/src/components/chat-button/chat-button.scss",
+          "content": "@use '@carbon/styles/scss/config' as *;\n@use '@carbon/styles/scss/spacing' as *;\n\n.#{$prefix}--example-chat-button {\n  margin-inline-start: $spacing-05;\n  padding-block: $spacing-03;\n\n  .#{$prefix}--example-chat-button__label {\n    padding-inline: $spacing-05;\n    font-weight: bold;\n  }\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "A5",
+      "branch": "eval/a5-components-legacy",
+      "title": "A5: new component added under components-legacy/",
+      "description": "Adds a new component file under components-legacy/ instead of components/.",
+      "defect": {
+        "file": "packages/ai-chat/src/chat/components-legacy/new-widget/new-widget.ts",
+        "line": 1,
+        "rule": "L2",
+        "severity": "blocking",
+        "description": "New component added under components-legacy/ — must go in components/"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/components-legacy/new-widget/new-widget.ts",
+          "content": "import { LitElement, html } from 'lit';\nimport { customElement } from 'lit/decorators.js';\n\n@customElement('example-new-widget')\nexport class NewWidget extends LitElement {\n  render() {\n    return html`<div class=\"widget\"><slot></slot></div>`;\n  }\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "A6",
+      "branch": "eval/a6-logic-in-component",
+      "title": "A6: business logic trapped inside a Lit element",
+      "description": "Moves truncation logic directly into a component method instead of a plain module.",
+      "defect": {
+        "file": "packages/ai-chat-components/src/components/chat-button/chat-button.ts",
+        "line": 13,
+        "rule": "L1",
+        "severity": "major",
+        "description": "String truncation and formatting logic embedded directly in render() of a Lit element"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat-components/src/components/chat-button/chat-button.ts",
+          "content": "import { LitElement, html } from 'lit';\nimport { customElement, property } from 'lit/decorators.js';\nimport '@carbon/web-components/es/components/button/index.js';\n\n@customElement('example-chat-button')\nexport class ChatButton extends LitElement {\n  @property({ type: Boolean, reflect: true })\n  disabled = false;\n\n  @property({ type: String })\n  label = '';\n\n  private formatLabel(text: string): string {\n    const trimmed = text.trim();\n    if (trimmed.length > 30) {\n      return trimmed.slice(0, 29) + '\\u2026';\n    }\n    return trimmed;\n  }\n\n  render() {\n    return html`<cds-button kind=\"primary\" ?disabled=${this.disabled}>\n      ${this.formatLabel(this.label)}\n    </cds-button>`;\n  }\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "A7",
+      "branch": "eval/a7-listener-teardown",
+      "title": "A7: event listener added without teardown",
+      "description": "Adds a window resize listener in connectedCallback but omits the matching removeEventListener in disconnectedCallback.",
+      "defect": {
+        "file": "packages/ai-chat/src/chat/components/message-list/message-list.ts",
+        "line": 11,
+        "rule": "A7-listener",
+        "severity": "major",
+        "description": "window.addEventListener('scroll') added in connectedCallback with no matching removeEventListener in disconnectedCallback"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/components/message-list/message-list.ts",
+          "content": "import { LitElement, html } from 'lit';\nimport { customElement, property } from 'lit/decorators.js';\nimport { formatMessage } from '../../utils/format-message';\n\n@customElement('example-message-list')\nexport class MessageList extends LitElement {\n  @property({ type: Array })\n  messages: string[] = [];\n\n  private readonly onResize = () => this.requestUpdate();\n  private readonly onScroll = () => this.requestUpdate();\n\n  connectedCallback() {\n    super.connectedCallback();\n    window.addEventListener('resize', this.onResize);\n    window.addEventListener('scroll', this.onScroll);\n  }\n\n  disconnectedCallback() {\n    window.removeEventListener('resize', this.onResize);\n    super.disconnectedCallback();\n  }\n\n  render() {\n    return html`<ul role=\"list\">\n      ${this.messages.map((message) => html`<li>${formatMessage({ text: message })}</li>`)}\n    </ul>`;\n  }\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "A8",
+      "branch": "eval/a8-a11y-regression",
+      "title": "A8: accessibility regression — interactive element missing aria-label",
+      "description": "Adds an icon-only button inside the Lit component with no accessible label.",
+      "defect": {
+        "file": "packages/ai-chat-components/src/components/chat-button/chat-button.ts",
+        "line": 15,
+        "rule": "A8-a11y",
+        "severity": "blocking",
+        "description": "Icon-only <cds-button> added with no aria-label — screen readers cannot identify the action"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat-components/src/components/chat-button/chat-button.ts",
+          "content": "import { LitElement, html } from 'lit';\nimport { customElement, property } from 'lit/decorators.js';\nimport '@carbon/web-components/es/components/button/index.js';\n\n@customElement('example-chat-button')\nexport class ChatButton extends LitElement {\n  @property({ type: Boolean, reflect: true })\n  disabled = false;\n\n  render() {\n    return html`\n      <cds-button kind=\"primary\" ?disabled=${this.disabled}>\n        <slot></slot>\n      </cds-button>\n      <cds-button kind=\"ghost\" ?disabled=${this.disabled}>\n        &#x2715;\n      </cds-button>\n    `;\n  }\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "A9",
+      "branch": "eval/a9-weakened-test",
+      "title": "A9: weakened test assertion",
+      "description": "Replaces a specific .toBe() assertion with .toBeDefined() — a weaker check.",
+      "defect": {
+        "file": "packages/ai-chat/tests/format-message_spec.ts",
+        "line": 8,
+        "rule": "T1",
+        "severity": "blocking",
+        "description": "expect(...).toBe('abcd\\u2026') replaced with expect(...).toBeDefined() — assertion is now trivially true"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/tests/format-message_spec.ts",
+          "content": "import { formatMessage } from '../src/chat/utils/format-message';\n\ndescribe('formatMessage', () => {\n  it('trims whitespace', () => {\n    expect(formatMessage({ text: '  hello  ' })).toBe('hello');\n  });\n\n  it('truncates text longer than maxLength with an ellipsis', () => {\n    expect(formatMessage({ text: 'abcdefghij', maxLength: 5 })).toBeDefined();\n  });\n\n  it('leaves text at exactly maxLength unchanged', () => {\n    expect(formatMessage({ text: 'abcde', maxLength: 5 })).toBe('abcde');\n  });\n});\n"
+        }
+      ]
+    },
+    {
+      "id": "A10",
+      "branch": "eval/a10-new-dependency",
+      "title": "A10: new runtime dependency added without explanation",
+      "description": "Adds a new dependency to package.json with no PR description explaining why it is needed.",
+      "defect": {
+        "file": "packages/ai-chat/package.json",
+        "rule": "A10-dep",
+        "severity": "major",
+        "fileLevel": true,
+        "description": "New runtime dependency added to package.json with no explanation in PR description or code comments"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/package.json",
+          "content": "{\n  \"name\": \"@example/ai-chat\",\n  \"version\": \"1.0.0\",\n  \"dependencies\": {\n    \"lodash\": \"^4.17.21\"\n  }\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "A11",
+      "branch": "eval/a11-hand-edit-generated",
+      "title": "A11: hand-edited custom-elements.json without source change",
+      "description": "Directly edits the generated CEM file without an accompanying source change.",
+      "defect": {
+        "file": "packages/ai-chat-components/custom-elements.json",
+        "line": 7,
+        "rule": "G1",
+        "severity": "blocking",
+        "description": "custom-elements.json edited directly — this file is generated and must not be hand-edited"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat-components/custom-elements.json",
+          "content": "{\n  \"schemaVersion\": \"1.0.0\",\n  \"modules\": [\n    {\n      \"kind\": \"javascript-module\",\n      \"path\": \"src/components/chat-button/chat-button.ts\",\n      \"declarations\": [\n        { \"kind\": \"class\", \"name\": \"ChatButton\", \"tagName\": \"example-chat-button\", \"description\": \"A hand-written description\" }\n      ]\n    }\n  ]\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "A12",
+      "branch": "eval/a12-invalid-cds-attribute",
+      "title": "A12: invalid attribute on cds-button",
+      "description": "Passes a non-existent attribute to cds-button — requires MCP verification.",
+      "defect": {
+        "file": "packages/ai-chat-components/src/components/chat-button/chat-button.ts",
+        "line": 12,
+        "rule": "F-cds-attr",
+        "severity": "major",
+        "description": "non-existent 'icon-placement' attribute used on <cds-button> — must verify via MCP"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat-components/src/components/chat-button/chat-button.ts",
+          "content": "import { LitElement, html } from 'lit';\nimport { customElement, property } from 'lit/decorators.js';\nimport '@carbon/web-components/es/components/button/index.js';\n\n@customElement('example-chat-button')\nexport class ChatButton extends LitElement {\n  @property({ type: Boolean, reflect: true })\n  disabled = false;\n\n  render() {\n    return html`<cds-button kind=\"primary\" icon-placement=\"right\" ?disabled=${this.disabled}>\n      <slot></slot>\n    </cds-button>`;\n  }\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "B1",
+      "branch": "eval/b1-clean-refactor",
+      "title": "B1: clean refactor — extract constant",
+      "description": "Extracts the default max length into a named constant. No new behaviour.",
+      "defect": null,
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/utils/format-message.ts",
+          "content": "export interface MessageInput {\n  text: string;\n  maxLength?: number;\n}\n\nconst MAX_LENGTH = 500;\n\nexport function formatMessage({ text, maxLength = MAX_LENGTH }: MessageInput): string {\n  const trimmed = text.trim();\n  if (trimmed.length <= maxLength) {\n    return trimmed;\n  }\n  return `${trimmed.slice(0, maxLength - 1)}\\u2026`;\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "branch": "eval/b2-source-plus-telemetry",
+      "title": "B2: source change + regenerated telemetry.yml",
+      "description": "Adds a new boolean property to ChatButton and regenerates telemetry.yml and custom-elements.json.",
+      "defect": null,
+      "changes": [
+        {
+          "path": "packages/ai-chat-components/src/components/chat-button/chat-button.ts",
+          "content": "import { LitElement, html } from 'lit';\nimport { customElement, property } from 'lit/decorators.js';\nimport '@carbon/web-components/es/components/button/index.js';\n\n@customElement('example-chat-button')\nexport class ChatButton extends LitElement {\n  @property({ type: Boolean, reflect: true })\n  disabled = false;\n\n  @property({ type: Boolean, reflect: true })\n  loading = false;\n\n  render() {\n    return html`<cds-button kind=\"primary\" ?disabled=${this.disabled || this.loading}>\n      <slot></slot>\n    </cds-button>`;\n  }\n}\n"
+        },
+        {
+          "path": "packages/ai-chat-components/telemetry.yml",
+          "content": "# Generated. Do not edit by hand.\nversion: 1\ncomponents:\n  - name: example-chat-button\n    attributes:\n      - disabled\n      - loading\n"
+        },
+        {
+          "path": "packages/ai-chat-components/custom-elements.json",
+          "content": "{\n  \"schemaVersion\": \"1.0.0\",\n  \"modules\": [\n    {\n      \"kind\": \"javascript-module\",\n      \"path\": \"src/components/chat-button/chat-button.ts\",\n      \"declarations\": [\n        { \"kind\": \"class\", \"name\": \"ChatButton\", \"tagName\": \"example-chat-button\" }\n      ]\n    }\n  ]\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "B3",
+      "branch": "eval/b3-correct-docs",
+      "title": "B3: update README with correct usage docs",
+      "description": "Updates the README with accurate usage examples.",
+      "defect": null,
+      "changes": [
+        {
+          "path": "README.md",
+          "content": "# caic-pr-review-test\n\nTest repository for the Carbon Monitor caic eval.\n\n## Usage\n\n```html\n<example-chat-button>Send</example-chat-button>\n<example-message-list></example-message-list>\n```\n\n## Components\n\n- `example-chat-button` — a Carbon Web Components button wrapper\n- `example-message-list` — a list of formatted messages\n"
+        }
+      ]
+    },
+    {
+      "id": "B4",
+      "branch": "eval/b4-explained-odd-change",
+      "title": "B4: intentional change with explanation in description",
+      "description": "Removes the default max length cap entirely. The PR description explains: the calling layer now enforces its own limit, so the util must not double-truncate.",
+      "defect": null,
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/utils/format-message.ts",
+          "content": "export interface MessageInput {\n  text: string;\n  maxLength?: number;\n}\n\nexport function formatMessage({ text, maxLength }: MessageInput): string {\n  const trimmed = text.trim();\n  if (maxLength !== undefined && trimmed.length > maxLength) {\n    return `${trimmed.slice(0, maxLength - 1)}\\u2026`;\n  }\n  return trimmed;\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "B5",
+      "branch": "eval/b5-linked-issue-unmet",
+      "title": "B5: partial implementation — linked issue has unmet items",
+      "description": "Fixes the trim behaviour in formatMessage. The linked issue also asked for locale-aware truncation, but that is tracked separately.",
+      "defect": null,
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/utils/format-message.ts",
+          "content": "export interface MessageInput {\n  text: string;\n  maxLength?: number;\n}\n\nconst DEFAULT_MAX_LENGTH = 500;\n\n// Trim leading/trailing whitespace before applying the length cap.\nexport function formatMessage({ text, maxLength = DEFAULT_MAX_LENGTH }: MessageInput): string {\n  const trimmed = text.trimStart().trimEnd();\n  if (trimmed.length <= maxLength) {\n    return trimmed;\n  }\n  return `${trimmed.slice(0, maxLength - 1)}\\u2026`;\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "B6",
+      "branch": "eval/b6-different-valid-approach",
+      "title": "B6: alternative valid truncation approach",
+      "description": "Uses Intl.Segmenter for grapheme-aware truncation — a different but equally valid approach.",
+      "defect": null,
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/utils/format-message.ts",
+          "content": "export interface MessageInput {\n  text: string;\n  maxLength?: number;\n}\n\nconst DEFAULT_MAX_LENGTH = 500;\n\nexport function formatMessage({ text, maxLength = DEFAULT_MAX_LENGTH }: MessageInput): string {\n  const trimmed = text.trim();\n  const segmenter = new Intl.Segmenter();\n  const segments = [...segmenter.segment(trimmed)];\n  if (segments.length <= maxLength) {\n    return trimmed;\n  }\n  return segments.slice(0, maxLength - 1).map((s) => s.segment).join('') + '\\u2026';\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "C1",
+      "branch": "eval/c1-small-pr",
+      "title": "C1: small PR ~150 counted lines",
+      "description": "Adds keyboard shortcut handling to MessageList. Under 200 lines.",
+      "defect": null,
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/components/message-list/message-list.ts",
+          "content": "import { LitElement, html } from 'lit';\nimport { customElement, property } from 'lit/decorators.js';\nimport { formatMessage } from '../../utils/format-message';\n\n@customElement('example-message-list')\nexport class MessageList extends LitElement {\n  @property({ type: Array })\n  messages: string[] = [];\n\n  @property({ type: Boolean })\n  scrollable = false;\n\n  @property({ type: String })\n  emptyText = 'No messages yet.';\n\n  @property({ type: Boolean })\n  reversed = false;\n\n  @property({ type: String })\n  highlightQuery = '';\n\n  private readonly onResize = () => this.requestUpdate();\n\n  connectedCallback() {\n    super.connectedCallback();\n    window.addEventListener('resize', this.onResize);\n  }\n\n  disconnectedCallback() {\n    window.removeEventListener('resize', this.onResize);\n    super.disconnectedCallback();\n  }\n\n  private getDisplayMessages(): string[] {\n    return this.reversed ? [...this.messages].reverse() : this.messages;\n  }\n\n  private highlightText(text: string): string {\n    if (!this.highlightQuery) return text;\n    return text.replace(\n      new RegExp(this.highlightQuery, 'gi'),\n      (match) => `<mark>${match}</mark>`\n    );\n  }\n\n  render() {\n    const items = this.getDisplayMessages();\n    if (items.length === 0) {\n      return html`<p class=\"empty\">${this.emptyText}</p>`;\n    }\n    return html`<ul role=\"list\" class=${this.scrollable ? 'scrollable' : ''}>\n      ${items.map(\n        (message) =>\n          html`<li .innerHTML=${this.highlightText(formatMessage({ text: message }))}></li>`\n      )}\n    </ul>`;\n  }\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "branch": "eval/c2-medium-pr",
+      "title": "C2: medium PR ~300 counted lines",
+      "description": "Adds a full tooltip component with show/hide logic. Should warn on size (201-400 counted lines).",
+      "defect": {
+        "file": "packages/ai-chat/src/chat/components/tooltip/tooltip.ts",
+        "rule": "Z2",
+        "severity": "major",
+        "fileLevel": true,
+        "description": "PR has approximately 300 counted lines — suggest splitting into component scaffold and interaction logic"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/components/tooltip/tooltip.ts",
+          "content": "import { LitElement, html, css } from 'lit';\nimport { customElement, property, state } from 'lit/decorators.js';\n\n@customElement('example-tooltip')\nexport class Tooltip extends LitElement {\n  @property({ type: String }) label = '';\n  @property({ type: String }) placement: 'top' | 'bottom' | 'left' | 'right' = 'top';\n  @property({ type: Boolean }) disabled = false;\n  @property({ type: Number }) delay = 300;\n  @property({ type: String }) triggerType: 'hover' | 'click' | 'focus' = 'hover';\n  @property({ type: Boolean }) closeOnOutsideClick = true;\n  @property({ type: Boolean }) closeOnEscape = true;\n  @property({ type: Boolean }) persistent = false;\n  @property({ type: String }) id = '';\n  @property({ type: String }) ariaLabel = '';\n  @state() private visible = false;\n  @state() private x = 0;\n  @state() private y = 0;\n  private _timer: ReturnType<typeof setTimeout> | null = null;\n  private _trigger: HTMLElement | null = null;\n  private readonly _onOutsideClick = (e: MouseEvent) => {\n    if (!this.contains(e.target as Node)) this._hide();\n  };\n  private readonly _onEscape = (e: KeyboardEvent) => {\n    if (e.key === 'Escape') this._hide();\n  };\n  private _show() {\n    if (this.disabled) return;\n    if (this._timer) clearTimeout(this._timer);\n    this._timer = setTimeout(() => { this.visible = true; }, this.delay);\n  }\n  private _hide() {\n    if (this._timer) clearTimeout(this._timer);\n    this._timer = null;\n    this.visible = false;\n  }\n  private _toggle() {\n    if (this.visible) this._hide(); else this._show();\n  }\n  private _computePosition() {\n    if (!this._trigger) return;\n    const r = this._trigger.getBoundingClientRect();\n    const tw = this.offsetWidth;\n    const th = this.offsetHeight;\n    switch (this.placement) {\n      case 'top': this.x = r.left + r.width / 2 - tw / 2; this.y = r.top - th - 8; break;\n      case 'bottom': this.x = r.left + r.width / 2 - tw / 2; this.y = r.bottom + 8; break;\n      case 'left': this.x = r.left - tw - 8; this.y = r.top + r.height / 2 - th / 2; break;\n      case 'right': this.x = r.right + 8; this.y = r.top + r.height / 2 - th / 2; break;\n    }\n  }\n  connectedCallback() {\n    super.connectedCallback();\n    this._trigger = this.previousElementSibling as HTMLElement | null;\n    if (this._trigger && this.triggerType === 'hover') {\n      this._trigger.addEventListener('mouseenter', () => this._show());\n      this._trigger.addEventListener('mouseleave', () => this._hide());\n    } else if (this._trigger && this.triggerType === 'click') {\n      this._trigger.addEventListener('click', () => this._toggle());\n    } else if (this._trigger && this.triggerType === 'focus') {\n      this._trigger.addEventListener('focus', () => this._show());\n      this._trigger.addEventListener('blur', () => this._hide());\n    }\n    if (this.closeOnOutsideClick) document.addEventListener('click', this._onOutsideClick);\n    if (this.closeOnEscape) document.addEventListener('keydown', this._onEscape);\n  }\n  disconnectedCallback() {\n    if (this.closeOnOutsideClick) document.removeEventListener('click', this._onOutsideClick);\n    if (this.closeOnEscape) document.removeEventListener('keydown', this._onEscape);\n    super.disconnectedCallback();\n  }\n  updated() { this._computePosition(); }\n  render() {\n    return html`<div\n      role=\"tooltip\"\n      aria-label=${this.ariaLabel || this.label}\n      style=\"left:${this.x}px;top:${this.y}px\"\n      class=${this.visible ? 'visible' : ''}>\n      ${this.label}\n    </div>`;\n  }\n}\n"
+        },
+        {
+          "path": "packages/ai-chat/src/chat/components/tooltip/tooltip.scss",
+          "content": "@use '@carbon/styles/scss/config' as *;\n@use '@carbon/styles/scss/spacing' as *;\n@use '@carbon/styles/scss/motion' as *;\n\n.#{$prefix}--example-tooltip {\n  position: fixed;\n  z-index: 9999;\n  background-color: var(--cds-background-inverse);\n  color: var(--cds-text-inverse);\n  border-radius: 2px;\n  padding-block: $spacing-02;\n  padding-inline: $spacing-04;\n  opacity: 0;\n  pointer-events: none;\n  transition: opacity motion(standard, productive) $duration-fast-02;\n\n  &.visible {\n    opacity: 1;\n    pointer-events: auto;\n  }\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "C3",
+      "branch": "eval/c3-large-pr",
+      "title": "C3: large PR >400 lines with two unrelated changes",
+      "description": "Bundles a tooltip component AND a separate localization refactor. Over 400 counted lines with no explanation for why they must stay together.",
+      "defect": {
+        "file": "packages/ai-chat/src/chat/components/tooltip/tooltip.ts",
+        "rule": "Z3",
+        "severity": "blocking",
+        "fileLevel": true,
+        "description": "PR exceeds 400 counted lines and bundles two unrelated changes — split into separate PRs"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/components/tooltip/tooltip.ts",
+          "content": "import { LitElement, html } from 'lit';\nimport { customElement, property, state } from 'lit/decorators.js';\n\n@customElement('example-tooltip')\nexport class Tooltip extends LitElement {\n  @property({ type: String }) label = '';\n  @property({ type: String }) placement: 'top' | 'bottom' | 'left' | 'right' = 'top';\n  @property({ type: Boolean }) disabled = false;\n  @property({ type: Number }) delay = 300;\n  @property({ type: String }) triggerType: 'hover' | 'click' | 'focus' = 'hover';\n  @state() private visible = false;\n  private _timer: ReturnType<typeof setTimeout> | null = null;\n  private _show() { if (!this.disabled) { if (this._timer) clearTimeout(this._timer); this._timer = setTimeout(() => { this.visible = true; }, this.delay); } }\n  private _hide() { if (this._timer) { clearTimeout(this._timer); this._timer = null; } this.visible = false; }\n  render() { return html`<div role=\"tooltip\">${this.label}</div>`; }\n}\n"
+        },
+        {
+          "path": "packages/ai-chat/src/chat/localization/fr.json",
+          "content": "{\n  \"buttons_send\": \"Envoyer\",\n  \"buttons_cancel\": \"Annuler\",\n  \"errors_requestFailed\": \"Nous n'avons pas pu envoyer votre message. V\\u00e9rifiez votre connexion et r\\u00e9essayez.\",\n  \"messages_empty\": \"Pas encore de messages. Posez une question pour commencer.\"\n}\n"
+        },
+        {
+          "path": "packages/ai-chat/src/chat/localization/de.json",
+          "content": "{\n  \"buttons_send\": \"Senden\",\n  \"buttons_cancel\": \"Abbrechen\",\n  \"errors_requestFailed\": \"Ihre Nachricht konnte nicht gesendet werden. \\u00dcberpr\\u00fcfen Sie Ihre Verbindung und versuchen Sie es erneut.\",\n  \"messages_empty\": \"Noch keine Nachrichten. Stellen Sie eine Frage, um zu beginnen.\"\n}\n"
+        },
+        {
+          "path": "packages/ai-chat/src/chat/localization/es.json",
+          "content": "{\n  \"buttons_send\": \"Enviar\",\n  \"buttons_cancel\": \"Cancelar\",\n  \"errors_requestFailed\": \"No pudimos enviar tu mensaje. Comprueba tu conexi\\u00f3n y vuelve a intentarlo.\",\n  \"messages_empty\": \"A\\u00fan no hay mensajes. Escribe una pregunta para comenzar.\"\n}\n"
+        },
+        {
+          "path": "packages/ai-chat/src/chat/localization/ja.json",
+          "content": "{\n  \"buttons_send\": \"\\u9001\\u4fe1\",\n  \"buttons_cancel\": \"\\u30ad\\u30e3\\u30f3\\u30bb\\u30eb\",\n  \"errors_requestFailed\": \"\\u30e1\\u30c3\\u30bb\\u30fc\\u30b8\\u3092\\u9001\\u4fe1\\u3067\\u304d\\u307e\\u305b\\u3093\\u3067\\u3057\\u305f\\u3002\\u63a5\\u7d9a\\u3092\\u78ba\\u8a8d\\u3057\\u3066\\u518d\\u5ea6\\u304a\\u8a66\\u3057\\u304f\\u3060\\u3055\\u3044\\u3002\",\n  \"messages_empty\": \"\\u307e\\u3060\\u30e1\\u30c3\\u30bb\\u30fc\\u30b8\\u304c\\u3042\\u308a\\u307e\\u305b\\u3093\\u3002\\u8cea\\u554f\\u3092\\u5165\\u529b\\u3057\\u3066\\u304f\\u3060\\u3055\\u3044\\u3002\"\n}\n"
+        },
+        {
+          "path": "packages/ai-chat/src/chat/localization/zh.json",
+          "content": "{\n  \"buttons_send\": \"\\u53d1\\u9001\",\n  \"buttons_cancel\": \"\\u53d6\\u6d88\",\n  \"errors_requestFailed\": \"\\u65e0\\u6cd5\\u53d1\\u9001\\u60a8\\u7684\\u6d88\\u606f\\u3002\\u8bf7\\u68c0\\u67e5\\u60a8\\u7684\\u8fde\\u63a5\\u5e76\\u91cd\\u8bd5\\u3002\",\n  \"messages_empty\": \"\\u6682\\u65e0\\u6d88\\u606f\\u3002\\u8bf7\\u8f93\\u5165\\u95ee\\u9898\\u5f00\\u59cb\\u3002\"\n}\n"
+        },
+        {
+          "path": "packages/ai-chat/src/chat/localization/pt.json",
+          "content": "{\n  \"buttons_send\": \"Enviar\",\n  \"buttons_cancel\": \"Cancelar\",\n  \"errors_requestFailed\": \"N\\u00e3o foi poss\\u00edvel enviar sua mensagem. Verifique sua conex\\u00e3o e tente novamente.\",\n  \"messages_empty\": \"Nenhuma mensagem ainda. Digite uma pergunta para come\\u00e7ar.\"\n}\n"
+        },
+        {
+          "path": "packages/ai-chat/src/chat/localization/ko.json",
+          "content": "{\n  \"buttons_send\": \"\\ubcf4\\ub0b4\\uae30\",\n  \"buttons_cancel\": \"\\ucde8\\uc18c\",\n  \"errors_requestFailed\": \"\\uba54\\uc2dc\\uc9c0\\ub97c \\ubcf4\\ub0bc \\uc218 \\uc5c6\\uc2b5\\ub2c8\\ub2e4. \\uc5f0\\uacb0\\uc744 \\ud655\\uc778\\ud558\\uace0 \\ub2e4\\uc2dc \\uc2dc\\ub3c4\\ud558\\uc138\\uc694.\",\n  \"messages_empty\": \"\\uc544\\uc9c1 \\uba54\\uc2dc\\uc9c0\\uac00 \\uc5c6\\uc2b5\\ub2c8\\ub2e4. \\uc9c8\\ubb38\\uc744 \\uc785\\ub825\\ud558\\uc5ec \\uc2dc\\uc791\\ud558\\uc138\\uc694.\"\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "C4",
+      "branch": "eval/c4-generated-dominates",
+      "title": "C4: regenerated es-custom/ dominates the diff",
+      "description": "Source adds a new property; the bulk of the diff is regenerated es-custom/ output. Counted lines should exclude generated files.",
+      "defect": null,
+      "changes": [
+        {
+          "path": "packages/ai-chat-components/src/components/chat-button/chat-button.ts",
+          "content": "import { LitElement, html } from 'lit';\nimport { customElement, property } from 'lit/decorators.js';\nimport '@carbon/web-components/es/components/button/index.js';\n\n@customElement('example-chat-button')\nexport class ChatButton extends LitElement {\n  @property({ type: Boolean, reflect: true })\n  disabled = false;\n\n  @property({ type: String })\n  kind: 'primary' | 'secondary' | 'ghost' = 'primary';\n\n  render() {\n    return html`<cds-button kind=${this.kind} ?disabled=${this.disabled}>\n      <slot></slot>\n    </cds-button>`;\n  }\n}\n"
+        },
+        {
+          "path": "packages/ai-chat-components/es-custom/components/chat-button.js",
+          "content": "// Generated output — do not edit by hand.\n// This file is regenerated from chat-button.ts.\nvar __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {\n    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;\n    if (typeof Reflect === 'object' && typeof Reflect.decorate === 'function') r = Reflect.decorate(decorators, target, key, desc);\n    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;\n    return c > 3 && r && Object.defineProperty(target, key, r), r;\n};\nimport { LitElement, html } from 'lit';\nimport { customElement, property } from 'lit/decorators.js';\nimport '@carbon/web-components/es/components/button/index.js';\nlet ChatButton = class ChatButton extends LitElement {\n    constructor() {\n        super(...arguments);\n        this.disabled = false;\n        this.kind = 'primary';\n    }\n    render() {\n        return html`<cds-button kind=${this.kind} ?disabled=${this.disabled}><slot></slot></cds-button>`;\n    }\n};\n__decorate([\n    property({ type: Boolean, reflect: true })\n], ChatButton.prototype, 'disabled', void 0);\n__decorate([\n    property({ type: String })\n], ChatButton.prototype, 'kind', void 0);\nChatButton = __decorate([\n    customElement('example-chat-button')\n], ChatButton);\nexport { ChatButton };\n"
+        }
+      ]
+    },
+    {
+      "id": "D1",
+      "branch": "eval/d1-en-json-tone",
+      "title": "D1: en.json copy — informal tone in error message",
+      "description": "Updates error strings with informal contractions and inconsistent tone.",
+      "defect": {
+        "file": "packages/ai-chat/src/chat/localization/en.json",
+        "line": 3,
+        "rule": "D1-copy",
+        "severity": "nit",
+        "description": "Error message uses informal contractions inconsistent with the rest of the UI copy"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/localization/en.json",
+          "content": "{\n  \"buttons_send\": \"Send\",\n  \"buttons_cancel\": \"Cancel\",\n  \"errors_requestFailed\": \"Oops! Couldn't send that. Check your wifi and try again?\",\n  \"messages_empty\": \"No messages yet. Type a question to get started.\"\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "D2",
+      "branch": "eval/d2-jsdoc-no-unit",
+      "title": "D2: JSDoc @param missing unit in comment",
+      "description": "Adds a JSDoc comment to formatMessage but the @param description omits the unit for maxLength.",
+      "defect": {
+        "file": "packages/ai-chat/src/chat/utils/format-message.ts",
+        "line": 9,
+        "rule": "D2-jsdoc",
+        "severity": "nit",
+        "description": "@param maxLength comment says 'the length' without specifying that it is a character count"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/utils/format-message.ts",
+          "content": "export interface MessageInput {\n  text: string;\n  maxLength?: number;\n}\n\nconst DEFAULT_MAX_LENGTH = 500;\n\n/**\n * Format a message for display.\n * @param text - the input text to format\n * @param maxLength - the length at which to truncate (defaults to 500)\n */\nexport function formatMessage({ text, maxLength = DEFAULT_MAX_LENGTH }: MessageInput): string {\n  const trimmed = text.trim();\n  if (trimmed.length <= maxLength) {\n    return trimmed;\n  }\n  return `${trimmed.slice(0, maxLength - 1)}\\u2026`;\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "D3",
+      "branch": "eval/d3-vague-error-string",
+      "title": "D3: vague error string with no actionable guidance",
+      "description": "Adds a new error key with a vague message that gives users no way to recover.",
+      "defect": {
+        "file": "packages/ai-chat/src/chat/localization/en.json",
+        "line": 5,
+        "rule": "D3-copy",
+        "severity": "nit",
+        "description": "New error key 'errors_timeout' has a vague message with no actionable recovery step"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/localization/en.json",
+          "content": "{\n  \"buttons_send\": \"Send\",\n  \"buttons_cancel\": \"Cancel\",\n  \"errors_requestFailed\": \"We couldn't send your message. Check your connection and try again.\",\n  \"errors_timeout\": \"Something went wrong.\",\n  \"messages_empty\": \"No messages yet. Type a question to get started.\"\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "D4",
+      "branch": "eval/d4-restates-code",
+      "title": "D4: comment that restates the code",
+      "description": "Adds an inline comment that just describes what the code does rather than why.",
+      "defect": {
+        "file": "packages/ai-chat/src/chat/utils/format-message.ts",
+        "line": 10,
+        "rule": "C1",
+        "severity": "nit",
+        "description": "Comment 'trim the text' restates what text.trim() does — adds no value"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/utils/format-message.ts",
+          "content": "export interface MessageInput {\n  text: string;\n  maxLength?: number;\n}\n\nconst DEFAULT_MAX_LENGTH = 500;\n\nexport function formatMessage({ text, maxLength = DEFAULT_MAX_LENGTH }: MessageInput): string {\n  // trim the text\n  const trimmed = text.trim();\n  // check if under the limit\n  if (trimmed.length <= maxLength) {\n    return trimmed;\n  }\n  return `${trimmed.slice(0, maxLength - 1)}\\u2026`;\n}\n"
+        }
+      ]
+    }
+  ]
+}

@@ -203,10 +203,11 @@ function changedFileLine(reviewed, file) {
 
 /**
  * Build a review bundle for agent execution
- * @param {Object} options - { owner, repo, pr, files, client, agent, changedFilesTotal }
+ * @param {Object} options - { owner, repo, pr, files, client, agent, changedFilesTotal, profile }
  *   `files` are pulls.listFiles entries with their `patch`; the diff is assembled
  *   from them. `changedFilesTotal` is GitHub's changed_files, read only when the
- *   listing is full. agent defaults to the configured one.
+ *   listing is full. agent defaults to the configured one. profile is the active
+ *   profile object (optional; omitting it uses the core path unchanged).
  * @returns {Promise<Object>} Bundle object with dir, prompt, diff, coverage and cleanup function
  */
 async function buildReviewBundle({
@@ -217,6 +218,7 @@ async function buildReviewBundle({
   client,
   agent,
   changedFilesTotal,
+  profile,
 }) {
   const adapter = agents.get(agent);
   // Create the bundle under a directory Bob Shell treats as trusted for MCP access.
@@ -246,6 +248,7 @@ async function buildReviewBundle({
       maxFiles: constants.MAX_FILES_PER_PR,
       filesUrl: `https://github.com/${owner}/${repo}/pull/${pr.number}/files`,
       changedFilesTotal,
+      extraPatterns: profile && profile.id !== 'core' ? profile.extraPatterns : undefined,
     });
 
     // Without `patch`: the diff is in diff.patch, and the raw patches would double the file
@@ -373,10 +376,16 @@ Before looking up any prop, import path, or token name, invoke \`carbon-builder\
       'skills',
       'carbon-builder'
     );
-    await adapter.prepareBundle(tempDir, { rules, skillSource });
+    // Profile-specific extra skills: each { name, source } pair is copied into
+    // .bob/skills/<name> alongside carbon-builder.
+    const extraSkills =
+      profile && profile.extraSkills
+        ? profile.extraSkills.map(({ name, source }) => ({ name, source }))
+        : [];
+    await adapter.prepareBundle(tempDir, { rules, skillSource, extraSkills });
 
     // 6. Create review prompt using the detailed prompt builder
-    const prompt = buildReviewPrompt({ owner, repo, agent: adapter.id });
+    const prompt = buildReviewPrompt({ owner, repo, agent: adapter.id, profile });
 
     // Return bundle object (no settingsPath needed - using global config)
     return {
