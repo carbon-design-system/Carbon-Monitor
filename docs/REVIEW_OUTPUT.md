@@ -24,6 +24,18 @@ accessible label. Add aria-label="Time zone" (or equivalent) to the element.
 
 ### Summary comment (PR issue comment)
 
+The first line of the summary comment carries the header label, which identifies
+the deployment that posted it. The label differs by profile:
+
+| Profile | Header label                          |
+| ------- | ------------------------------------- |
+| `core`  | `[AI agent review — Carbon grounded]` |
+| `caic`  | `[AI agent review - CAIC]`            |
+
+The `core` header uses an em dash (U+2014); the `caic` header uses a hyphen-minus.
+The "Carbon verification:" line appears in `core` reviews always; in `caic` reviews
+it appears only when the review has at least one Category 1 (Carbon API) finding.
+
 ```
 [AI agent review — Carbon grounded] · **Consider Revising**
 

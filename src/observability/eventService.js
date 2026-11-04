@@ -28,6 +28,7 @@
 
 const { randomUUID } = require('crypto');
 const { esCall } = require('./esClient');
+const esNames = require('../esNames');
 
 // ── Level resolution (mirrors Carbon Migrate ERROR_EVENT_TYPES / WARN_EVENT_TYPES)
 const ERROR_EVENTS = new Set([
@@ -47,10 +48,7 @@ function resolveLevel(event_type) {
 
 // ── Index name ────────────────────────────────────────────────────────────────
 function currentIndex() {
-  const now = new Date();
-  const yyyy = now.getUTCFullYear();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-  return `carbon-monitor-events-${yyyy}.${mm}`;
+  return esNames.eventsIndex();
 }
 
 // ── Payload scrubbing ─────────────────────────────────────────────────────────

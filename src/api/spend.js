@@ -5,8 +5,7 @@
 // never under, so the larger figure wins and either one answers alone.
 const esClient = require('../observability/esClient');
 const creditLedger = require('./creditLedger');
-
-const EVENTS_INDEX = 'carbon-monitor-events-*';
+const esNames = require('../esNames');
 
 const round = (n) => Math.round(n * 1e6) / 1e6;
 
@@ -18,7 +17,7 @@ async function fromElasticsearch(adapter, since) {
   // The module object is called so a test can replace esCall.
   const result = await esClient.esCall((client) =>
     client.search({
-      index: EVENTS_INDEX,
+      index: esNames.eventsWildcard(),
       size: 0,
       query: {
         bool: {

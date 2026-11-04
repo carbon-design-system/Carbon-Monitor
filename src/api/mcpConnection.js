@@ -212,8 +212,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15_000) {
 // never the broadly-readable telemetry index.
 
 /** Dedicated index holding the single connection-state document. */
+const esNames = require('../esNames');
 const MCP_STATE_INDEX =
-  process.env.MCP_STATE_INDEX || 'carbon-monitor-mcp-state';
+  process.env.MCP_STATE_INDEX || esNames.mcpStateIndexDefault();
 
 /** Fixed id of that one document — one Carbon MCP connection per deployment. */
 const MCP_STATE_DOC_ID = process.env.MCP_STATE_DOC_ID || 'connection';

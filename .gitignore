@@ -10,8 +10,8 @@ client/public/plex/
 
 # Environment — never commit real credentials
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 # A CA cert holds no private key, so the committed one is safe in a public repo.
 # Any extra cert you add stays untracked.
 src/config/*.crt
@@ -28,6 +28,7 @@ temp/
 
 # Test / diagnostic artefacts written by scripts/
 scripts/*.json
+evals/**/results/
 
 # OS files
 .DS_Store

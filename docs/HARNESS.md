@@ -396,6 +396,36 @@ and write-back rules; deploy with the same script.
 The skill at `skills/carbon-monitor-adapt-harness/` walks either path by interview and writes
 the SPEC. Its README has the install command.
 
+### Second repository, same image: the profile pattern
+
+When the target is a closely related repository and the same reviewer account,
+image and Elasticsearch cluster can be shared, a **profile** lets you add a
+second deployment without forking the codebase. Set `REVIEW_PROFILE` in the new
+app's env file; the harness branches into the profile's prompt, skills and
+coverage rules at startup, and all shared code keeps its defaults for the
+original `core` deployment. The profile is encoded in every Elasticsearch event
+(`profile` keyword field) and in the summary comment header, so the two
+deployments are told apart in Kibana and on GitHub.
+
+The first profile is `caic` (`REVIEW_PROFILE=caic`), which reviews
+`carbon-design-system/carbon-ai-chat`. Its implementation is the reference for
+adding further profiles: a directory under `src/profiles/<id>/` with `prompt.js`
+and an optional `skills/` subdirectory; a profile object registered in
+`src/profiles/index.js`; and a `SKILL.md` for every extra skill the profile
+uses (Bob ignores skills without a non-empty `description`). Every change to
+shared code must be additive only — an optional parameter or early branch that
+the core default path never takes — and a Phase 0 characterization snapshot must
+pin the old output first. Files the core path uses directly
+(`src/reviewParser.js`, `src/agentRunner.js`, `src/constants.js`,
+`src/githubClient.js`) are not touched.
+
+`ES_INDEX_PREFIX` isolates the new deployment's Elasticsearch indexes. An empty
+prefix gives the `core` literal names; a prefix of `carbon-monitor-caic` gives
+`carbon-monitor-caic-events-YYYY.MM`, which core's `carbon-monitor-events-*`
+wildcard cannot match. Run `scripts/init-index.js` once with the prefix set
+before the first review. See [CONFIGURATION.md](CONFIGURATION.md) for the full
+variable list.
+
 ## 7. Scale-out: workers as Code Engine jobs (design, not implemented)
 
 `REVIEW_CONCURRENCY` (section 1) scales reviews inside one instance. When one

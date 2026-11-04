@@ -1,0 +1,12 @@
+{
+  "eventService.js currentIndex prefix": "carbon-monitor-events-",
+  "spend.js EVENTS_INDEX": "carbon-monitor-events-*",
+  "server.js CREDIT_EVENTS_INDEX": "carbon-monitor-events-*",
+  "scheduleManager.js ES_INDEX": "carbon-monitor-schedule",
+  "scheduleManager.js ES_DOC_ID": "singleton",
+  "mcpConnection.js MCP_STATE_INDEX default": "carbon-monitor-mcp-state",
+  "mcpConnection.js MCP_STATE_DOC_ID default": "connection",
+  "init-index.js ALIAS": "carbon-monitor-events",
+  "init-index.js TEMPLATE": "carbon-monitor-events-template",
+  "init-index.js ILM_NAME": "carbon-monitor-events-ilm"
+}

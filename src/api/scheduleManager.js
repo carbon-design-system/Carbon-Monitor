@@ -42,6 +42,7 @@ const os = require('os');
 
 // Lazy-require so the module loads fine when esClient is unavailable in tests.
 const { esCall } = require('../observability/esClient');
+const esNames = require('../esNames');
 const { getBalance, isLowBalance } = require('./bobCredits');
 const agents = require('../agents');
 const {
@@ -190,7 +191,8 @@ let _state = null;
 
 // ── Elasticsearch helpers ─────────────────────────────────────────────────────
 
-const ES_INDEX = 'carbon-monitor-schedule';
+// Derived at call time so ES_INDEX_PREFIX is read after .env loads.
+const getEsIndex = () => esNames.scheduleIndex();
 const ES_DOC_ID = 'singleton';
 
 /**
@@ -203,7 +205,7 @@ const ES_DOC_ID = 'singleton';
 async function esLoadSchedule() {
   try {
     const result = await esCall((client) =>
-      client.get({ index: ES_INDEX, id: ES_DOC_ID })
+      client.get({ index: getEsIndex(), id: ES_DOC_ID })
     );
     if (!result || !result._source || typeof result._source !== 'object') {
       return null;
@@ -224,7 +226,7 @@ async function esLoadSchedule() {
 async function esSaveSchedule(state) {
   try {
     await esCall((client) =>
-      client.index({ index: ES_INDEX, id: ES_DOC_ID, document: state })
+      client.index({ index: getEsIndex(), id: ES_DOC_ID, document: state })
     );
   } catch (_) {
     // Failure is already logged by esCall's circuit breaker. Nothing to add.

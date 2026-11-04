@@ -198,7 +198,13 @@ module.exports = {
     return env;
   },
 
-  async prepareBundle(bundleDir, { rules, skillSource }) {
+  async prepareBundle(bundleDir, { rules, skillSource, extraSkills = [] }) {
+    if (extraSkills.length > 0) {
+      throw new Error(
+        'The Claude adapter does not support extra skills (extraSkills). ' +
+          'Use GITHUB_AI_AGENT_CLI=bob with REVIEW_PROFILE=caic.'
+      );
+    }
     await fs.writeFile(path.join(bundleDir, 'CLAUDE.md'), rules);
     // Loaded through --setting-sources project: file tools refuse paths outside the bundle.
     await fs.mkdir(path.join(bundleDir, '.claude'), { recursive: true });

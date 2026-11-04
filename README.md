@@ -302,6 +302,17 @@ After the first deploy, open the console and press **Sign in with IBMid** once.
 The deployment topology, ordering rules and image layout are in
 [docs/ARCHITECTURE.md §8](docs/ARCHITECTURE.md#8-deployment).
 
+To deploy a **second instance** reviewing `carbon-design-system/carbon-ai-chat`
+from the same image and Elasticsearch cluster, set `REVIEW_PROFILE=caic`,
+`ES_INDEX_PREFIX=carbon-monitor-caic`, `APP=carbon-monitor-caic` and
+`DEPLOY_ENV_FILE=.env.caic` in a separate env file, then run
+`DEPLOY_ENV_FILE=.env.caic ./deploy_ce.sh` — or set `DEPLOY_ENV_FILE` in `.env`
+before calling the script. The caic deployment keeps its own secret, schedule and
+Bobcoins budget, and its Elasticsearch events are isolated from core's. Both
+deployments share the same image and reviewing account. See
+[docs/HARNESS.md §6](docs/HARNESS.md#second-repository-same-image-the-profile-pattern)
+and [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the full variable list.
+
 `./deploy_ce.sh` passes `GITHUB_AI_AGENT_CLI` from `.env` (default `bob`) and the
 `CLAUDE_*` settings through, and syncs `ANTHROPIC_API_KEY` into the Code Engine
 secret beside `BOB_API_KEY`. It refuses to deploy without the key of the agent
