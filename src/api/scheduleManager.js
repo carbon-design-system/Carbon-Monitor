@@ -726,8 +726,8 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   }
 
   // 7. Claim the single-flight lock synchronously, exactly as handleReviewTrigger
-  //    does (server.js lines 532–537). No async gap between the check above and
-  //    this claim — we are on the single-threaded event loop.
+  //    does in server.js. No async gap between the check above and this claim —
+  //    we are on the single-threaded event loop.
   reviewState.running = true;
   reviewState.startedAt = new Date().toISOString();
   reviewState.finishedAt = null;

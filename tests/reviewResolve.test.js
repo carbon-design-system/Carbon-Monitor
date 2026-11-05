@@ -475,6 +475,18 @@ async function numberCases() {
     await tick();
   });
 
+  await test('refs are put into batch order: carbon before carbon-ai-chat, typed order within a repo', async () => {
+    const before = reviewCalls.length;
+    const r = await trigger({ prs: [ref(A, 5), ref(C, 12), ref(C, 11)] });
+    assert.strictEqual(r.status, 202, JSON.stringify(r.body));
+    const expected = [ref(C, 12), ref(C, 11), ref(A, 5)];
+    assert.deepStrictEqual(r.body.prs, expected);
+    assert.deepStrictEqual(reviewCalls[before].prs, expected);
+    const status = (await call('GET', '/api/review/status')).body;
+    assert.deepStrictEqual(status.prs, expected);
+    await tick();
+  });
+
   await test('a collision is a 422 ambiguous with the lookup results, and starts nothing', async () => {
     const before = reviewCalls.length;
     const r = await trigger({ prNumbers: [11, 21] });

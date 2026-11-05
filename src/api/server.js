@@ -1092,7 +1092,13 @@ async function handleReviewTrigger(req, res) {
   if (refs) {
     const merged = parsePrRefs(refs);
     if (!merged.ok) return sendError(res, 400, merged.error);
-    refs = merged.refs;
+    // Batch order, so the status and the console's progress rows match the
+    // order the reviews actually run in (carbon first).
+    const order = (r) => GITHUB_REPOS.indexOf(r.repo);
+    refs = merged.refs
+      .map((r, i) => [r, i])
+      .sort(([a, i], [b, j]) => order(a) - order(b) || i - j)
+      .map(([r]) => r);
   }
 
   // Checked AFTER the awaits above, not before them. Two triggers arriving

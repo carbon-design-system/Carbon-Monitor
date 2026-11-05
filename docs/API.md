@@ -335,7 +335,8 @@ reviewed receives a second set of comments.
 validated against.
 
 Batch order holds for an explicit list as well: every `carbon` PR is reviewed
-before any `carbon-ai-chat` PR, whatever order the list is in.
+before any `carbon-ai-chat` PR, whatever order the list is in. The `prs` in
+the `202` body and in `/api/review/status` are returned in that batch order.
 
 **3. Explicit list — `prNumbers`, array or comma-separated string**
 
