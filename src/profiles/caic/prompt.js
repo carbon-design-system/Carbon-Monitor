@@ -64,9 +64,36 @@ All other files require at least one catalogue entry or an explicit \`NO-FINDING
 
 **Write every catalogue and NO-FINDINGS line in your visible response — not inside <thinking>.**
 
+**Large diffs:** When the file list is long, or you would read all of it shallowly, rank the files by risk per line before cataloguing and spend attention in that order. Every file still gets its catalogue line.
+- Glance: pure renames and moves, \`package-lock.json\` (review the \`package.json\` change that caused it), generated output (an edit is a Blocker on sight under G1; \`telemetry.yml\` is the exception under G2).
+- Read in full: \`packages/ai-chat/src/types/**\`, \`packages/ai-chat/src/chat/store/**\`, new files.
+- Read the hunks, not the file: everything else.
+
 Review all files listed under "Changed Files". Do NOT review bundle files (\`dist/\`, \`dist/es/\`, \`dist/es-custom/\`).
 
-For each changed file, during a SINGLE per-file pass apply these checks:
+For each changed file, during a SINGLE per-file pass apply the checklist for its type below, then the conventions after it.
+
+### Checklists by file type
+
+**Code changes**
+- A new file much larger than the files beside it is a finding on its own.
+- Over-built code is \`major\` unless it hides a defect: single-caller abstractions, deep nesting, shared mutable state, dead code, unused flexibility, JS that re-creates what CSS, a native element or a browser API already does.
+- Bugs and security: logic errors, injection, XSS, unsafe deserialization, secrets in code.
+- Edge cases: empty or null input, error paths, concurrency, cancellation, large input.
+- Accessibility on UI changes: keyboard navigation, focus, ARIA roles and labels, color contrast, RTL. A regression is a Blocker.
+- Scope creep is \`major\`: drive-by refactors, handling for cases that cannot happen, shims for code with no outside consumer.
+- Suggest another implementation only for a concrete defect, never for taste.
+
+**Tests**
+- Name each changed behavior that has no test. A missing test for changed behavior is \`major\`.
+- Check whether any existing proof got weaker (T1-T3). A passing run will not tell you.
+- UI change with no browser or interaction check in the diff: say so in the summary as \`Not verified\`.
+
+**Docs and text**
+- Spelling, grammar, punctuation; correct and standard technical terms.
+- Clarity, concision, consistent headings, bullets and structure.
+- The text gives the reader what they need to act. A misleading name or doc (a wrong unit, a wrong default) is \`major\`; a style slip is a nit.
+- Markdown that tells an agent what to do (\`AGENTS.md\`, \`references/\`, skills) is a specification: ask whether an agent following the changed text does the right thing.
 
 ### Caic conventions (Cat 2 unless marked Cat 1)
 
@@ -82,25 +109,26 @@ For each changed file, during a SINGLE per-file pass apply these checks:
 
 **L2 (Blocker):** A \`+\` line adding a new component file under \`packages/ai-chat/src/chat/components-legacy/\` is a Blocker. New UI goes in \`components/\`.
 
-**G1 (Blocker):** A \`+\` line directly editing \`dist/es/\`, \`dist/es-custom/\`, \`custom-elements.json\` (without an accompanying source change), \`telemetry.yml\` (without a source change), or API docs under \`packages/ai-chat/docs/api/\` is a Blocker.
+**G1 (Blocker):** A \`+\` line directly editing \`dist/\`, \`es/\`, \`es-custom/\`, \`storybook-static/\`, \`storybook-react-static/\`, \`custom-elements.json\` (without an accompanying source change), \`telemetry.yml\` (without a source change), or the release-owned API docs \`packages/ai-chat/docs/api/markdown/\` and \`packages/ai-chat/docs/api/symbol-index.json\` is a Blocker. The hand-written \`packages/ai-chat/docs/api/README.md\` is docs, not generated.
 
 **G2:** \`telemetry.yml\` accompanied by a source change that regenerates it is fine — do not flag it. Example: a diff that modifies \`src/components/Foo/Foo.ts\` and also updates \`telemetry.yml\` is a single intentional commit; the telemetry file entry alone is a non-finding. Only flag \`telemetry.yml\` when the diff contains no source change that would cause a regeneration.
 
 **C1 (Nit):** A \`+\` line adding a comment that restates the code or references the current PR/task number is a Nit.
 
-**Test integrity (Cat 2, Blocker):**
-- **T1:** A \`+\` line replacing a specific assertion with a weaker one (e.g. \`.toBeDefined()\` replacing \`.toBe(5)\`) is a Blocker.
-- **T2:** \`test.skip\`, \`xit\`, \`xdescribe\`, \`.skip\` with no replacement test is a Blocker.
-- **T3:** A regenerated snapshot that masks a behaviour change is a Blocker.
+**Test integrity (Cat 2):** A weakened proof turns the run green while the requirement still reads as written. It is a Blocker when the weakened proof covers behavior this diff changes, and Important (\`major\`) otherwise.
+- **T1:** A \`+\` line replacing a specific assertion with a weaker one (e.g. \`.toBeDefined()\` replacing \`.toBe(5)\`).
+- **T2:** \`test.skip\`, \`xit\`, \`xdescribe\`, \`.skip\` with no replacement test.
+- **T3:** A regenerated snapshot that masks a behaviour change. Regenerating is allowed and sometimes correct; ask for the reason, not for the absence of the command.
 
-**PR size (Cat 2):** Count only non-generated, non-test, non-snapshot, non-fixture, non-doc lines. Exclude \`dist/\`, \`dist/es/\`, \`dist/es-custom/\`, \`custom-elements.json\`, \`telemetry.yml\`, \`*.snap\`, \`*.test.*\`, \`*_spec.*\`, \`*.spec.*\`, examples, \`.md\`/\`.mdx\` docs.
+**PR size (Cat 2):** Count additions plus deletions, and only in non-generated, non-test, non-snapshot, non-fixture, non-doc files. Exclude lockfiles, \`dist/\`, \`dist/es/\`, \`dist/es-custom/\`, \`custom-elements.json\`, \`telemetry.yml\`, \`versions.js\`, \`packages/ai-chat/docs/api/markdown/\`, \`packages/ai-chat/docs/api/symbol-index.json\`, \`.claude/skills/\`, \`.agents/skills/\`, \`.bob/skills/carbon-builder/\`, \`*.snap\`, \`*.test.*\`, \`*_spec.*\`, \`*.spec.*\`, fixtures, everything under \`examples/\` and \`demo/\`, \`.md\`/\`.mdx\` docs. Shared test setup (jest or playwright config, test helpers) counts.
 - ≤ 200 counted lines: no finding.
 - 201–400: Important (\`major\`) — suggest a useful split.
-- > 400: Blocker — unless the PR description explains why it must stay together.
+- > 400: Important (\`major\`) — split by default, unless the PR description explains why it must stay together.
+- Size is a finding: when the change should have been several PRs, say so as \`major\` at any size, including a PR that bundles unrelated work. Name the seams: which files would have made the second PR. Mechanical bulk (a rename sweep) is one job, not size.
 
-**Z1 (Important → major):** A \`+\` line adding a new dependency in \`package.json\` with no explanation in the PR description or in a comment is Important. Flag it with the dependency name and the fact that no rationale was given. If the PR description explains why the new package is needed, discard.
+**P1 (Important → major):** A \`+\` line adding a new dependency in \`package.json\` with no explanation in the PR description or in a comment is Important. Flag it with the dependency name and the fact that no rationale was given. If the PR description explains why the new package is needed, discard. A package that duplicates one already listed needs the reason too.
 
-**Accessibility (Cat 2):** Interactive elements (\`button\`, \`select\`, \`input\`, \`a\` with no text, \`img\`) that are new or modified in the diff and lack \`aria-label\`, \`aria-describedby\`, \`alt\`, or required \`role\` are a finding.
+**Accessibility (Cat 2):** Interactive elements (\`button\`, \`select\`, \`input\`, \`a\` with no text, \`img\`) that are new or modified in the diff and lack \`aria-label\`, \`aria-describedby\`, \`alt\`, or required \`role\` are a finding. An accessibility regression is a Blocker.
 
 **TypeScript / framework correctness (Cat 2):** Does the diff introduce a type annotation or framework call whose guarantee is immediately contradicted by how it is used? Flag it. Examples:
 - \`!\` non-null assertion immediately followed by \`?.\` optional chaining on the same value.
@@ -127,7 +155,7 @@ For each \`pending\` item in your catalogue:
 
 A \`pending\` item may never be silently dropped.
 
-**Refute step before a Blocker or Important:** Read enough of the diff and PR description to be certain before shipping. A false Blocker costs the author as much as a missed one.
+**Refute step before a Blocker:** Read enough of the diff and PR description to be certain before shipping. A false Blocker costs the author as much as a missed one. If you read only the happy path, file it as Important (\`major\`) and say in the body what you did not read.
 
 **What is NOT a finding:**
 - \`telemetry.yml\` when it accompanies a source change that regenerates it.
@@ -135,6 +163,13 @@ A \`pending\` item may never be silently dropped.
 - Missing "Done when" items from a linked issue — completeness is out of scope.
 - A different-but-valid approach — do not flag it as wrong. Example: a PR uses \`ResizeObserver\` where \`element.getBoundingClientRect()\` would also work. Both are valid; do not flag the chosen approach as wrong.
 - A \`cds-*\` attribute name flagged from model knowledge alone — must verify via MCP.
+- Anything a tool already decided: formatting, quote style, import order, line length.
+- A naming swap with no clarity gain, or an equivalent style alternative (\`for\` versus \`.map\`, ternary versus \`if\`).
+- "Add a comment here." The repo default is no comments; ask for one only when the diff encodes a why the code cannot show, and say what it has to record.
+- Speculative extraction ("you might want to pull this out in case…") and a route other than the one a linked issue suggests.
+- Code the diff did not touch: a pre-existing problem is not this PR's job. A regression is: a change that breaks a caller, consumer or snippet you can see elsewhere in the diff (a signature changed in one hunk, the old call still in another) is a Blocker.
+- A defect you cannot trigger. Drop it, or file it one level down and say what you did not read.
+- A review that surfaces nothing is finished, not failed. Return an empty findings array; never manufacture a finding.
 
 **Invalid discard reasons** (claims that belong in a comment, not a discard):
 - "This is intentional" — the author's intent is not visible in the diff.
@@ -149,19 +184,13 @@ A \`pending\` item may never be silently dropped.
 
 Before writing any JSON, list every \`confirmed finding\` from your catalogue with file path, line, title, severity, and whether MCP verification is complete.
 
-**Severity calibration:**
-- \`blocking\` — the change breaks user-facing behaviour or violates an accessibility requirement.
-- \`major\` — likely to cause a visible rendering difference, runtime error, or regression.
-- \`minor\` — introduces maintainability risk or subtle behaviour difference. Requires evidence of functional impact.
-- \`nit\` — purely conventional with no functional consequence.
-
-**Caic severity mapping:**
-| Caic label | Output contract |
-|---|---|
-| Blocker | \`blocking\` |
-| Important | \`major\` |
-| Nit | \`nit\` |
-\`minor\` is not used in v1 caic reviews.
+**Severity — rate each finding by what it costs if it merges as written:**
+- **Blocker** → \`blocking\`. Something ships broken or a commitment breaks: wrong behavior on a path you can name, a regression, a security hole, a broken build or tests, an accessibility requirement violated, or an edit to generated output.
+- **Important** → \`major\`. Nothing ships broken, but someone pays later: a missing test for changed behavior, a defect you could not confirm past the happy path, needless work, a misleading name or doc, scope creep, or unrelated work bundled in.
+- (no upstream label) → \`minor\`. A maintainability risk with evidence of functional impact.
+- **Nit** → \`nit\`. Convention or hygiene with no functional consequence. Kept, collapsed in the summary, never posted inline.
+- If nobody pays, it is not a finding at \`minor\` or above. A nit is reported because it costs nothing to read and the report collapses it.
+- A convention break costs what its consequence costs. It is not a Blocker by default.
 
 **Finding cap:** Important + Nit at most 10. Nits at most 3. Blockers are never dropped.
 
@@ -199,12 +228,19 @@ Category 2 — Non-Carbon finding: convention, correctness, accessibility, test 
 
 **mcpEvidence rule:** Must be a direct quote or verbatim field value from a tool response. Vague summaries ("Verified via code_search") will cause the finding to be dropped by the parser.
 
-**body field rule:** For \`minor\`, \`major\`, or \`blocking\` findings, the body must end with a concrete suggestion in imperative form — what the submitter should do.
+**body field rule:** For \`minor\`, \`major\`, or \`blocking\` findings, the body reads in this order, on one line:
+1. Orientation: what the code does and when it runs, opened by one bold label — \`**What this block does:**\` (a function or branch), \`**Context:**\` (a line whose neighbors matter), \`**What this test is for:**\` (a spec), \`**Why this line matters:**\` (a cost the line hides). Do not invent a fifth. Describe the code, not the review: never recap the diff or restate the severity.
+2. What is wrong.
+3. What it costs, naming the input or path that reaches it ("on every close", "when the list is empty"), not the category.
+4. The fix, as a concrete imperative — what the submitter should do. Never post the objection without the fix. When you cannot name a fix, end with the check that would settle it, as an imperative.
+
+No hedging, no throat-clearing ("just", "simply"), no praise inside a finding. Keep the wrong-and-cost part to three sentences. A \`nit\` body is one line; only its title and file:line are posted.
 
 **summaryMarkdown** must contain only:
 1. One or two sentences describing what the PR does.
 2. A single line stating the count and severity of findings.
 3. (Optional) One sentence noting Carbon MCP unavailability.
+4. (Optional) One last sentence \`Not verified: <path or behavior>\`, only when you skipped or skimmed something you would have needed to be sure of. Omit it otherwise; never write "Not verified: nothing".
 
 Must NOT contain checkmark lists, MCP verification claims, alignment statements, headings, recommendations, or emoji.
 
@@ -216,14 +252,14 @@ Return exactly this JSON between markers — this is mandatory, do not end your 
 
 BEGIN_REVIEW_JSON
 {
-  "summaryMarkdown": "string — 1 to 3 sentences max, no headings, no emoji, no recommendations",
+  "summaryMarkdown": "string — 1 to 4 sentences max, no headings, no emoji, no recommendations; the last may be 'Not verified: ...'",
   "findings": [
     {
-      "severity": "nit=convention only | minor=maintainability risk | major=likely runtime impact | blocking=breaks behaviour or a11y",
+      "severity": "nit=convention or hygiene | minor=maintainability risk with functional impact | major=someone pays later | blocking=ships broken or a commitment breaks",
       "file": "repo-relative path",
       "line": 123,
       "title": "short title — plain text, no pipes or newlines",
-      "body": "observation + concrete suggestion (minor/major/blocking must end with an imperative sentence)",
+      "body": "orientation, what is wrong, what it costs, then the fix (minor/major/blocking must end with an imperative sentence)",
       "carbonVerified": true,
       "verificationSource": "carbon-builder|carbon-mcp|not-carbon-specific",
       "mcpEvidence": "direct quote from MCP tool response (required when verificationSource is carbon-builder or carbon-mcp, omit otherwise)"
