@@ -196,6 +196,75 @@ test('output WITH catalogue line → hasCatalogue is true', () => {
   assert.strictEqual(review.hasCatalogue, true);
 });
 
+// ── Rubric wording needs no parser change ─────────────────────────────────────
+console.log(
+  '\n── Rubric: orientation body, Not verified, nits and minor parse as before ──'
+);
+
+const PARSE_OPTS = {
+  skillReads: [],
+  skillDir: '.bob/skills/carbon-builder/',
+  readTool: 'read_file',
+};
+
+function convention(severity, title, body) {
+  return {
+    severity,
+    file: 'packages/ai-chat/src/foo.ts',
+    line: 12,
+    title,
+    body,
+    carbonVerified: false,
+    verificationSource: 'not-carbon-specific',
+  };
+}
+
+const ORIENTED_BODY =
+  '**Context:** this early return is the already-closed guard, and the listener it skips was registered above. The early return skips teardown, so the listener leaks on every close. Call `dispose()` before returning.';
+
+test('a body in orientation, defect, cost, fix order reaches the review verbatim', () => {
+  const output = makeAgentOutput({
+    findings: [convention('blocking', 'Listener leaks', ORIENTED_BODY)],
+  });
+  const review = parseReviewOutput(output, PARSE_OPTS);
+  assert.strictEqual(review.findings.length, 1);
+  assert.strictEqual(review.findings[0].body, ORIENTED_BODY);
+});
+
+test('a summary ending in Not verified is kept verbatim', () => {
+  const summary =
+    'This PR adds a queue. 1 major finding. Not verified: the retry branch of the upload queue.';
+  const json = JSON.stringify({
+    summaryMarkdown: summary,
+    findings: [],
+    findingsTable: [],
+    shouldPostInlineComments: true,
+  });
+  const review = parseReviewOutput(
+    `NO-FINDINGS foo.ts \u2014 fine\nBEGIN_REVIEW_JSON\n${json}\nEND_REVIEW_JSON`,
+    PARSE_OPTS
+  );
+  assert.strictEqual(review.summaryMarkdown, summary);
+});
+
+test('nits only is Looks Good; the nit is kept for the collapsed list', () => {
+  const output = makeAgentOutput({
+    findings: [convention('nit', 'Comment restates the code', 'Delete it.')],
+  });
+  const review = parseReviewOutput(output, PARSE_OPTS);
+  assert.strictEqual(review.recommendation, 'looks-good');
+  assert.strictEqual(review.findings[0].severity, 'nit');
+});
+
+test('a minor finding is accepted and asks for Suggested Improvements', () => {
+  const output = makeAgentOutput({
+    findings: [convention('minor', 'Fragile ordering', ORIENTED_BODY)],
+  });
+  const review = parseReviewOutput(output, PARSE_OPTS);
+  assert.strictEqual(review.findings.length, 1);
+  assert.strictEqual(review.recommendation, 'suggested-improvements');
+});
+
 // ── summary ───────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`Passed: ${passed}  Failed: ${failed}`);

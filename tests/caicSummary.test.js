@@ -176,6 +176,100 @@ test('formatLooksGoodComment with caic headerLabel starts [AI agent review - CAI
   );
 });
 
+// ── Not verified: one optional sentence, layout unchanged ────────────────────
+console.log(
+  '\n── Not verified: the summary layout does not change ─────────────────'
+);
+
+const NOT_VERIFIED = 'Not verified: the retry branch of the upload queue.';
+const BASE_SUMMARY = 'This PR adds a new Lit component. 1 major finding.';
+const NIT = {
+  severity: 'nit',
+  title: 'Rename the story',
+  file: 'src/a.stories.js',
+  line: 40,
+};
+
+function headingsOf(comment) {
+  return comment.split('\n').filter((l) => /^(#{1,3} |<summary>)/.test(l));
+}
+
+test('a summary given without Not verified has no such sentence', () => {
+  const comment = formatSummaryComment({
+    ...makeSummaryArgs({ summaryMarkdown: BASE_SUMMARY }),
+    headerLabel: CAIC_HEADER,
+    showCarbonVerification: false,
+  });
+  assert.ok(!comment.includes('Not verified'));
+});
+
+test('the Not verified sentence appears once, in the Summary section, and nothing else moves', () => {
+  const args = {
+    ...makeSummaryArgs({ summaryMarkdown: BASE_SUMMARY }),
+    headerLabel: CAIC_HEADER,
+    showCarbonVerification: false,
+    nitFindings: [NIT],
+  };
+  const without = formatSummaryComment(args);
+  const withIt = formatSummaryComment({
+    ...args,
+    summaryMarkdown: `${BASE_SUMMARY} ${NOT_VERIFIED}`,
+  });
+  assert.strictEqual(withIt.split(NOT_VERIFIED).length, 2, 'exactly once');
+  assert.strictEqual(
+    withIt.replace(` ${NOT_VERIFIED}`, ''),
+    without,
+    'the only difference is the sentence'
+  );
+  assert.ok(
+    withIt.indexOf('## Summary') < withIt.indexOf(NOT_VERIFIED) &&
+      withIt.indexOf(NOT_VERIFIED) < withIt.indexOf('optional nit'),
+    'after the Summary heading, before the nit list'
+  );
+  assert.deepStrictEqual(headingsOf(withIt), headingsOf(without));
+});
+
+test('the Looks Good comment takes the sentence the same way', () => {
+  const args = {
+    agent: 'bob',
+    agentName: 'IBM Bob',
+    summaryMarkdown: 'Clean PR.',
+    commitSha: 'abc1234',
+    headerLabel: CAIC_HEADER,
+    nitFindings: [NIT],
+  };
+  const without = formatLooksGoodComment(args);
+  const withIt = formatLooksGoodComment({
+    ...args,
+    summaryMarkdown: `Clean PR. ${NOT_VERIFIED}`,
+  });
+  assert.ok(!without.includes('Not verified'));
+  assert.strictEqual(withIt.replace(` ${NOT_VERIFIED}`, ''), without);
+});
+
+test('nits stay collapsed and out of the findings table for the caic header', () => {
+  const comment = formatSummaryComment({
+    ...makeSummaryArgs({ summaryMarkdown: BASE_SUMMARY }),
+    headerLabel: CAIC_HEADER,
+    showCarbonVerification: false,
+    findingsTable: [
+      {
+        area: 'General',
+        category: 'Cat 2',
+        severity: 'nit',
+        title: 'Rename the story',
+        file: 'src/a.stories.js',
+      },
+    ],
+    nitFindings: [NIT],
+  });
+  assert.ok(!comment.includes('Findings ('), 'a nit is not a table row');
+  assert.ok(comment.includes('<summary>1 optional nit</summary>'));
+  assert.ok(
+    comment.includes('- Rename the story \u2014 `src/a.stories.js:40`')
+  );
+});
+
 // ── summary ───────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`Passed: ${passed}  Failed: ${failed}`);

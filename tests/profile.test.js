@@ -88,6 +88,75 @@ test('caic skill SKILL.md has a non-empty `description:` field (when skill exist
   );
 });
 
+test('the skill, the rules ledger and the eval manifest pin the same upstream commit', () => {
+  const skill = fs.readFileSync(SKILL_FILE, 'utf8');
+  const ledgerPath = path.join(
+    __dirname,
+    '..',
+    'src',
+    'profiles',
+    'caic',
+    'RULES-LEDGER.md'
+  );
+  assert.ok(fs.existsSync(ledgerPath), 'RULES-LEDGER.md sits beside prompt.js');
+  const pinned = skill.match(/<!-- upstream commit pinned: ([0-9a-f]{40}) -->/);
+  assert.ok(pinned, 'SKILL.md names the pinned commit in a comment');
+  assert.ok(
+    skill.includes('<!-- rules-ledger: src/profiles/caic/RULES-LEDGER.md -->'),
+    'SKILL.md points at the ledger by its real path'
+  );
+  const ledger = fs.readFileSync(ledgerPath, 'utf8');
+  assert.ok(
+    ledger.includes(`**Upstream commit pinned:** \`${pinned[1]}\``),
+    'the ledger pins the same commit'
+  );
+  const manifest = require('../evals/caic/manifest.json');
+  assert.strictEqual(manifest.upstreamCommit, pinned[1]);
+  assert.ok(ledger.includes('## Re-distilling'));
+  assert.ok(ledger.includes('## Drift since the previous pin'));
+});
+
+test('every eval the ledger names exists in the manifest, ids are unique, and defects are well formed', () => {
+  const manifest = require('../evals/caic/manifest.json');
+  const ids = manifest.prs.map((pr) => pr.id);
+  assert.strictEqual(new Set(ids).size, ids.length, 'duplicate eval id');
+  const severities = ['blocking', 'major', 'minor', 'nit'];
+  for (const pr of manifest.prs) {
+    assert.ok(pr.branch && pr.changes.length > 0, `${pr.id} has no changes`);
+    if (pr.defect) {
+      assert.ok(severities.includes(pr.defect.severity), pr.id);
+      assert.ok(pr.defect.file && pr.defect.rule, pr.id);
+    }
+  }
+  const ledger = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'profiles', 'caic', 'RULES-LEDGER.md'),
+    'utf8'
+  );
+  const evalsTable = ledger.slice(ledger.indexOf('## Evals'));
+  const named = new Set(
+    [...evalsTable.matchAll(/\b([A-D]\d{1,2}|E\d)\b(?= \(|\s*\|)/g)].map(
+      (m) => m[1]
+    )
+  );
+  for (const id of [
+    'A9',
+    'B1',
+    'C3',
+    'E1',
+    'E2',
+    'E3',
+    'E4',
+    'E5',
+    'E6',
+    'E7',
+  ]) {
+    assert.ok(named.has(id), `ledger does not name ${id}`);
+  }
+  for (const id of named) {
+    assert.ok(ids.includes(id), `ledger names ${id}, the manifest lacks it`);
+  }
+});
+
 test('checkRepos(["carbon-ai-chat"], "bob") throws when the skill file is missing', () => {
   // Temporarily rename the skill file if it exists so we can test the throw.
   const exists = fs.existsSync(SKILL_FILE);

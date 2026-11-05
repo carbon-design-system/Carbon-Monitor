@@ -80,6 +80,166 @@ test('SKILL.md description: field is non-empty', () => {
   assert.ok(m[1].trim().length > 0, 'description must not be empty');
 });
 
+// ── Rubric: severity mapping, finding shape and Not verified ─────────────────
+
+console.log(
+  '\n── Rubric: the skill and the caic prompt agree; core is untouched ─────'
+);
+
+const { buildCaicPrompt } = require('../src/profiles/caic/prompt');
+const { buildReviewPrompt } = require('../src/reviewPrompt');
+
+const skillText = fs.readFileSync(SKILL_FILE, 'utf8');
+const caicPrompt = buildCaicPrompt({ owner: 'o', repo: 'r', agent: 'bob' });
+const corePrompt = buildReviewPrompt({ owner: 'o', repo: 'r', agent: 'bob' });
+
+// The text from a heading to the next heading of the same or a higher level.
+function sectionOf(text, heading) {
+  const start = text.indexOf(heading);
+  assert.ok(start !== -1, `heading not found: ${heading}`);
+  const rest = text.slice(start + heading.length);
+  const end = rest.search(/\n(?:## |---\n)/);
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+// A bullet that Prettier or the author wrapped is one bullet.
+function bulletsOf(text) {
+  return text
+    .replace(/\n[ \t]+(?=\S)/g, ' ')
+    .split('\n')
+    .filter((l) => l.startsWith('- '))
+    .map((l) => l.trim());
+}
+
+const MAPPING_BULLETS = bulletsOf(sectionOf(skillText, '## Severity'));
+
+test('SKILL.md Severity section maps Blocker, Important, minor and Nit once', () => {
+  assert.strictEqual(MAPPING_BULLETS.length, 6, MAPPING_BULLETS.join('\n'));
+  const joined = MAPPING_BULLETS.join('\n');
+  for (const pair of [
+    '**Blocker** → `blocking`',
+    '**Important** → `major`',
+    '→ `minor`. A maintainability risk with evidence of functional impact',
+    '**Nit** → `nit`',
+  ]) {
+    assert.ok(joined.includes(pair), `missing "${pair}"`);
+  }
+  assert.ok(joined.includes('If nobody pays, it is not a finding'));
+  assert.ok(
+    joined.includes(
+      'A convention break costs what its consequence costs. It is not a Blocker by default.'
+    )
+  );
+  assert.ok(joined.includes('never posted inline'), 'nits are never inline');
+});
+
+test('the caic prompt carries every severity mapping line from the skill word for word', () => {
+  for (const line of MAPPING_BULLETS) {
+    assert.ok(caicPrompt.includes(line), `prompt is missing: ${line}`);
+  }
+});
+
+test('neither file still says minor is unused, or grades size and weakened proofs as flat Blockers', () => {
+  for (const [name, text] of [
+    ['SKILL.md', skillText],
+    ['prompt', caicPrompt],
+  ]) {
+    assert.ok(!/minor.{0,20}is not used/.test(text), `${name}: minor unused`);
+    assert.ok(!/> 400: Blocker/.test(text), `${name}: size Blocker`);
+  }
+});
+
+const ORIENTATION_LABELS = [
+  '**What this block does:**',
+  '**Context:**',
+  '**What this test is for:**',
+  '**Why this line matters:**',
+];
+
+test('SKILL.md and the caic prompt both carry the four orientation labels and the order', () => {
+  for (const label of ORIENTATION_LABELS) {
+    assert.ok(skillText.includes(label), `SKILL.md missing ${label}`);
+    assert.ok(caicPrompt.includes(label), `prompt missing ${label}`);
+  }
+  assert.ok(/Orient.*Diagnose.*Cost.*Fix/s.test(skillText));
+  assert.ok(
+    /Orientation.*What is wrong.*What it costs.*The fix/s.test(caicPrompt)
+  );
+});
+
+test('SKILL.md and the caic prompt both carry the Not verified rule', () => {
+  assert.ok(skillText.includes('`Not verified: <path or behavior>`'));
+  assert.ok(caicPrompt.includes('`Not verified: <path or behavior>`'));
+  assert.ok(caicPrompt.includes('never write "Not verified: nothing"'));
+});
+
+test('core prompt has none of the caic rubric', () => {
+  for (const needle of [
+    ...ORIENTATION_LABELS,
+    'Not verified',
+    'costs if it merges as written',
+    'If nobody pays',
+    'Blocker** → `blocking`',
+  ]) {
+    assert.ok(!corePrompt.includes(needle), `core prompt contains: ${needle}`);
+  }
+});
+
+test('X rules: the telemetry rule appears once, and X1 to X12 run without a gap', () => {
+  const x = sectionOf(skillText, '## What is NOT a finding (X rules)');
+  const ids = [...x.matchAll(/- \*\*X(\d+)\*\*/g)].map((m) => Number(m[1]));
+  assert.deepStrictEqual(
+    ids,
+    Array.from({ length: 12 }, (_, i) => i + 1)
+  );
+  const rules = x.split('\n- **X').filter((r) => r.includes('telemetry.yml'));
+  assert.strictEqual(rules.length, 1, 'X1 and the old X6 are one rule');
+});
+
+test('the refute rule files an unconfirmed Blocker one level down', () => {
+  const w = sectionOf(skillText, '## Section W — Finding wording');
+  assert.ok(/refute/i.test(w));
+  assert.ok(w.includes('file it as Important'));
+  assert.ok(w.includes('what you did not read'));
+  assert.ok(caicPrompt.includes('file it as Important'));
+});
+
+test('three checklists, each under ten lines, and the prompt carries them', () => {
+  const e = sectionOf(skillText, '## Section E — Checklists by file type');
+  const parts = e.split(/\n\*\*(?=Code changes|Tests|Docs and text)/);
+  assert.strictEqual(parts.length, 4, 'intro plus three checklists');
+  for (const part of parts.slice(1)) {
+    const bullets = bulletsOf(part);
+    assert.ok(bullets.length > 0 && bullets.length < 10, part.slice(0, 20));
+    for (const b of bullets) {
+      assert.ok(caicPrompt.includes(b), `prompt is missing: ${b}`);
+    }
+  }
+  assert.ok(caicPrompt.includes('Checklists by file type'));
+});
+
+test('large diffs: the skill ranks files by risk, and size stays a finding under Z', () => {
+  const r = sectionOf(skillText, '## Section R — Large diffs');
+  assert.ok(/rank the files by risk/i.test(r));
+  assert.ok(r.includes('Every file still gets its catalogue line'));
+  const z = sectionOf(skillText, '## Section Z — PR size (Cat 2, Important)');
+  assert.ok(z.includes('**Size is a finding.**'));
+  assert.ok(caicPrompt.includes('rank the files by risk per line'));
+  assert.ok(caicPrompt.includes('Size is a finding'));
+});
+
+test('dependencies are P1, so Z1 is only the size rule', () => {
+  assert.ok(skillText.includes('**P1 (Important):**'));
+  assert.ok(!skillText.includes('**Z1 (Important)'));
+  assert.ok(caicPrompt.includes('**P1 (Important'));
+  assert.ok(!caicPrompt.includes('**Z1 (Important'));
+});
+
+test('no file points at a spec this branch does not carry', () => {
+  assert.ok(!skillText.includes('specs/'));
+  assert.ok(!caicPrompt.includes('specs/'));
+});
+
 // ── AC-15: Bob bundle skill set ────────────────────────────────────────────────
 
 console.log(

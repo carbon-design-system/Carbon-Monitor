@@ -165,7 +165,7 @@
         "file": "packages/ai-chat/tests/format-message_spec.ts",
         "line": 8,
         "rule": "T1",
-        "severity": "blocking",
+        "severity": "major",
         "description": "expect(...).toBe('abcd\\u2026') replaced with expect(...).toBeDefined() — assertion is now trivially true"
       },
       "changes": [
@@ -362,7 +362,7 @@
       "defect": {
         "file": "packages/ai-chat/src/chat/components/tooltip/tooltip.ts",
         "rule": "Z3",
-        "severity": "blocking",
+        "severity": "major",
         "fileLevel": true,
         "description": "PR exceeds 400 counted lines and bundles two unrelated changes — split into separate PRs"
       },
@@ -491,6 +491,143 @@
         {
           "path": "packages/ai-chat/src/chat/utils/format-message.ts",
           "content": "export interface MessageInput {\n  text: string;\n  maxLength?: number;\n}\n\nconst DEFAULT_MAX_LENGTH = 500;\n\nexport function formatMessage({ text, maxLength = DEFAULT_MAX_LENGTH }: MessageInput): string {\n  // trim the text\n  const trimmed = text.trim();\n  // check if under the limit\n  if (trimmed.length <= maxLength) {\n    return trimmed;\n  }\n  return `${trimmed.slice(0, maxLength - 1)}\\u2026`;\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "E1",
+      "branch": "eval/e1-formatting-only",
+      "title": "E1: formatting-only change a hook already settles",
+      "description": "Reorders imports and switches single quotes to double quotes in message-list.ts. No behaviour change. A prettier hook decides this, so it is not a finding (X6).",
+      "defect": null,
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/components/message-list/message-list.ts",
+          "content": "import { html, LitElement } from \"lit\";\nimport { customElement, property } from \"lit/decorators.js\";\nimport { formatMessage } from \"../../utils/format-message\";\n\n@customElement(\"example-message-list\")\nexport class MessageList extends LitElement {\n  @property({ type: Array })\n  messages: string[] = [];\n\n  render() {\n    return html`<ul role=\"list\">\n      ${this.messages.map((message) => html`<li>${formatMessage({ text: message })}</li>`)}\n    </ul>`;\n  }\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "branch": "eval/e2-naming-and-style",
+      "title": "E2: naming swap and an equivalent style alternative",
+      "description": "Renames a local variable from trimmed to cleaned and rewrites an if/return as a ternary. No behaviour change, no clarity gain, so it is not a finding (X7).",
+      "defect": null,
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/utils/format-message.ts",
+          "content": "export interface MessageInput {\n  text: string;\n  maxLength?: number;\n}\n\nconst DEFAULT_MAX_LENGTH = 500;\n\nexport function formatMessage({ text, maxLength = DEFAULT_MAX_LENGTH }: MessageInput): string {\n  const cleaned = text.trim();\n  return cleaned.length <= maxLength ? cleaned : `${cleaned.slice(0, maxLength - 1)}\\u2026`;\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "E3",
+      "branch": "eval/e3-caller-left-on-old-name",
+      "title": "E3: option renamed, caller in the same diff left on the old name",
+      "description": "Renames the formatMessage option maxLength to limit. A new caller in the same diff still passes maxLength, so it no longer compiles or truncates.",
+      "defect": {
+        "file": "packages/ai-chat/src/chat/utils/message-preview.ts",
+        "line": 4,
+        "rule": "X10",
+        "severity": "blocking",
+        "description": "previewMessage passes maxLength, which this diff renames to limit — a regression visible in the diff"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/utils/format-message.ts",
+          "content": "export interface MessageInput {\n  text: string;\n  limit?: number;\n}\n\nconst DEFAULT_LIMIT = 500;\n\nexport function formatMessage({ text, limit = DEFAULT_LIMIT }: MessageInput): string {\n  const trimmed = text.trim();\n  if (trimmed.length <= limit) {\n    return trimmed;\n  }\n  return `${trimmed.slice(0, limit - 1)}\\u2026`;\n}\n"
+        },
+        {
+          "path": "packages/ai-chat/src/chat/utils/message-preview.ts",
+          "content": "import { formatMessage } from './format-message';\n\nexport function previewMessage(text: string): string {\n  return formatMessage({ text, maxLength: 80 });\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "E4",
+      "branch": "eval/e4-weakened-proof-beside-change",
+      "title": "E4: assertion weakened in the PR that changes the behaviour it covers",
+      "description": "Changes truncation so the result is maxLength characters plus an ellipsis, and loosens the matching .toBe() assertion to .toBeDefined(). The weakened proof covers behaviour this diff changes.",
+      "defect": {
+        "file": "packages/ai-chat/tests/format-message_spec.ts",
+        "line": 8,
+        "rule": "T1",
+        "severity": "blocking",
+        "description": "expect(...).toBe(...) replaced with expect(...).toBeDefined() while the truncation behaviour it covers changes in the same diff"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/utils/format-message.ts",
+          "content": "export interface MessageInput {\n  text: string;\n  maxLength?: number;\n}\n\nconst DEFAULT_MAX_LENGTH = 500;\n\nexport function formatMessage({ text, maxLength = DEFAULT_MAX_LENGTH }: MessageInput): string {\n  const trimmed = text.trim();\n  if (trimmed.length <= maxLength) {\n    return trimmed;\n  }\n  return `${trimmed.slice(0, maxLength)}\\u2026`;\n}\n"
+        },
+        {
+          "path": "packages/ai-chat/tests/format-message_spec.ts",
+          "content": "import { formatMessage } from '../src/chat/utils/format-message';\n\ndescribe('formatMessage', () => {\n  it('trims whitespace', () => {\n    expect(formatMessage({ text: '  hello  ' })).toBe('hello');\n  });\n\n  it('truncates text longer than maxLength with an ellipsis', () => {\n    expect(formatMessage({ text: 'abcdefghij', maxLength: 5 })).toBeDefined();\n  });\n\n  it('leaves text at exactly maxLength unchanged', () => {\n    expect(formatMessage({ text: 'abcde', maxLength: 5 })).toBe('abcde');\n  });\n});\n"
+        }
+      ]
+    },
+    {
+      "id": "E5",
+      "branch": "eval/e5-bundled-unrelated-work",
+      "title": "E5: unrelated work bundled into a small PR",
+      "description": "Adds keyboard shortcuts to MessageList and, in the same PR, rewrites a French error string. About 50 counted lines, under the size band, but two unrelated purposes.",
+      "defect": {
+        "file": "packages/ai-chat/src/chat/components/message-list/keyboard-shortcuts.ts",
+        "rule": "Z5",
+        "severity": "major",
+        "fileLevel": true,
+        "description": "PR bundles the shortcut handler with an unrelated French copy change — split into two PRs"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/components/message-list/keyboard-shortcuts.ts",
+          "content": "export interface ShortcutHandlers {\n  onPrevious: () => void;\n  onNext: () => void;\n  onClear: () => void;\n}\n\nexport function handleShortcut(event: KeyboardEvent, handlers: ShortcutHandlers): boolean {\n  if (event.key === 'ArrowUp') {\n    handlers.onPrevious();\n    return true;\n  }\n  if (event.key === 'ArrowDown') {\n    handlers.onNext();\n    return true;\n  }\n  if (event.key === 'Escape') {\n    handlers.onClear();\n    return true;\n  }\n  return false;\n}\n"
+        },
+        {
+          "path": "packages/ai-chat/src/chat/localization/fr.json",
+          "content": "{\n  \"buttons_send\": \"Envoyer\",\n  \"buttons_cancel\": \"Annuler\",\n  \"errors_requestFailed\": \"Votre message n'a pas pu être envoyé. Vérifiez votre connexion, puis réessayez.\",\n  \"messages_empty\": \"Pas encore de messages. Posez une question pour commencer.\"\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "E6",
+      "branch": "eval/e6-single-caller-abstraction",
+      "title": "E6: strategy interface and registry for one call site",
+      "description": "Adds a TruncationStrategy interface, a registry and a factory so formatMessage can pick how to truncate. The only strategy is the ellipsis one and the only caller is formatMessage.",
+      "defect": {
+        "file": "packages/ai-chat/src/chat/utils/truncation-strategy.ts",
+        "line": 1,
+        "rule": "E-code",
+        "severity": "major",
+        "description": "Interface, registry and factory with one implementation and one caller — over-built; inline the ellipsis truncation"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/utils/truncation-strategy.ts",
+          "content": "export interface TruncationStrategy {\n  truncate(text: string, maxLength: number): string;\n}\n\nconst strategies = new Map<string, TruncationStrategy>();\n\nexport function registerStrategy(name: string, strategy: TruncationStrategy): void {\n  strategies.set(name, strategy);\n}\n\nexport function getStrategy(name: string): TruncationStrategy {\n  const strategy = strategies.get(name);\n  if (!strategy) {\n    throw new Error(`Unknown truncation strategy: ${name}`);\n  }\n  return strategy;\n}\n\nregisterStrategy('ellipsis', {\n  truncate: (text, maxLength) => `${text.slice(0, maxLength - 1)}\\u2026`,\n});\n"
+        },
+        {
+          "path": "packages/ai-chat/src/chat/utils/format-message.ts",
+          "content": "import { getStrategy } from './truncation-strategy';\n\nexport interface MessageInput {\n  text: string;\n  maxLength?: number;\n}\n\nconst DEFAULT_MAX_LENGTH = 500;\n\nexport function formatMessage({ text, maxLength = DEFAULT_MAX_LENGTH }: MessageInput): string {\n  const trimmed = text.trim();\n  if (trimmed.length <= maxLength) {\n    return trimmed;\n  }\n  return getStrategy('ellipsis').truncate(trimmed, maxLength);\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "E7",
+      "branch": "eval/e7-wrong-unit-in-doc",
+      "title": "E7: JSDoc states the wrong unit",
+      "description": "Adds a JSDoc to formatMessage that says maxLength is in bytes, but the code counts UTF-16 code units. A caller who trusts the doc passes the wrong number.",
+      "defect": {
+        "file": "packages/ai-chat/src/chat/utils/format-message.ts",
+        "line": 10,
+        "rule": "E-docs",
+        "severity": "major",
+        "description": "@param maxLength says bytes; the code compares string length (UTF-16 code units)"
+      },
+      "changes": [
+        {
+          "path": "packages/ai-chat/src/chat/utils/format-message.ts",
+          "content": "export interface MessageInput {\n  text: string;\n  maxLength?: number;\n}\n\nconst DEFAULT_MAX_LENGTH = 500;\n\n/**\n * Format a message for display.\n * @param maxLength - the maximum size in bytes (defaults to 500)\n */\nexport function formatMessage({ text, maxLength = DEFAULT_MAX_LENGTH }: MessageInput): string {\n  const trimmed = text.trim();\n  if (trimmed.length <= maxLength) {\n    return trimmed;\n  }\n  return `${trimmed.slice(0, maxLength - 1)}\\u2026`;\n}\n"
         }
       ]
     }
