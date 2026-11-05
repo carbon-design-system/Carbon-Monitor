@@ -18,7 +18,7 @@ export class ApiError extends Error {
     this.status = status;
     // The parsed error body, so a caller can read structured fields a plain
     // message cannot carry — e.g. the 409 from POST /api/review/trigger names
-    // the in-flight run's startedAt / mode / prNumbers for the "already
+    // the in-flight run's startedAt / mode / prs for the "already
     // running" modal to show what is blocking the new run.
     this.body = body;
   }
@@ -99,20 +99,41 @@ export const api = {
   // ── Reviews ──────────────────────────────────────────────────────────────
 
   /**
+   * Which configured repository each typed PR number belongs to.
+   *
+   * Discovery only: nothing starts and the review lock is not taken. Each result
+   * carries every `matches` entry, the `choice` when exactly one candidate
+   * remains, and a `resolution` of unique, only-open, ambiguous or not-found.
+   */
+  resolvePrs: (prNumbers) =>
+    request('/api/review/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ prNumbers }),
+    }),
+
+  /**
    * Start a review run.
    *
    * With no argument — or an empty list — the request carries no body at all and
-   * the server auto-selects: the most recent MAX_PRS reviewable PRs from the
-   * last DAYS_BACK days. Passing an array of numbers switches it to explicit
-   * mode, where exactly those PRs are reviewed with no label, draft or age
-   * filtering. The server re-validates either way; the console's own checks are
-   * a convenience, not the authority.
+   * the server auto-selects: the most recent MAX_PRS reviewable PRs per
+   * repository from the last DAYS_BACK days. Passing `prs` ({ repo, number }
+   * refs) switches it to explicit mode, where exactly those PRs are reviewed with
+   * no label, draft or age filtering. `resolutionNotes` records the closed PRs a
+   * number was picked over by the resolve step. The server re-validates either
+   * way; the console's own checks are a convenience, not the authority.
    */
-  triggerReview: (prNumbers) =>
+  triggerReview: ({ prs, resolutionNotes } = {}) =>
     request('/api/review/trigger', {
       method: 'POST',
-      ...(prNumbers && prNumbers.length
-        ? { body: JSON.stringify({ prNumbers }) }
+      ...(prs && prs.length
+        ? {
+            body: JSON.stringify({
+              prs,
+              ...(resolutionNotes && resolutionNotes.length
+                ? { resolutionNotes }
+                : {}),
+            }),
+          }
         : {}),
     }),
 
@@ -122,10 +143,17 @@ export const api = {
    * Incremental tail of the running review's output.
    *
    * `since` is the `nextSince` cursor from the previous response, so each call
-   * returns only new lines rather than the whole buffer.
+   * returns only new lines rather than the whole buffer. `repo`, `pr` and
+   * `worker` narrow it to one review; send `repo` with `pr`, since two
+   * repositories can share a number.
    */
-  reviewLogs: (since = 0) =>
-    request(`/api/review/logs?since=${encodeURIComponent(since)}`),
+  reviewLogs: (since = 0, { repo, pr, worker } = {}) => {
+    const params = new URLSearchParams({ since: String(since) });
+    if (repo != null) params.set('repo', repo);
+    if (pr != null) params.set('pr', String(pr));
+    if (worker != null) params.set('worker', String(worker));
+    return request(`/api/review/logs?${params}`);
+  },
 
   /**
    * Discard the server's ring buffer of review output.

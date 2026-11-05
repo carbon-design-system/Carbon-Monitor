@@ -34,9 +34,9 @@ function HelpGuide() {
           <h1 className="cm-help__title">Help &amp; usage guide</h1>
           <p className="cm-help__lede">
             Carbon Monitor runs an AI agent (IBM Bob or Claude) that reviews
-            open pull requests in the configured GitHub repository and posts its
-            findings back to GitHub. This guide walks through the screen. Each
-            lettered badge on the images matches a letter below it.
+            open pull requests in each configured GitHub repository and posts
+            its findings back to GitHub. This guide walks through the screen.
+            Each lettered badge on the images matches a letter below it.
           </p>
 
           {/* ── The main screen ─────────────────────────────────────────── */}
@@ -92,21 +92,26 @@ function HelpGuide() {
                 </li>
                 <li>
                   <strong>Target</strong> — what a blank run reviews: up to 10
-                  pull requests opened in the last 21 days.
+                  pull requests per repository, opened in the last 21 days.
                 </li>
                 <li>
                   <strong>Pull request numbers</strong> — type specific PR
                   numbers, comma-separated, to review only those.
                 </li>
                 <li>
-                  <strong>Review latest 10 PRs</strong> — reviews recent open
-                  PRs and ignores the box.
+                  <strong>Review latest PRs</strong> — reviews recent open PRs
+                  and ignores the box.
                 </li>
                 <li>
                   <strong>Review listed PRs</strong> — reviews only the numbers
                   you typed (enabled once you type one).
                 </li>
               </ul>
+              <p>
+                Type numbers only. If a number exists in more than one
+                repository, a dialog asks which one. To name the repository
+                yourself, type it as <code>carbon#1204</code>.
+              </p>
               <p>
                 Up to REVIEW_CONCURRENCY reviews run inside one batch (default
                 2). A second batch waits for the first to finish.
@@ -284,10 +289,10 @@ function HelpGuide() {
             <AccordionItem title="M — Target">
               <p>
                 What each run reviews — the same set as{' '}
-                <strong>Review latest 10 PRs</strong> on the Operations screen:
-                up to 10 pull requests opened in the last 21 days. Shown
-                read-only; it follows the deployment&rsquo;s configured limits
-                and is not changed here.
+                <strong>Review latest PRs</strong> on the Operations screen: up
+                to 10 pull requests per repository, opened in the last 21 days.
+                Shown read-only; it follows the deployment&rsquo;s configured
+                limits and is not changed here.
               </p>
             </AccordionItem>
 

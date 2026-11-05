@@ -31,6 +31,9 @@ import StatusTile from '../components/StatusTile';
 import McpConnectionPanel from '../components/McpConnectionPanel';
 import BobcoinsPanel, { BobcoinsLedger } from '../components/BobcoinsPanel';
 import ReviewLog from '../components/ReviewLog';
+import PrRefList from '../components/PrRefList';
+import RepoTag from '../components/RepoTag';
+import CollisionDialog from '../components/CollisionDialog';
 import SchedulePanel, {
   toLocalTz,
   DEFAULT_TIMEZONE,
@@ -40,6 +43,12 @@ import {
   targetWindowText,
   reviewButtonLabel,
 } from '../utils/prPhrasing';
+import {
+  PR_REF_RE,
+  buildRefs,
+  joinList,
+  resolutionNotesFor,
+} from '../utils/prRefs';
 
 /** How often the status panel re-polls, in milliseconds. */
 const POLL_INTERVAL_MS = 30_000;
@@ -59,58 +68,93 @@ const CREDIT_HISTORY_LIMIT = 10;
 /**
  * Parse the comma-separated PR field, mirroring the server's rules exactly.
  *
- * Returns `{ prNumbers, error }`. A blank field is valid and means auto mode —
- * the server picks the PRs. `maxPRs` may be null before GET /api/config has
- * answered, in which case the count is left to the server rather than checked
- * against a guessed limit.
+ * Each entry is a bare number (`1204`, whose repository is looked up) or a named
+ * ref (`carbon-ai-chat#1204`). Returns `{ numbers, refs, entries, error }`:
+ * `numbers` are the bare ones, `refs` the named ones, and `entries` both in the
+ * order typed. A blank field is valid and means auto mode — the server picks the
+ * PRs. `maxTotal` may be null before GET /api/config has answered, in which case
+ * the count is left to the server rather than checked against a guessed limit;
+ * `repos` may be empty for the same reason, and then a named repo is not checked.
  *
  * This is a convenience so the operator learns about a typo immediately instead
  * of after a round trip; POST /api/review/trigger re-validates regardless and
  * its 400 message is the authority.
  */
-function parsePrNumbers(raw, maxPRs) {
+function parsePrNumbers(raw, maxTotal, repos) {
+  const failed = (error) => ({
+    numbers: [],
+    refs: [],
+    entries: [],
+    error,
+    duplicatesDropped: 0,
+  });
   const trimmed = raw.trim();
-  if (!trimmed) return { prNumbers: [], error: null, duplicatesDropped: 0 };
+  if (!trimmed) return failed(null);
 
-  const prNumbers = [];
+  const entries = [];
+  const seen = new Set();
   let duplicatesDropped = 0;
 
   for (const entry of trimmed.split(',').map((part) => part.trim())) {
     // An empty entry means a doubled or trailing comma. Everything else that
-    // is not a run of digits — decimals, negatives, "abc" — is a typo, and 0
-    // is not a pull request number.
+    // is not a number or repo#number — decimals, negatives, "abc" — is a typo,
+    // and 0 is not a pull request number.
     if (!entry) {
-      return {
-        prNumbers: [],
-        error: 'Separate pull request numbers with a single comma.',
-        duplicatesDropped: 0,
-      };
+      return failed('Separate pull request numbers with a single comma.');
     }
-    if (!/^\d+$/.test(entry) || Number(entry) < 1) {
-      return {
-        prNumbers: [],
-        error: `“${entry}” is not a pull request number. Use positive whole numbers separated by commas.`,
-        duplicatesDropped: 0,
-      };
+    const match = PR_REF_RE.exec(entry);
+    const number = match ? Number(match[2]) : 0;
+    if (!match || !Number.isSafeInteger(number) || number < 1) {
+      return failed(
+        `“${entry}” is not a pull request number. Use positive whole numbers, or a repository and number like ${repos?.[0] || 'carbon'}#1204, separated by commas.`
+      );
+    }
+
+    let repo = null;
+    if (match[1]) {
+      repo = repos?.length
+        ? repos.find((r) => r.toLowerCase() === match[1].toLowerCase())
+        : match[1];
+      if (!repo) {
+        return failed(
+          `“${entry}” names a repository that is not configured. The configured repositories are ${joinList(repos)}.`
+        );
+      }
     }
 
     // Duplicates are dropped rather than rejected, keeping first-seen order —
     // the same thing the server does, so the count check below agrees with it.
     // Counted so the field can flag it instead of collapsing quietly.
-    const value = Number(entry);
-    if (!prNumbers.includes(value)) prNumbers.push(value);
-    else duplicatesDropped++;
+    const key = `${repo ?? ''}#${number}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      entries.push({ repo, number });
+    } else duplicatesDropped++;
   }
 
-  if (maxPRs != null && prNumbers.length > maxPRs) {
-    return {
-      prNumbers: [],
-      error: `Up to ${pluralPRs(maxPRs)} per run; ${prNumbers.length} given.`,
-      duplicatesDropped: 0,
-    };
+  if (maxTotal != null && entries.length > maxTotal) {
+    return failed(
+      `Up to ${pluralPRs(maxTotal)} per run; ${entries.length} given.`
+    );
   }
 
-  return { prNumbers, error: null, duplicatesDropped };
+  return {
+    numbers: entries.filter((e) => !e.repo).map((e) => e.number),
+    refs: entries.filter((e) => e.repo),
+    entries,
+    error: null,
+    duplicatesDropped,
+  };
+}
+
+// The target PR can be a bare number or, once it names a repo, a ref.
+function targetPrText(target) {
+  if (target && typeof target === 'object') {
+    return target.repo
+      ? `${target.repo}#${target.number}`
+      : `PR #${target.number}`;
+  }
+  return `PR #${target}`;
 }
 
 /**
@@ -148,6 +192,19 @@ function Console({ authRequired = false, onSignOut }) {
   const [loading, setLoading] = useState(true);
   const [prInput, setPrInput] = useState('');
   const [triggering, setTriggering] = useState(false);
+  // True while POST /api/review/resolve is in flight, which can take a few
+  // seconds of GitHub lookups. Kept apart from `triggering` so the primary
+  // button does not claim a review is running before one has started.
+  const [resolving, setResolving] = useState(false);
+  // Why a lookup stopped the run (a number found in no repository), shown on the
+  // field and cleared as soon as the operator edits it.
+  const [lookupError, setLookupError] = useState(null);
+  // The collision dialog: what it shows stays set after it closes, so the
+  // fade-out keeps its content; `collisionOpen` drives visibility.
+  const [collision, setCollision] = useState(null);
+  const [collisionOpen, setCollisionOpen] = useState(false);
+  // The button that opened the collision dialog; focus returns to it on cancel.
+  const reviewListedRef = useRef(null);
   // Whether ReviewLog is rendering anything. It reports this rather than the
   // page inferring it, because the component has to stay mounted to poll.
   const [logVisible, setLogVisible] = useState(false);
@@ -158,7 +215,7 @@ function Console({ authRequired = false, onSignOut }) {
   // flight — its own session's or, on this shared single-instance deployment,
   // another operator's. Drives the "already running" modal so a second person
   // gets an unmissable popup naming what is running rather than a terse inline
-  // line they might overlook. Holds { startedAt, mode, prNumbers } or null.
+  // line they might overlook. Holds { startedAt, mode, prs } or null.
   const [busyRun, setBusyRun] = useState(null);
   // Connection settings live in an off-canvas panel; closed by default because
   // they are configured once and then left alone.
@@ -278,7 +335,7 @@ function Console({ authRequired = false, onSignOut }) {
           subtitle: review.error,
         });
       } else {
-        const n = review?.prNumbers?.length;
+        const n = review?.prs?.length;
         setCompletion({
           kind: 'success',
           title: 'Review complete',
@@ -297,19 +354,22 @@ function Console({ authRequired = false, onSignOut }) {
   }, [review, load]);
 
   const cfg = config?.config;
+  const repos = cfg?.repos ?? [];
 
-  // Null until GET /api/config answers. The server owns these limits, so they
-  // are never assumed — the field's helper text and the count check both stay
-  // quiet about a number the console has not actually been told.
+  // Null until GET /api/config answers. The server owns this limit, so it is
+  // never assumed — the count check stays quiet about a number the console has
+  // not actually been told. It is per repository, so the client-side cap is the
+  // total across every configured repository; the server checks each repo.
   const maxPRs = cfg?.maxPRs ?? null;
-  const daysBack = cfg?.daysBack ?? null;
+  const prCap = maxPRs != null ? maxPRs * Math.max(repos.length, 1) : null;
 
   const {
-    prNumbers,
+    numbers,
+    entries,
     error: prError,
     duplicatesDropped,
-  } = parsePrNumbers(prInput, maxPRs);
-  const reviewRunning = Boolean(review?.running) || triggering;
+  } = parsePrNumbers(prInput, prCap, repos);
+  const reviewRunning = Boolean(review?.running) || triggering || resolving;
 
   // True only once the schedule config has loaded AND enabled is explicitly true.
   // Null (not yet loaded) reads as not-automated, so the schedule-only status rows
@@ -331,26 +391,16 @@ function Console({ authRequired = false, onSignOut }) {
   const spendCheck =
     status?.checks?.find((check) => SPEND_IDS.includes(check.id)) || null;
 
-  // Says nothing about a limit the console has not been told, and stays honest
-  // when that limit is 1 — where "up to 1, comma separated" would be nonsense.
-  let prHelperText =
-    'Comma separated. Leave blank to review the most recent open pull requests.';
-  if (maxPRs && daysBack) {
-    prHelperText =
-      maxPRs === 1
-        ? `One per run. Leave blank to review the most recent open pull request from the last ${daysBack} days.`
-        : `Up to ${maxPRs}, comma separated. Leave blank to review the most recent ${maxPRs} open pull requests from the last ${daysBack} days.`;
-  }
+  // Names the repository lookup only when there is more than one repository to
+  // look in; with one, a bare number can only mean that repository.
+  const prHelperText =
+    repos.length > 1
+      ? `Comma separated. The repository is found for you; type ${repos[0]}#1204 to name it. Leave blank to review the latest open pull requests.`
+      : 'Comma separated. Leave blank to review the latest open pull requests.';
 
-  // Names what the click will actually do. Falls back to a limit-free label
-  // until GET /api/config answers, rather than asserting a number the console
-  // has not been told.
-  const autoButtonLabel =
-    maxPRs && daysBack
-      ? maxPRs === 1
-        ? 'Review latest PR'
-        : `Review latest ${maxPRs} PRs`
-      : 'Review latest PRs';
+  // The limit is per repository and lives in the Target row, so the label does
+  // not state a count.
+  const autoButtonLabel = 'Review latest PRs';
 
   async function signOut() {
     try {
@@ -361,25 +411,40 @@ function Console({ authRequired = false, onSignOut }) {
   }
 
   /**
-   * Review the most recent PRs, ignoring whatever is in the field.
-   *
-   * The one-click path: no input, no clearing, no chance that a stray character
-   * left in the box turns "review the latest" into something else.
+   * Send a trigger and report the outcome. `request` is empty for auto mode,
+   * which sends no body, or { prs, resolutionNotes } for an explicit run.
    */
-  async function triggerAutoReview() {
+  async function sendTrigger(request, { clearField }) {
     setTriggering(true);
     setTriggerError(null);
     try {
-      await api.triggerReview();
+      await api.triggerReview(request);
+      if (clearField) setPrInput('');
       await load();
     } catch (err) {
       if (err.status === 401) return onSignOut();
+      // A run is already in flight — modal, not inline, so a second operator
+      // cannot miss it. The field is left untouched so they can retry the same
+      // list once it clears.
       if (err.status === 409) return handleAlreadyRunning(err);
+      // The server re-validates and its message names the offending value, so
+      // it is shown verbatim even when the checks above passed. That includes
+      // the per-repository cap, which only the server can count after lookup.
       setTriggerError(err.message);
     } finally {
       setTriggering(false);
     }
     return undefined;
+  }
+
+  /**
+   * Review the most recent PRs, ignoring whatever is in the field.
+   *
+   * The one-click path: no input, no clearing, no chance that a stray character
+   * left in the box turns "review the latest" into something else.
+   */
+  function triggerAutoReview() {
+    return sendTrigger({}, { clearField: false });
   }
 
   /**
@@ -391,29 +456,101 @@ function Console({ authRequired = false, onSignOut }) {
     return undefined;
   }
 
+  /**
+   * Review the listed PRs. Named refs go straight through; bare numbers are
+   * looked up first so the operator never has to say which repository. A number
+   * found in no repository stops the run, and one found in several asks which.
+   */
   async function triggerReview() {
-    if (prError) return;
-    setTriggering(true);
-    setTriggerError(null);
-    try {
-      // An empty list means auto mode; api.triggerReview omits the body entirely
-      // in that case, which is the request this console has always sent.
-      await api.triggerReview(prNumbers);
-      setPrInput('');
-      await load();
-    } catch (err) {
-      if (err.status === 401) return onSignOut();
-      // A run is already in flight — modal, not inline, so a second operator
-      // cannot miss it. The field is left untouched so they can retry the same
-      // list once it clears.
-      if (err.status === 409) return handleAlreadyRunning(err);
-      // The server re-validates and its message names the offending value, so
-      // it is shown verbatim even when the checks above passed.
-      setTriggerError(err.message);
-    } finally {
-      setTriggering(false);
+    if (prError || entries.length === 0) return;
+    // The lookups take a while, so do not make the operator wait for them only
+    // to meet the busy modal. The 409 handler still covers a run that starts
+    // between the last poll and this click.
+    if (review?.running) {
+      setBusyRun(review);
+      return;
     }
-    return undefined;
+    setLookupError(null);
+    setTriggerError(null);
+
+    // One repository: a bare number can only mean it, so skip the lookup. The
+    // server then fetches each PR inside the batch and keeps its per-number
+    // failure handling.
+    if (repos.length <= 1) {
+      if (repos.length === 0) {
+        setTriggerError(
+          'The console has not loaded its configuration yet. Try again in a moment.'
+        );
+        return;
+      }
+      const prs = buildRefs(
+        entries.map((e) => ({ repo: e.repo ?? repos[0], number: e.number })),
+        []
+      );
+      await sendTrigger({ prs }, { clearField: true });
+      return;
+    }
+
+    let results = [];
+    if (numbers.length) {
+      setResolving(true);
+      try {
+        ({ results } = await api.resolvePrs(numbers));
+      } catch (err) {
+        if (err.status === 401) return onSignOut();
+        setTriggerError(err.message);
+        return;
+      } finally {
+        setResolving(false);
+      }
+    }
+
+    const missing = results
+      .filter((r) => r.matches.length === 0)
+      .map((r) => `#${r.number}`);
+    if (missing.length) {
+      setLookupError(
+        `No pull ${missing.length === 1 ? 'request' : 'requests'} ${joinList(missing)} in ${joinList(repos, 'or')}.`
+      );
+      return;
+    }
+
+    const ambiguous = results.filter((r) => !r.choice);
+    if (ambiguous.length) {
+      setCollision({
+        groups: ambiguous.map((r) => ({
+          number: r.number,
+          matches: r.matches,
+        })),
+        others: results.length - ambiguous.length,
+        total: entries.length,
+        entries,
+        results,
+        launcherLabel: reviewButtonLabel(entries),
+      });
+      setCollisionOpen(true);
+      return;
+    }
+
+    await sendTrigger(
+      {
+        prs: buildRefs(entries, results),
+        resolutionNotes: resolutionNotesFor(results),
+      },
+      { clearField: true }
+    );
+  }
+
+  /** The operator picked a repository for every colliding number. */
+  function confirmCollision(chosen) {
+    setCollisionOpen(false);
+    return sendTrigger(
+      {
+        prs: buildRefs(collision.entries, collision.results, chosen),
+        resolutionNotes: resolutionNotesFor(collision.results),
+      },
+      { clearField: true }
+    );
   }
 
   if (loading) {
@@ -513,8 +650,8 @@ function Console({ authRequired = false, onSignOut }) {
           <Column sm={4} md={8} lg={16}>
             <h1 className="cm-page-heading">Dashboard</h1>
             <p className="cm-page-caption">
-              {cfg
-                ? `Reviewing pull requests in ${cfg.owner}/${cfg.repo} with ${cfg.agentName || cfg.agent}.`
+              {cfg && repos.length
+                ? `Reviewing pull requests in ${joinList(repos.map((repo) => `${cfg.owner}/${repo}`))} with ${cfg.agentName || cfg.agent}.`
                 : 'Connection and review status for the Carbon PR review agent.'}
             </p>
             {error && (
@@ -600,9 +737,29 @@ function Console({ authRequired = false, onSignOut }) {
                     */}
                     <dd>
                       {cfg.targetPR
-                        ? `PR #${cfg.targetPR}`
+                        ? targetPrText(cfg.targetPR)
                         : targetWindowText(cfg.maxPRs, cfg.daysBack) ||
                           'Loading…'}
+                    </dd>
+                  </>
+                )}
+
+                {/* Batch order matters when the budget runs low: the repos
+                    listed last are the ones skipped. */}
+                {repos.length > 1 && (
+                  <>
+                    <dt>Order</dt>
+                    <dd>
+                      <span className="cm-repo-order">
+                        {repos.map((repo, i) => (
+                          <React.Fragment key={repo}>
+                            {i > 0 && <span>then</span>}
+                            <RepoTag repo={repo} repos={repos} />
+                            {i === 0 && <span>first,</span>}
+                            {i > 0 && i < repos.length - 1 && <span>,</span>}
+                          </React.Fragment>
+                        ))}
+                      </span>
                     </dd>
                   </>
                 )}
@@ -614,11 +771,19 @@ function Console({ authRequired = false, onSignOut }) {
                   <>
                     <dt>{review.running ? 'Reviewing' : 'Last run'}</dt>
                     <dd>
-                      {review.mode === 'explicit' && review.prNumbers?.length
-                        ? review.prNumbers
-                            .map((number) => `#${number}`)
-                            .join(', ')
-                        : 'Auto-selected'}
+                      {review.mode === 'explicit' && review.prs?.length ? (
+                        <PrRefList
+                          refs={review.prs}
+                          repos={repos}
+                          label={
+                            review.running
+                              ? 'Pull requests being reviewed'
+                              : 'Pull requests in the last run'
+                          }
+                        />
+                      ) : (
+                        'Auto-selected'
+                      )}
                     </dd>
                   </>
                 )}
@@ -694,17 +859,19 @@ function Console({ authRequired = false, onSignOut }) {
                     labelText="Pull request numbers"
                     placeholder="e.g. 22971, 22972"
                     helperText={prHelperText}
-                    invalid={Boolean(prError)}
-                    invalidText={prError || ''}
+                    invalid={Boolean(prError || lookupError)}
+                    invalidText={prError || lookupError || ''}
                     // Warn slot flags duplicate PR numbers that were collapsed
                     // (suppressed while an invalid error is showing).
-                    warn={!prError && duplicatesDropped > 0}
+                    warn={!prError && !lookupError && duplicatesDropped > 0}
                     warnText="Duplicate pull request numbers were ignored."
                     value={prInput}
-                    onChange={(e) => setPrInput(e.target.value)}
+                    onChange={(e) => {
+                      setPrInput(e.target.value);
+                      setLookupError(null);
+                    }}
                     disabled={reviewRunning}
                     autoComplete="off"
-                    inputMode="numeric"
                   />
                 </div>
 
@@ -718,20 +885,32 @@ function Console({ authRequired = false, onSignOut }) {
                     input first.
                   */}
                   <Button onClick={triggerAutoReview} disabled={reviewRunning}>
-                    {reviewRunning ? 'Review running…' : autoButtonLabel}
+                    {review?.running || triggering
+                      ? 'Review running…'
+                      : autoButtonLabel}
                   </Button>
 
                   <Button
                     kind="secondary"
+                    ref={reviewListedRef}
                     onClick={triggerReview}
                     disabled={
                       reviewRunning ||
                       Boolean(prError) ||
-                      prNumbers.length === 0
+                      entries.length === 0 ||
+                      repos.length === 0
                     }
                   >
-                    {reviewButtonLabel(prNumbers)}
+                    {resolving
+                      ? 'Finding pull requests…'
+                      : reviewButtonLabel(entries)}
                   </Button>
+
+                  {/* The button's own text changes while it looks up the
+                      repositories; this says so to a screen reader. */}
+                  <span role="status" className="cds--visually-hidden">
+                    {resolving ? 'Finding pull requests…' : ''}
+                  </span>
 
                   {/*
                     Discovery path into schedule settings, always present alongside
@@ -766,9 +945,9 @@ function Console({ authRequired = false, onSignOut }) {
             <ReviewLog
               running={Boolean(review?.running)}
               startedAt={review?.startedAt}
-              prNumbers={review?.prNumbers}
+              prs={review?.prs}
               owner={cfg?.owner}
-              repo={cfg?.repo}
+              repos={repos}
               onVisibilityChange={setLogVisible}
             />
           </Column>
@@ -780,7 +959,11 @@ function Console({ authRequired = false, onSignOut }) {
             have room to breathe. */}
         <Grid narrow withRowGap className="cm-tile-grid">
           <Column sm={4} md={8} lg={16}>
-            <BobcoinsLedger credits={credits} history={creditHistory} />
+            <BobcoinsLedger
+              credits={credits}
+              history={creditHistory}
+              repos={repos}
+            />
           </Column>
         </Grid>
       </Content>
@@ -837,6 +1020,15 @@ function Console({ authRequired = false, onSignOut }) {
         </Tabs>
       </Modal>
 
+      <CollisionDialog
+        open={collisionOpen}
+        collision={collision}
+        repos={repos}
+        onCancel={() => setCollisionOpen(false)}
+        onConfirm={confirmCollision}
+        launcherButtonRef={reviewListedRef}
+      />
+
       {/*
         Already running. A trigger is refused with 409 while a review is in
         flight — the app is single-flight by design, so two agents never review
@@ -870,9 +1062,15 @@ function Console({ authRequired = false, onSignOut }) {
           </dd>
           <dt>Reviewing</dt>
           <dd>
-            {busyRun?.mode === 'explicit' && busyRun?.prNumbers?.length
-              ? busyRun.prNumbers.map((number) => `#${number}`).join(', ')
-              : 'Auto-selected pull requests'}
+            {busyRun?.mode === 'explicit' && busyRun?.prs?.length ? (
+              <PrRefList
+                refs={busyRun.prs}
+                repos={repos}
+                label="Pull requests being reviewed"
+              />
+            ) : (
+              'Auto-selected pull requests'
+            )}
           </dd>
         </dl>
         <p style={{ marginTop: '1rem' }}>
