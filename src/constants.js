@@ -5,7 +5,31 @@
 
 const GITHUB_OWNER =
   process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system';
-const GITHUB_REPO = process.env.GITHUB_AI_AGENT_REPO || 'carbon';
+
+// Batch order is list order. GITHUB_AI_AGENT_REPO is the single-repo fallback.
+function reposFromEnv() {
+  const raw = (process.env.GITHUB_AI_AGENT_REPOS || '').trim();
+  const list = raw
+    ? raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [(process.env.GITHUB_AI_AGENT_REPO || 'carbon').trim()].filter(Boolean);
+  for (const entry of list) {
+    if (entry.includes('/')) {
+      throw new Error(
+        `GITHUB_AI_AGENT_REPOS takes repo names under GITHUB_AI_AGENT_OWNER, not owner/name: "${entry}"`
+      );
+    }
+  }
+  if (list.length === 0) {
+    throw new Error(
+      'At least one non-empty repository name is required in GITHUB_AI_AGENT_REPOS or GITHUB_AI_AGENT_REPO.'
+    );
+  }
+  return [...new Set(list)];
+}
+const GITHUB_REPOS = reposFromEnv();
 const REVIEW_LABEL = process.env.GITHUB_AI_AGENT_REVIEW_LABEL || 'AIReviewed';
 const SKIP_LABELS = ['DO NOT MERGE', 'status: WIP 👩‍💻'];
 const REVIEW_AGENT = process.env.GITHUB_AI_AGENT_CLI || 'bob';
@@ -62,7 +86,8 @@ const REVIEW_CONCURRENCY = Number.isFinite(_concurrency)
 const N_DAYS_SINCE_PR_CREATED = Number(
   process.env.GITHUB_AI_AGENT_DAYS_BACK || 21
 );
-const MAX_PRS_PER_RUN = Number(process.env.GITHUB_AI_AGENT_MAX_PRS || 10);
+// Applies to each repository, not to the whole run.
+const MAX_PRS_PER_REPO = Number(process.env.GITHUB_AI_AGENT_MAX_PRS || 10);
 
 // Most files one review includes; the rest are listed as not reviewed. It bounds
 // the per-file catalogue and is not a GitHub limit.
@@ -85,7 +110,7 @@ const MAX_DIFF_CHARS =
 
 module.exports = {
   GITHUB_OWNER,
-  GITHUB_REPO,
+  GITHUB_REPOS,
   REVIEW_LABEL,
   SKIP_LABELS,
   REVIEW_AGENT,
@@ -108,7 +133,7 @@ module.exports = {
   CHARS_PER_TOKEN,
   PROMPT_OVERHEAD_TOKENS,
   ISSUE_CONTEXT_TOKENS,
-  MAX_PRS_PER_RUN,
+  MAX_PRS_PER_REPO,
   MAX_FILES_PER_PR,
 };
 

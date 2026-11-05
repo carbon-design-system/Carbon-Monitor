@@ -223,7 +223,7 @@ function buildLowTokenPayload({
  * @param {number}   opts.startedAt  - epoch ms when the run kicked off
  * @param {string}   opts.repo       - "owner/repo"
  * @param {Array}    opts.results    - per-PR result objects (see postRunDigest)
- * @param {number}   [opts.maxPRs]   - selection cap (MAX_PRS_PER_RUN); shown as "Criteria" when paired with daysBack
+ * @param {number}   [opts.maxPRs]   - selection cap (MAX_PRS_PER_REPO); shown as "Criteria" when paired with daysBack
  * @param {number}   [opts.daysBack] - age window in days (N_DAYS_SINCE_PR_CREATED); shown as "Criteria" when paired with maxPRs
  * @returns {Object} - Slack API blocks payload
  */
@@ -415,7 +415,7 @@ function postToSlack(payload) {
  *   Success shape: { prNumber, prUrl, findingsCount, summary, recommendation, coverage }
  *   Failure shape: { prNumber, failed: true, error }
  *   Skipped shape: { prNumber, prUrl, skipped: true, reason }
- * @param {number}   [opts.maxPRs]     - selection cap (MAX_PRS_PER_RUN), shown in the Criteria line
+ * @param {number}   [opts.maxPRs]     - selection cap (MAX_PRS_PER_REPO), shown in the Criteria line
  * @param {number}   [opts.daysBack]   - age window in days (N_DAYS_SINCE_PR_CREATED), shown in the Criteria line
  * @param {Function} [opts.emitEvent]  - optional emitEvent fn for ES observability
  * @returns {Promise<void>}

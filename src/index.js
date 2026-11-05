@@ -75,13 +75,15 @@ const reviewLog = require('./api/reviewLog');
 const { postRunDigest } = require('./slackNotifier');
 const {
   GITHUB_OWNER,
-  GITHUB_REPO,
+  GITHUB_REPOS,
   REVIEW_LABEL,
   REVIEW_AGENT,
   N_DAYS_SINCE_PR_CREATED,
-  MAX_PRS_PER_RUN,
+  MAX_PRS_PER_REPO,
   REVIEW_CONCURRENCY,
 } = require('./constants');
+
+const GITHUB_REPO = GITHUB_REPOS[0]; // Phase 4 replaces this with per-item repos
 
 // Load GitHub token from environment
 const GITHUB_TOKEN = process.env.GITHUB_AI_AGENT_TOKEN;
@@ -359,11 +361,14 @@ function describeValue(value) {
  * exactly what an empty input box in the console posts.
  *
  * @param {Array|string|null|undefined} input - PR numbers, or a comma-separated string
- * @param {number} [maxPRs=MAX_PRS_PER_RUN] - Most PRs one run may review
+ * @param {number} [maxPRs] - Most PRs one run may review; defaults to MAX_PRS_PER_REPO across all repos
  * @returns {{ok: boolean, prNumbers: number[]|null, error?: string}}
  *          `ok: true` with `prNumbers: null` means auto-select.
  */
-function parsePrNumbers(input, maxPRs = MAX_PRS_PER_RUN) {
+function parsePrNumbers(
+  input,
+  maxPRs = MAX_PRS_PER_REPO * GITHUB_REPOS.length
+) {
   if (input === undefined || input === null)
     return { ok: true, prNumbers: null };
 
@@ -432,7 +437,7 @@ function parsePrNumbers(input, maxPRs = MAX_PRS_PER_RUN) {
       prNumbers: null,
       error:
         `Too many PRs: ${prNumbers.length} requested, but at most ${maxPRs} may be ` +
-        'reviewed in one run (GITHUB_AI_AGENT_MAX_PRS).',
+        'reviewed per run (GITHUB_AI_AGENT_MAX_PRS per repository, across all repositories).',
     };
   }
 
@@ -527,7 +532,7 @@ async function reviewPRs(options = {}) {
     `[Carbon-Monitor] target=${
       target.mode === 'explicit'
         ? `${target.prNumbers.map((n) => `#${n}`).join(', ')} (${target.source})`
-        : `auto (max ${MAX_PRS_PER_RUN}, last ${N_DAYS_SINCE_PR_CREATED} days)`
+        : `auto (max ${MAX_PRS_PER_REPO}, last ${N_DAYS_SINCE_PR_CREATED} days)`
     }`
   );
 
@@ -635,7 +640,7 @@ async function reviewPRs(options = {}) {
         owner: GITHUB_OWNER,
         repo: GITHUB_REPO,
         label: REVIEW_LABEL,
-        maxPRs: MAX_PRS_PER_RUN,
+        maxPRs: MAX_PRS_PER_REPO,
         daysBack: N_DAYS_SINCE_PR_CREATED,
       });
 
@@ -648,7 +653,7 @@ async function reviewPRs(options = {}) {
             startedAt: runStartedAt,
             repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
             results: [],
-            maxPRs: MAX_PRS_PER_RUN,
+            maxPRs: MAX_PRS_PER_REPO,
             daysBack: N_DAYS_SINCE_PR_CREATED,
             emitEvent,
           });
@@ -1510,7 +1515,7 @@ async function reviewPRs(options = {}) {
         startedAt: runStartedAt,
         repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
         results: runResults,
-        maxPRs: MAX_PRS_PER_RUN,
+        maxPRs: MAX_PRS_PER_REPO,
         daysBack: N_DAYS_SINCE_PR_CREATED,
         emitEvent,
       });

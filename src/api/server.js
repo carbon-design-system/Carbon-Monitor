@@ -44,7 +44,7 @@ const { isAgentAvailable, getConfiguredAgent } = require('../agentRunner');
 const agents = require('../agents');
 const { checkStartup, getStartupProblems } = require('../config/env');
 const {
-  MAX_PRS_PER_RUN,
+  MAX_PRS_PER_REPO,
   N_DAYS_SINCE_PR_CREATED,
   EFFECTIVE_REVIEW_CONCURRENCY,
 } = require('../constants');
@@ -865,7 +865,7 @@ async function handleReviewTrigger(req, res) {
   // value; that is correct for a CLI and fatal here, where one malformed body
   // would take down the console and the review loop with it. No request can
   // reach that code — it ran once, at require time, before the server existed.
-  const parsed = parsePrNumbers(body.prNumbers, MAX_PRS_PER_RUN);
+  const parsed = parsePrNumbers(body.prNumbers);
   if (!parsed.ok) return sendError(res, 400, parsed.error);
 
   // Checked AFTER the awaits above, not before them. Two triggers arriving
@@ -915,7 +915,7 @@ async function handleReviewTrigger(req, res) {
     startedAt: reviewState.startedAt,
     mode: target.mode,
     prNumbers: target.prNumbers,
-    maxPRs: MAX_PRS_PER_RUN,
+    maxPRs: MAX_PRS_PER_REPO,
     concurrency: EFFECTIVE_REVIEW_CONCURRENCY,
     // Auto mode only. An explicit list ignores the age window entirely, so
     // reporting it there would describe a filter that is not being applied.

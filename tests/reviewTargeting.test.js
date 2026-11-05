@@ -24,7 +24,7 @@
  * 13. Exactly maxPRs is accepted
  * 14. maxPRs + 1 is rejected, naming both the limit and the count received
  * 15. The maxPRs argument overrides the default
- * 16. The default limit is MAX_PRS_PER_RUN
+ * 16. The default limit is MAX_PRS_PER_REPO
  * 17. An explicit list outranks TARGET_PR
  * 18. TARGET_PR is used when the caller names nothing
  * 19. Neither present means auto
@@ -110,7 +110,7 @@ const INDEX_PATH = path.join(__dirname, '..', 'src', 'index.js');
 const REPO_ROOT = path.join(__dirname, '..');
 
 const { parsePrNumbers, resolveReviewTargets } = require('../src/index');
-const { MAX_PRS_PER_RUN } = require('../src/constants');
+const { MAX_PRS_PER_REPO } = require('../src/constants');
 const mcp = require('../src/api/mcpConnection');
 const reviewLog = require('../src/api/reviewLog');
 const { handleRequest } = require('../src/api/server');
@@ -314,25 +314,25 @@ async function main() {
   });
 
   await test('exactly maxPRs is accepted', () => {
-    const list = Array.from({ length: MAX_PRS_PER_RUN }, (_, i) => 22971 + i);
+    const list = Array.from({ length: MAX_PRS_PER_REPO }, (_, i) => 22971 + i);
     const result = parsePrNumbers(list);
     assert(result.ok, result.error);
-    assertEqual(result.prNumbers.length, MAX_PRS_PER_RUN, 'accepted count');
+    assertEqual(result.prNumbers.length, MAX_PRS_PER_REPO, 'accepted count');
   });
 
   await test('maxPRs + 1 is rejected, naming both the limit and the count', () => {
     const list = Array.from(
-      { length: MAX_PRS_PER_RUN + 1 },
+      { length: MAX_PRS_PER_REPO + 1 },
       (_, i) => 22971 + i
     );
     const result = parsePrNumbers(list);
     assert(!result.ok, 'over the limit should be rejected');
     assert(
-      result.error.includes(String(MAX_PRS_PER_RUN)),
+      result.error.includes(String(MAX_PRS_PER_REPO)),
       `message should state the limit: ${result.error}`
     );
     assert(
-      result.error.includes(String(MAX_PRS_PER_RUN + 1)),
+      result.error.includes(String(MAX_PRS_PER_REPO + 1)),
       `message should state the count received: ${result.error}`
     );
   });
@@ -347,14 +347,17 @@ async function main() {
     );
   });
 
-  await test('the default limit is MAX_PRS_PER_RUN', () => {
-    const overBy = Array.from({ length: MAX_PRS_PER_RUN + 1 }, (_, i) => i + 1);
+  await test('the default limit is MAX_PRS_PER_REPO', () => {
+    const overBy = Array.from(
+      { length: MAX_PRS_PER_REPO + 1 },
+      (_, i) => i + 1
+    );
     assert(
       !parsePrNumbers(overBy).ok,
       'the default must be the configured maximum'
     );
     assert(
-      parsePrNumbers(overBy, MAX_PRS_PER_RUN + 1).ok,
+      parsePrNumbers(overBy, MAX_PRS_PER_REPO + 1).ok,
       'raising the limit admits it'
     );
   });
@@ -480,7 +483,7 @@ async function main() {
 
   await test('POST /api/review/trigger enforces the same limit as parsePrNumbers', async () => {
     const list = Array.from(
-      { length: MAX_PRS_PER_RUN + 1 },
+      { length: MAX_PRS_PER_REPO + 1 },
       (_, i) => 22971 + i
     );
     const { status, json } = await callApi({
@@ -490,7 +493,7 @@ async function main() {
     });
     assertEqual(status, 400, 'status');
     assert(
-      json.error.includes(String(MAX_PRS_PER_RUN)),
+      json.error.includes(String(MAX_PRS_PER_REPO)),
       `message should state the limit: ${json.error}`
     );
   });
