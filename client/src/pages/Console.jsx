@@ -75,7 +75,7 @@ const CREDIT_HISTORY_LIMIT = 10;
  * another, and the rows are ordered by what an operator came to do:
  *
  *   A  heading
- *   B  system health — four dependencies, one row of four
+ *   B  system health — one tile per dependency, spans fill whole rows
  *   C  Reviews (lg 10) beside the Bobcoins balance (lg 6)
  *   D  review output, full width
  *   E  Carbon MCP connection beside the spend ledger (lg 8 each)
