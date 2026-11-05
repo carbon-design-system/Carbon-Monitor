@@ -2,13 +2,13 @@
 'use strict';
 // scripts/create-caic-eval-prs.js
 //
-// Creates all 26 eval PRs defined in evals/caic/manifest.json on the scratch
+// Creates every eval PR defined in evals/caic/manifest.json on the scratch
 // repo Chance-Gong/caic-pr-review-test via the GitHub API (gh CLI).
 //
 // NEVER run this without the user's explicit go-ahead.
 //
 // Usage:
-//   node scripts/create-caic-eval-prs.js            # create all 26
+//   node scripts/create-caic-eval-prs.js            # create all of them
 //   node scripts/create-caic-eval-prs.js A1 A2 B1   # create specific PRs
 //   node scripts/create-caic-eval-prs.js --pilot     # create pilot set (A1 A9 B1 C2)
 //

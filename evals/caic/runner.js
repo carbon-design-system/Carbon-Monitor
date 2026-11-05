@@ -235,10 +235,13 @@ const os = require('os');
       `  Mean cost per review: ${mean.toFixed(2)} (units: ${costs[0]?.unit || 'unknown'})`
     );
     console.log(`  Total for this run: ${total.toFixed(2)}`);
-    const full52 = mean * 52;
-    console.log(`  Projected total for 52 reviews: ${full52.toFixed(2)}`);
+    // Every eval PR is reviewed once under core and once under caic.
+    const fullRun = MANIFEST.prs.length * 2;
     console.log(
-      `\n  ⚠  Pilot gate: confirm the projected cost is acceptable before running all 26 PRs.`
+      `  Projected total for ${fullRun} reviews: ${(mean * fullRun).toFixed(2)}`
+    );
+    console.log(
+      `\n  ⚠  Pilot gate: confirm the projected cost is acceptable before running all ${MANIFEST.prs.length} PRs.`
     );
   }
 

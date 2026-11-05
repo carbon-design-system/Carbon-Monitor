@@ -89,7 +89,7 @@
         "file": "packages/ai-chat/src/chat/components-legacy/new-widget/new-widget.ts",
         "line": 1,
         "rule": "L2",
-        "severity": "blocking",
+        "severity": "major",
         "description": "New component added under components-legacy/ — must go in components/"
       },
       "changes": [
@@ -163,7 +163,7 @@
       "description": "Replaces a specific .toBe() assertion with .toBeDefined() — a weaker check.",
       "defect": {
         "file": "packages/ai-chat/tests/format-message_spec.ts",
-        "line": 8,
+        "line": 9,
         "rule": "T1",
         "severity": "major",
         "description": "expect(...).toBe('abcd\\u2026') replaced with expect(...).toBeDefined() — assertion is now trivially true"
@@ -321,13 +321,17 @@
     {
       "id": "C1",
       "branch": "eval/c1-small-pr",
-      "title": "C1: small PR ~150 counted lines",
-      "description": "Adds keyboard shortcut handling to MessageList. Under 200 lines.",
+      "title": "C1: small clean PR under 200 counted lines",
+      "description": "Adds an empty state to MessageList, with a spec for it. Well under 200 counted lines and no defect: any finding, including a size finding, is a false positive.",
       "defect": null,
       "changes": [
         {
           "path": "packages/ai-chat/src/chat/components/message-list/message-list.ts",
-          "content": "import { LitElement, html } from 'lit';\nimport { customElement, property } from 'lit/decorators.js';\nimport { formatMessage } from '../../utils/format-message';\n\n@customElement('example-message-list')\nexport class MessageList extends LitElement {\n  @property({ type: Array })\n  messages: string[] = [];\n\n  @property({ type: Boolean })\n  scrollable = false;\n\n  @property({ type: String })\n  emptyText = 'No messages yet.';\n\n  @property({ type: Boolean })\n  reversed = false;\n\n  @property({ type: String })\n  highlightQuery = '';\n\n  private readonly onResize = () => this.requestUpdate();\n\n  connectedCallback() {\n    super.connectedCallback();\n    window.addEventListener('resize', this.onResize);\n  }\n\n  disconnectedCallback() {\n    window.removeEventListener('resize', this.onResize);\n    super.disconnectedCallback();\n  }\n\n  private getDisplayMessages(): string[] {\n    return this.reversed ? [...this.messages].reverse() : this.messages;\n  }\n\n  private highlightText(text: string): string {\n    if (!this.highlightQuery) return text;\n    return text.replace(\n      new RegExp(this.highlightQuery, 'gi'),\n      (match) => `<mark>${match}</mark>`\n    );\n  }\n\n  render() {\n    const items = this.getDisplayMessages();\n    if (items.length === 0) {\n      return html`<p class=\"empty\">${this.emptyText}</p>`;\n    }\n    return html`<ul role=\"list\" class=${this.scrollable ? 'scrollable' : ''}>\n      ${items.map(\n        (message) =>\n          html`<li .innerHTML=${this.highlightText(formatMessage({ text: message }))}></li>`\n      )}\n    </ul>`;\n  }\n}\n"
+          "content": "import { LitElement, html } from 'lit';\nimport { customElement, property } from 'lit/decorators.js';\nimport { formatMessage } from '../../utils/format-message';\n\n@customElement('example-message-list')\nexport class MessageList extends LitElement {\n  @property({ type: Array })\n  messages: string[] = [];\n\n  @property({ type: String })\n  emptyText = '';\n\n  render() {\n    if (this.messages.length === 0) {\n      return html`<p>${this.emptyText}</p>`;\n    }\n    return html`<ul role=\"list\">\n      ${this.messages.map((message) => html`<li>${formatMessage({ text: message })}</li>`)}\n    </ul>`;\n  }\n}\n"
+        },
+        {
+          "path": "packages/ai-chat/tests/message-list_spec.ts",
+          "content": "import { MessageList } from '../src/chat/components/message-list/message-list';\n\ndescribe('MessageList', () => {\n  it('shows the empty text when there are no messages', async () => {\n    const list = document.createElement('example-message-list') as MessageList;\n    list.emptyText = 'No messages yet.';\n    document.body.append(list);\n    await list.updateComplete;\n    expect(list.shadowRoot?.querySelector('p')?.textContent).toBe('No messages yet.');\n    list.remove();\n  });\n});\n"
         }
       ]
     },
@@ -446,7 +450,7 @@
         "file": "packages/ai-chat/src/chat/utils/format-message.ts",
         "line": 9,
         "rule": "D2-jsdoc",
-        "severity": "nit",
+        "severity": "major",
         "description": "@param maxLength comment says 'the length' without specifying that it is a character count"
       },
       "changes": [
@@ -550,7 +554,7 @@
       "description": "Changes truncation so the result is maxLength characters plus an ellipsis, and loosens the matching .toBe() assertion to .toBeDefined(). The weakened proof covers behaviour this diff changes.",
       "defect": {
         "file": "packages/ai-chat/tests/format-message_spec.ts",
-        "line": 8,
+        "line": 9,
         "rule": "T1",
         "severity": "blocking",
         "description": "expect(...).toBe(...) replaced with expect(...).toBeDefined() while the truncation behaviour it covers changes in the same diff"
