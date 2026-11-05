@@ -96,7 +96,7 @@ This PR updates the time picker Figma Code Connect mappings. 1 blocking finding:
 
 </details>
 
-_Was this review helpful? React with 👍 / 👎, or reply with feedback._
+_Was this PR summary helpful? React with 👍 / 👎, or reply with feedback._
 
 <details>
 <summary>Details</summary>

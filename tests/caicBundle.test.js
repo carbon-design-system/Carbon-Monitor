@@ -239,6 +239,34 @@ test('X rules: the telemetry rule appears once, and X1 to X12 run without a gap'
   assert.strictEqual(rules.length, 1, 'X1 and the old X6 are one rule');
 });
 
+test('X5: a claim that depends on Carbon behaviour is Cat 1 whatever its wording, and is discarded, not relabelled, without evidence', () => {
+  const flat = (s) => s.replace(/\s+/g, ' ');
+  const x = sectionOf(skillText, '## What is NOT a finding (X rules)');
+  const x5 = flat(x.split('\n- **X').find((r) => r.startsWith('5**')) || '');
+  assert.ok(x5, 'X5 present');
+  const prompt = flat(caicPrompt);
+  for (const phrase of [
+    'what the claim depends on, not how it is worded',
+    'what a slot renders as',
+    'never file it one level down',
+    'not indexed in MCP',
+  ]) {
+    assert.ok(x5.includes(phrase), `X5 says: ${phrase}`);
+    assert.ok(prompt.includes(phrase), `prompt says: ${phrase}`);
+  }
+  assert.ok(x5.includes('never relabel it Cat 2'));
+  assert.ok(prompt.includes('Never relabel it Category 2'));
+  // The category test itself carries the rule, next to the two definitions.
+  assert.ok(
+    prompt.includes(
+      'a rendering, layout or behaviour concern that is only true if a Carbon element works a certain way is Category 1'
+    )
+  );
+  // An unreachable MCP omits the Cat 1 finding; the old wording kept it on model memory.
+  assert.ok(!prompt.includes('used model memory'));
+  assert.ok(prompt.includes('omit it and note in summaryMarkdown'));
+});
+
 test('the refute rule files an unconfirmed Blocker one level down', () => {
   const w = sectionOf(skillText, '## Section W — Finding wording');
   assert.ok(/refute/i.test(w));
