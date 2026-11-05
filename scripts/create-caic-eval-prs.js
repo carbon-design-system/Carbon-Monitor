@@ -203,6 +203,6 @@ function createPr(branch, title, body) {
 
   console.log(`\nDone. ${results.length} PR(s) created on ${REPO}.`);
   console.log(`Next: run the 4-PR pilot with:`);
-  console.log(`  REVIEW_PROFILE=caic node src/index.js --pr <A1-number>`);
+  console.log(`  node evals/caic/run-one.js --profile caic --pr <A1-number>`);
   console.log(`Then check the credit ledger for cost per review.`);
 })();

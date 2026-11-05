@@ -107,29 +107,15 @@ test('formatSummaryComment with showCarbonVerification=false has no Carbon verif
 });
 
 test('profile.showCarbonVerification(reviewWithNoFindings()) returns false', () => {
-  const savedEnv = process.env.REVIEW_PROFILE;
-  process.env.REVIEW_PROFILE = 'caic';
-  try {
-    const profile = profiles.resolve('bob');
-    const result = profile.showCarbonVerification(reviewWithNoFindings());
-    assert.strictEqual(result, false);
-  } finally {
-    if (savedEnv === undefined) delete process.env.REVIEW_PROFILE;
-    else process.env.REVIEW_PROFILE = savedEnv;
-  }
+  const profile = profiles.forRepo('carbon-ai-chat');
+  const result = profile.showCarbonVerification(reviewWithNoFindings());
+  assert.strictEqual(result, false);
 });
 
 test('profile.showCarbonVerification(reviewWithOnlyCat2Findings()) returns false', () => {
-  const savedEnv = process.env.REVIEW_PROFILE;
-  process.env.REVIEW_PROFILE = 'caic';
-  try {
-    const profile = profiles.resolve('bob');
-    const result = profile.showCarbonVerification(reviewWithOnlyCat2Findings());
-    assert.strictEqual(result, false);
-  } finally {
-    if (savedEnv === undefined) delete process.env.REVIEW_PROFILE;
-    else process.env.REVIEW_PROFILE = savedEnv;
-  }
+  const profile = profiles.forRepo('carbon-ai-chat');
+  const result = profile.showCarbonVerification(reviewWithOnlyCat2Findings());
+  assert.strictEqual(result, false);
 });
 
 // ── AC-11: Cat 1 finding → Carbon verification line present ──────────────────
@@ -150,16 +136,9 @@ test('formatSummaryComment with showCarbonVerification=true has Carbon verificat
 });
 
 test('profile.showCarbonVerification(reviewWithCat1Finding()) returns true', () => {
-  const savedEnv = process.env.REVIEW_PROFILE;
-  process.env.REVIEW_PROFILE = 'caic';
-  try {
-    const profile = profiles.resolve('bob');
-    const result = profile.showCarbonVerification(reviewWithCat1Finding());
-    assert.strictEqual(result, true);
-  } finally {
-    if (savedEnv === undefined) delete process.env.REVIEW_PROFILE;
-    else process.env.REVIEW_PROFILE = savedEnv;
-  }
+  const profile = profiles.forRepo('carbon-ai-chat');
+  const result = profile.showCarbonVerification(reviewWithCat1Finding());
+  assert.strictEqual(result, true);
 });
 
 // ── AC-4 guard: core path byte-identical ─────────────────────────────────────

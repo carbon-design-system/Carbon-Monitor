@@ -171,21 +171,14 @@ process.env.BOB_API_KEY = 'test-key';
     });
 
     await testAsync(
-      'profiles.resolve("bob") with REVIEW_PROFILE=caic returns extraSkills with caic-pr-review',
+      'profiles.forRepo("carbon-ai-chat") returns extraSkills with caic-pr-review',
       async () => {
-        const saved_rp = process.env.REVIEW_PROFILE;
-        process.env.REVIEW_PROFILE = 'caic';
-        try {
-          const profiles = require('../src/profiles');
-          const profile = profiles.resolve('bob');
-          assert.strictEqual(profile.id, 'caic');
-          assert.ok(Array.isArray(profile.extraSkills));
-          assert.strictEqual(profile.extraSkills.length, 1);
-          assert.strictEqual(profile.extraSkills[0].name, 'caic-pr-review');
-        } finally {
-          if (saved_rp === undefined) delete process.env.REVIEW_PROFILE;
-          else process.env.REVIEW_PROFILE = saved_rp;
-        }
+        const profiles = require('../src/profiles');
+        const profile = profiles.forRepo('carbon-ai-chat');
+        assert.strictEqual(profile.id, 'caic');
+        assert.ok(Array.isArray(profile.extraSkills));
+        assert.strictEqual(profile.extraSkills.length, 1);
+        assert.strictEqual(profile.extraSkills[0].name, 'caic-pr-review');
       }
     );
   } finally {

@@ -6,15 +6,17 @@
 // Records results to evals/caic/results/<run-id>.json.
 //
 // Usage:
-//   REVIEW_PROFILE=caic node evals/caic/runner.js --pr 1 2 3      # run specific PR numbers
-//   REVIEW_PROFILE=caic node evals/caic/runner.js --manifest       # run all open PRs matching manifest branches
-//   REVIEW_PROFILE=core node evals/caic/runner.js --pr 1 2 3       # compare run with core profile
+//   node evals/caic/runner.js --profile caic --pr 1 2 3   # run specific PR numbers
+//   node evals/caic/runner.js --profile caic --manifest   # run all open PRs matching manifest branches
+//   node evals/caic/runner.js --profile core --pr 1 2 3   # compare run with core profile
 //
 // Requires: .env loaded (or env vars set), GITHUB_AI_AGENT_OWNER=Chance-Gong,
-//           GITHUB_AI_AGENT_REPO=caic-pr-review-test.
+//           GITHUB_AI_AGENT_REPOS=caic-pr-review-test (GITHUB_AI_AGENT_REPO
+//           works only when REPOS is unset).
 //
-// The runner does NOT set GITHUB_AI_AGENT_OWNER/REPO — the caller is
-// responsible for pointing at the scratch repo in their env or .env.
+// The runner does NOT set GITHUB_AI_AGENT_OWNER/REPOS — the caller is
+// responsible for pointing at the scratch repo in their env or .env, and the
+// target list must be that one repo.
 //
 // After each review, reads the credit ledger to get cost per review.
 // Prints a cost summary for the pilot gate.
@@ -49,24 +51,37 @@ if (!RUN_ALL_MANIFEST && prNumbers.length === 0) {
   process.exit(1);
 }
 
-const profile = process.env.REVIEW_PROFILE || 'core';
-const owner = process.env.GITHUB_AI_AGENT_OWNER;
-const repo = process.env.GITHUB_AI_AGENT_REPO;
-
-if (!owner || !repo) {
-  console.error(
-    'GITHUB_AI_AGENT_OWNER and GITHUB_AI_AGENT_REPO must be set (point at the scratch repo).'
-  );
+const profileIdx = args.indexOf('--profile');
+const profile = profileIdx === -1 ? 'core' : args[profileIdx + 1];
+if (!['core', 'caic'].includes(profile)) {
+  console.error('--profile must be core or caic.');
   process.exit(1);
 }
 
-if (`${owner}/${repo}` !== MANIFEST.repo) {
-  console.warn(
-    `⚠  Running against ${owner}/${repo}, but manifest targets ${MANIFEST.repo}.`
+// constants.js applies the plural-variable precedence, so the singular
+// variable never overrides a configured list.
+let owner;
+let targets;
+try {
+  ({
+    GITHUB_OWNER: owner,
+    GITHUB_REPOS: targets,
+  } = require('../../src/constants'));
+} catch (err) {
+  console.error(err.message);
+  process.exit(1);
+}
+const repo = targets[0];
+
+// Refuse before spawning anything: a wrong target would post on a real repo.
+if (targets.length !== 1 || `${owner}/${repo}` !== MANIFEST.repo) {
+  console.error(
+    `The eval reviews only ${MANIFEST.repo}, but the target is ${targets.map((r) => `${owner}/${r}`).join(', ')}.`
   );
-  console.warn(
-    '   Set GITHUB_AI_AGENT_OWNER=Chance-Gong GITHUB_AI_AGENT_REPO=caic-pr-review-test'
+  console.error(
+    '   Set GITHUB_AI_AGENT_OWNER=Chance-Gong GITHUB_AI_AGENT_REPOS=caic-pr-review-test'
   );
+  process.exit(1);
 }
 
 // ── resolve PR list when --manifest is used ───────────────────────────────────
@@ -84,14 +99,20 @@ async function resolveManifestPrs() {
   return data.filter((pr) => branchSet.has(pr.head.ref)).map((pr) => pr.number);
 }
 
-// ── run one PR via src/index.js ───────────────────────────────────────────────
+// ── run one PR via run-one.js ───────────────────────────────────────────────
 function runReview(prNumber) {
   console.log(
     `\n── Running PR #${prNumber} (profile=${profile}) ──────────────────`
   );
   const result = spawnSync(
     process.execPath,
-    [path.resolve(__dirname, '../../src/index.js'), '--pr', String(prNumber)],
+    [
+      path.resolve(__dirname, 'run-one.js'),
+      '--profile',
+      profile,
+      '--pr',
+      String(prNumber),
+    ],
     {
       env: { ...process.env },
       stdio: 'inherit',

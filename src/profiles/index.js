@@ -1,9 +1,10 @@
 'use strict';
 
 // Profile registry. A profile is a set of overrides applied on top of the core
-// review pipeline. The core profile (default, empty string, or 'core') takes
-// every existing code path unchanged. A non-core profile is purely additive.
+// review pipeline. The core profile takes every existing code path unchanged.
+// A non-core profile is purely additive. A repo's profile is chosen by its name.
 
+const fs = require('fs');
 const path = require('path');
 
 const CORE = { id: 'core', extraSkills: [] };
@@ -43,56 +44,41 @@ const CAIC = {
   },
 };
 
-const PROFILES = { core: CORE, caic: CAIC };
+// Mutable on purpose: the eval wrapper maps its scratch repo to a profile.
+const BY_REPO = { 'carbon-ai-chat': CAIC };
 
-/**
- * Resolve the active profile.
- *
- * @param {string} agentId - The agent id (e.g. 'bob', 'claude').
- * @returns {{ id: string, extraSkills: Array }}
- * @throws if REVIEW_PROFILE is set to an unknown value, or if 'caic' is used
- *         with a non-Bob agent, or if the caic skill files are missing.
- */
-function resolve(agentId) {
-  const raw = process.env.REVIEW_PROFILE || 'core';
-  const id = raw === '' ? 'core' : raw;
+/** The profile for a repo name; any repo not listed is core. */
+function forRepo(repo) {
+  return Object.hasOwn(BY_REPO, repo) ? BY_REPO[repo] : CORE;
+}
 
-  const profile = PROFILES[id];
-  if (!profile) {
-    throw new Error(
-      `Unknown REVIEW_PROFILE "${raw}". Valid values: ${Object.keys(PROFILES).join(', ')}.`
-    );
-  }
+/** Throws when a listed repo's profile cannot run with this agent. */
+function checkRepos(repos, agentId) {
+  for (const repo of repos) {
+    if (forRepo(repo) !== CAIC) continue;
 
-  if (id === 'caic' && agentId !== 'bob') {
-    throw new Error(
-      `REVIEW_PROFILE=caic requires GITHUB_AI_AGENT_CLI=bob (got "${agentId}"). ` +
-        'The caic profile supports Bob only.'
-    );
-  }
+    if (agentId !== 'bob') {
+      throw new Error(
+        `${repo} uses the caic profile, which runs on Bob only (GITHUB_AI_AGENT_CLI is "${agentId}").`
+      );
+    }
 
-  if (id === 'caic') {
-    // Fail fast if the skill directory is missing so the error is loud rather
-    // than silent (the Dockerfile warns about silent-loss at build time).
-    const fs = require('fs');
-    const path = require('path');
-    const skillDir = path.join(
+    // A missing skill must fail loudly; the Dockerfile only warns at build time.
+    const skillFile = path.join(
       __dirname,
       'caic',
       'skills',
       'caic-pr-review',
       'SKILL.md'
     );
-    if (!fs.existsSync(skillDir)) {
+    if (!fs.existsSync(skillFile)) {
       throw new Error(
-        'REVIEW_PROFILE=caic: caic-pr-review skill is missing at ' +
-          `src/profiles/caic/skills/caic-pr-review/SKILL.md. ` +
+        `${repo} uses the caic profile, but the caic-pr-review skill is missing at ` +
+          'src/profiles/caic/skills/caic-pr-review/SKILL.md. ' +
           'Run the build or check the Dockerfile copy step.'
       );
     }
   }
-
-  return profile;
 }
 
-module.exports = { resolve, CORE, CAIC };
+module.exports = { forRepo, checkRepos, BY_REPO, CORE, CAIC };
