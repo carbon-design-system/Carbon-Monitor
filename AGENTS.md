@@ -1,6 +1,7 @@
 # Carbon Monitor: instructions for coding agents
 
-Carbon Monitor reviews pull requests in `carbon-design-system/carbon` with an AI
+Carbon Monitor reviews pull requests in the repositories listed in
+`GITHUB_AI_AGENT_REPOS` (`carbon` and `carbon-ai-chat` today) with an AI
 CLI agent, IBM Bob through the Bob Shell CLI (the default) or Claude through the
 Claude Code CLI, verifies Carbon claims through the Carbon MCP server, and posts
 the results on GitHub. It is also a harness for running any agent on a schedule in

@@ -181,6 +181,29 @@ A scheduled run's Slack digest shows `3 issues found · partial review: 120 of 4
 | `minor`    | Maintainability risk or subtle behaviour difference — not immediately breaking |
 | `nit`      | Convention / hygiene — no functional consequence                               |
 
+### Slack digest
+
+A scheduled run posts one digest per batch when `SLACK_WEBHOOK_URL` is set. It is
+grouped by repository, in batch order (`GITHUB_AI_AGENT_REPOS` order, so `carbon`
+before `carbon-ai-chat`):
+
+- The header reads `Carbon Monitor — Review Digest`; the intro lists the repositories,
+  the run start time and the criteria (`up to N most recent PRs per repository,
+opened within the last D days`).
+- Each repository has a heading with its full name and its counts (reviewed,
+  failed, skipped), then one block per PR. A repository with no eligible PRs says
+  so. A PR skipped for budget appears as skipped, so on a low-balance day the
+  `carbon-ai-chat` PRs show as skipped rather than vanishing.
+- The footer gives the totals for the whole batch and links to **Configure schedule**.
+
+Slack accepts at most 50 blocks per message. If the combined digest fits, it is one
+message. If not, it is split by repository, in the same order; a repository that
+still does not fit is cut into consecutive chunks that keep the result order. Every
+message repeats the header, intro, repository heading and footer, and the header
+names its part (`part 2 of 3`). A heading's counts describe that repository's
+complete result set, while the footer always shows the batch totals. No result is
+dropped to fit.
+
 ---
 
 ## Review Reliability
