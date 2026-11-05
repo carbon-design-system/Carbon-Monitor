@@ -1,7 +1,7 @@
 {
   "repo": "Chance-Gong/caic-pr-review-test",
   "baseRef": "main",
-  "upstreamCommit": "88dddbd425c9fdd5eb1520c521d914a36809dbb5",
+  "upstreamCommit": "75dada3856a718fe8022ef36bd195f17212e563a",
   "note": "Eval PRs for caic-pr-review. Created by scripts/create-caic-eval-prs.js. Score with evals/caic/runner.js.",
   "prs": [
     {
