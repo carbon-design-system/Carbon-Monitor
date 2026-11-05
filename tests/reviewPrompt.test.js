@@ -34,7 +34,7 @@ const agents = require('../src/agents');
 const ZWS = '\u200B'; // zero-width space inserted by escapeAtSign
 const INLINE_PROMPT = '_Rate this finding 👍 / 👎. Replies help us improve._';
 const SUMMARY_PROMPT =
-  '_Was this review helpful? React with 👍 / 👎, or reply with feedback._';
+  '_Was this PR summary helpful? React with 👍 / 👎, or reply with feedback._';
 
 let passed = 0;
 let failed = 0;

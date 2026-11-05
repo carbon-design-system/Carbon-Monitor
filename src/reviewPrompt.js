@@ -65,7 +65,7 @@ const SEVERITY_GUIDANCE = {
 const INLINE_FEEDBACK_PROMPT =
   '_Rate this finding 👍 / 👎. Replies help us improve._';
 const SUMMARY_FEEDBACK_PROMPT =
-  '_Was this review helpful? React with 👍 / 👎, or reply with feedback._';
+  '_Was this PR summary helpful? React with 👍 / 👎, or reply with feedback._';
 
 // ---------------------------------------------------------------------------
 // formatInlineComment

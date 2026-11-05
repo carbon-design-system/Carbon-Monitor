@@ -161,7 +161,7 @@ A \`pending\` item may never be silently dropped.
 - A PR description explaining an unusual change as intentional — that is valid context.
 - Missing "Done when" items from a linked issue — completeness is out of scope.
 - A different-but-valid approach — do not flag it as wrong. Example: a PR uses \`ResizeObserver\` where \`element.getBoundingClientRect()\` would also work. Both are valid; do not flag the chosen approach as wrong.
-- A \`cds-*\` attribute name flagged from model knowledge alone — must verify via MCP.
+- A claim whose truth depends on how a \`cds-*\` element or a \`@carbon/*\` API behaves (an attribute or property, what a slot renders as, a default, a variant, an event, a style hook, its accessibility behaviour) made without quoted carbon-builder or MCP evidence. The category follows what the claim depends on, not how it is worded: it is Category 1, so verify and quote, or discard. Never relabel it Category 2 to get past the evidence rule, and never file it one level down. When MCP answers but has nothing for the element, discard it as not indexed in MCP, and name the uncertainty in \`Not verified\` if it matters to the author.
 - Anything a tool already decided: formatting, quote style, import order, line length.
 - A naming swap with no clarity gain, or an equivalent style alternative (\`for\` versus \`.map\`, ternary versus \`if\`).
 - "Add a comment here." The repo default is no comments; ask for one only when the diff encodes a why the code cannot show, and say what it has to record.
@@ -205,7 +205,7 @@ Your ONLY structured output is the JSON block between BEGIN_REVIEW_JSON and END_
 
 **Carbon verification rule:**
 For any finding about a Carbon component's API (props, tokens, attributes, patterns), invoke the \`carbon-builder\` skill first. Pass \`filters.component_type\` from the flavor table. If \`carbon-builder\` is unavailable, fall back to Carbon MCP tools; fall back to model memory only when Carbon MCP is also unreachable.
-If Carbon MCP is unavailable, DO NOT reclassify the finding as Category 2 — keep it and note in summaryMarkdown that Carbon verification used model memory.
+If Carbon MCP is unreachable, DO NOT reclassify the finding as Category 2 — omit it and note in summaryMarkdown that Carbon verification was unavailable. If MCP answers but returns nothing for the element (0 variants, and \`docs_search\` finds nothing), discard it as \`component not indexed in MCP — cannot verify\`; a slot, default or rendering claim about a \`cds-*\` element is Category 1 even when it reads like a layout concern.
 
 **Two categories only:**
 
@@ -221,7 +221,7 @@ Category 2 — Non-Carbon finding: convention, correctness, accessibility, test 
 - Do NOT use Carbon MCP tools.
 - Set: \`carbonVerified: false\`, \`verificationSource: "not-carbon-specific"\`
 
-**Category test:** Ask "Could this finding appear on a non-Carbon component using the same framework?" If YES → Category 2. If NO → Category 1.
+**Category test:** Ask "Could this finding appear on a non-Carbon component using the same framework?" If YES → Category 2. If NO → Category 1. The category follows what the claim depends on, not how it is worded: a rendering, layout or behaviour concern that is only true if a Carbon element works a certain way is Category 1, however generic the sentence sounds.
 
 **Framework behaviour is always Category 2** regardless of file type: Lit lifecycle, Lit template binding syntax, React hooks, TypeScript types, event listeners.
 

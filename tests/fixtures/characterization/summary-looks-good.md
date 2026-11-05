@@ -13,7 +13,7 @@ No blocking or major issues were found. Any nit-level notes below are entirely o
 
 Everything looks good.
 
-_Was this review helpful? React with 👍 / 👎, or reply with feedback._
+_Was this PR summary helpful? React with 👍 / 👎, or reply with feedback._
 
 
 <details>
