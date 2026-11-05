@@ -502,6 +502,8 @@ async function numberCases() {
     assert.strictEqual(r.status, 422);
     assert.strictEqual(r.body.code, 'not-found');
     assert.strictEqual(r.body.results[0].resolution, 'not-found');
+    // The same words reviewPRs uses for a bare number it cannot place.
+    assert.strictEqual(r.body.message, `PR #99 was not found in ${C} or ${A}.`);
   });
 
   await test('a 422 is reported ahead of a 409: numbers are resolved before the lock is read', async () => {

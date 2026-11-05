@@ -44,6 +44,7 @@ const {
   parsePrNumbers,
   parsePrRefs,
   resolveReviewTargets,
+  unresolvedMessage,
 } = require('../index');
 const { resolveNumbers } = require('../prResolver');
 const { createGitHubClient, createOctokit } = require('../githubClient');
@@ -931,18 +932,6 @@ function notesFromResolution(results) {
     }));
 }
 
-/** The text for a number that did not resolve to exactly one PR. */
-function describeUnresolved(result) {
-  const found = result.matches.map((m) => m.repo);
-  if (found.length === 0) {
-    return `PR #${result.number} was not found in ${GITHUB_REPOS.join(', ')}.`;
-  }
-  return (
-    `PR #${result.number} matches ${found.join(' and ')}. ` +
-    `Name it as ${found[found.length - 1]}#${result.number}.`
-  );
-}
-
 /**
  * Look up typed PR numbers in every configured repository. A thrown error is a
  * GitHub failure other than 404 (the resolver treats 404 as "not in this repo").
@@ -1090,7 +1079,7 @@ async function handleReviewTrigger(req, res) {
       return sendJSON(res, 422, {
         success: false,
         code,
-        message: unresolved.map(describeUnresolved).join(' '),
+        message: unresolved.map(unresolvedMessage).join(' '),
         results,
       });
     }

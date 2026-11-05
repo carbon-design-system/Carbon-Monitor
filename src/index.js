@@ -1867,6 +1867,7 @@ module.exports = {
   parsePrNumbers,
   parsePrRefs,
   resolveReviewTargets,
+  unresolvedMessage,
   resolveSpend,
   tokensFromStats,
   reviewTextFor,
