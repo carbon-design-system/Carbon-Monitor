@@ -860,7 +860,11 @@ These files belong to PR #7 but are not in this review. Do not catalogue them, a
       recommendation: 'suggested-improvements',
     };
     const text = (result) =>
-      _buildPayload({ startedAt: Date.now(), repo: 'o/r', results: [result] })
+      _buildPayload({
+        startedAt: Date.now(),
+        repos: ['o/r'],
+        results: [result],
+      })
         .blocks.map((b) => b.text?.text || '')
         .join('\n');
     assert.ok(

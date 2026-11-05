@@ -10,12 +10,17 @@
  *  5. Five PRs show 2 in flight and 3 queued, and a second trigger gets 409
  *  6. A retry sees a bearer refreshed since the review's HOME was seeded
  *  7. reviewLog tags, filters, forwards tagged lines and settles fragments
+ *  8. Two workers on carbon#1204 and carbon-ai-chat#1204 keep separate lines
+ *  9. The reader filters on repo and pr together; pr alone still matches by number
  */
 
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+// These cases review one repo; the two-repo cases are in reviewTargeting.test.js.
+process.env.GITHUB_AI_AGENT_REPOS = 'carbon';
+
 const { runBatch, sandbox } = require('./fixtures/concurrencyHarness');
 
 let passed = 0;
@@ -89,13 +94,13 @@ async function main() {
     assert.strictEqual(four.maxInFlight, 2);
     const started = four.snapshots.find((s) => s.inFlight.length === 2);
     assert.deepStrictEqual(
-      started.inFlight.map((f) => [f.worker, f.pr]),
+      started.inFlight.map((f) => [f.worker, f.repo, f.pr]),
       [
-        [1, 1],
-        [2, 2],
+        [1, 'carbon', 1],
+        [2, 'carbon', 2],
       ]
     );
-    assert.deepStrictEqual(started.queued, [3, 4]);
+    assert.deepStrictEqual(started.queued, ['carbon#3', 'carbon#4']);
     assert.strictEqual(started.concurrency, 2);
     const queueLengths = four.snapshots.map((s) => s.queued.length);
     for (const n of [2, 1, 0]) assert(queueLengths.includes(n), `queue ${n}`);
@@ -120,16 +125,26 @@ async function main() {
         assert(l.text.startsWith('[batch] '), l.text);
         assert.strictEqual(l.worker, undefined);
       } else {
-        assert(l.text.startsWith(`[agent ${l.worker} #${l.pr}] `), l.text);
+        assert.strictEqual(l.repo, 'carbon');
+        assert(
+          l.text.startsWith(`[agent ${l.worker} carbon#${l.pr}] `),
+          l.text
+        );
       }
     }
     for (const pr of [1, 2, 3, 4]) {
       const own = four.lines.filter((l) => l.pr === pr);
       assert.strictEqual(new Set(own.map((l) => l.worker)).size, 1);
       const at = (needle) => own.findIndex((l) => l.text.includes(needle));
-      assert(at('Reviewing PR') >= 0, `start line for #${pr}`);
-      assert(at('Reviewing PR') < at('Bobcoins spent'), 'start before cost');
-      assert(at('Bobcoins spent') < at('review complete'), 'cost before end');
+      assert(at(`Reviewing carbon#${pr}:`) >= 0, `start line for #${pr}`);
+      assert(
+        at(`Reviewing carbon#${pr}:`) < at('Bobcoins spent'),
+        'start before cost'
+      );
+      assert(
+        at('Bobcoins spent') < at(`carbon#${pr} review complete`),
+        'cost before end'
+      );
       // The child's progress lines inherit the review context.
       assert(
         own.some((l) => l.text.includes('use_skill')),
@@ -173,6 +188,22 @@ async function main() {
       four.digest.results.map((r) => r.prNumber),
       [1, 2, 3, 4]
     );
+    for (const r of four.digest.results) assert.strictEqual(r.repo, 'carbon');
+  });
+
+  await test('ledger rows and per-PR events carry the PR own repository', () => {
+    for (const row of four.ledger) {
+      assert.strictEqual(row.repo, 'carbon-design-system/carbon');
+    }
+    const perPr = four.events.filter((e) => e.pr_number);
+    assert(perPr.length >= 8, 'started and completed events');
+    for (const e of perPr) {
+      assert.strictEqual(e.repo, 'carbon-design-system/carbon');
+      assert.strictEqual(e.profile, 'core');
+    }
+    const run = four.events.find((e) => e.event_type === 'run_completed');
+    assert.strictEqual(run.repo, 'carbon-design-system/carbon');
+    assert.deepStrictEqual(run.payload.repos, ['carbon-design-system/carbon']);
   });
   await four.cleanup();
 
@@ -369,7 +400,12 @@ async function main() {
     const { second } = server.value;
     assert.strictEqual(second.status, 409);
     assert.strictEqual(second.json.success, false);
-    assert.deepStrictEqual(second.json.prNumbers, five);
+    assert.deepStrictEqual(
+      second.json.prs,
+      five.map((number) => ({ repo: 'carbon', number }))
+    );
+    assert(second.json.message.includes('carbon#1, carbon#2'));
+    assert(!('prNumbers' in second.json));
     assert(/is already running/.test(second.json.message));
     assert(/one review session at a time/.test(second.json.message));
   });
@@ -410,15 +446,21 @@ async function main() {
     try {
       reviewLog.start('t');
       await Promise.all([
-        reviewLog.runWithContext({ worker: 1, pr: 11 }, async () => {
-          process.stdout.write('ab');
-          await tick();
-          process.stdout.write('cd\n');
-          process.stdout.write('tail');
-        }),
-        reviewLog.runWithContext({ worker: 2, pr: 22 }, async () => {
-          process.stdout.write('xy\n');
-        }),
+        reviewLog.runWithContext(
+          { worker: 1, repo: 'carbon', pr: 11 },
+          async () => {
+            process.stdout.write('ab');
+            await tick();
+            process.stdout.write('cd\n');
+            process.stdout.write('tail');
+          }
+        ),
+        reviewLog.runWithContext(
+          { worker: 2, repo: 'carbon', pr: 22 },
+          async () => {
+            process.stdout.write('xy\n');
+          }
+        ),
       ]);
       process.stdout.write('batch line\n');
       reviewLog.stop();
@@ -429,24 +471,87 @@ async function main() {
     assert.deepStrictEqual(
       all.map((l) => l.text),
       [
-        '[agent 2 #22] xy',
-        '[agent 1 #11] abcd',
-        '[agent 1 #11] tail',
+        '[agent 2 carbon#22] xy',
+        '[agent 1 carbon#11] abcd',
+        '[agent 1 carbon#11] tail',
         '[batch] batch line',
       ]
     );
     assert.deepStrictEqual(
       real.join(''),
-      '[agent 2 #22] xy\n[agent 1 #11] abcd\n[agent 1 #11] tail\n[batch] batch line\n'
+      '[agent 2 carbon#22] xy\n[agent 1 carbon#11] abcd\n[agent 1 carbon#11] tail\n[batch] batch line\n'
     );
     assert.deepStrictEqual(
       reviewLog.read(0, 500, { pr: 11 }).lines.map((l) => l.text),
-      ['[agent 1 #11] abcd', '[agent 1 #11] tail']
+      ['[agent 1 carbon#11] abcd', '[agent 1 carbon#11] tail']
     );
     assert.deepStrictEqual(
-      reviewLog.read(0, 500, { worker: 2 }).lines.map((l) => [l.worker, l.pr]),
-      [[2, 22]]
+      reviewLog
+        .read(0, 500, { worker: 2 })
+        .lines.map((l) => [l.worker, l.repo, l.pr]),
+      [[2, 'carbon', 22]]
     );
+  });
+
+  // Two repos can both have a #1204; the tag, the fragment buffer and the
+  // filter must tell them apart.
+  const sameNumber = async () => {
+    process.stdout.write = () => true;
+    try {
+      reviewLog.start('t2');
+      await Promise.all([
+        reviewLog.runWithContext(
+          { worker: 1, repo: 'carbon', pr: 1204 },
+          async () => {
+            process.stdout.write('one-');
+            await tick();
+            process.stdout.write('carbon\nmore');
+          }
+        ),
+        reviewLog.runWithContext(
+          { worker: 2, repo: 'carbon-ai-chat', pr: 1204 },
+          async () => {
+            process.stdout.write('two-');
+            await tick();
+            process.stdout.write('caic\n');
+          }
+        ),
+      ]);
+      reviewLog.stop();
+    } finally {
+      process.stdout.write = write;
+    }
+    return reviewLog.read(0).lines;
+  };
+
+  await test('two workers on carbon#1204 and carbon-ai-chat#1204 keep separate lines', async () => {
+    const all = await sameNumber();
+    assert.deepStrictEqual(
+      all.map((l) => [l.worker, l.repo, l.pr, l.text]).sort(),
+      [
+        [1, 'carbon', 1204, '[agent 1 carbon#1204] more'],
+        [1, 'carbon', 1204, '[agent 1 carbon#1204] one-carbon'],
+        [2, 'carbon-ai-chat', 1204, '[agent 2 carbon-ai-chat#1204] two-caic'],
+      ].sort()
+    );
+  });
+
+  await test('the reader filters on repo and pr together; pr alone matches by number', () => {
+    const texts = (filter) =>
+      reviewLog
+        .read(0, 500, filter)
+        .lines.map((l) => l.text)
+        .sort();
+    assert.deepStrictEqual(texts({ repo: 'carbon', pr: 1204 }), [
+      '[agent 1 carbon#1204] more',
+      '[agent 1 carbon#1204] one-carbon',
+    ]);
+    assert.deepStrictEqual(texts({ repo: 'carbon-ai-chat', pr: 1204 }), [
+      '[agent 2 carbon-ai-chat#1204] two-caic',
+    ]);
+    assert.strictEqual(texts({ pr: 1204 }).length, 3, 'pr alone: both repos');
+    assert.strictEqual(texts({ repo: 'carbon' }).length, 2);
+    assert.strictEqual(texts({ repo: 'carbon', pr: 22 }).length, 0);
   });
 
   console.log(`\n  ${passed} passed, ${failed} failed\n`);

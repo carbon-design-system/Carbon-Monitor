@@ -479,7 +479,7 @@ function SchedulePanel({
           {/*
             maxPRs/daysBack are intentionally not editable here. The scheduled
             run uses the same GITHUB_AI_AGENT_MAX_PRS / _DAYS_BACK limits as
-            the manual "Review latest" button — threading a per-schedule
+            the manual "Review latest" button, per repository — threading a per-schedule
             override through reviewPRs would require changes to the most
             load-bearing code in the project for no additional capability the
             user asked for.

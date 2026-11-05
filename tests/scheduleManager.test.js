@@ -292,7 +292,7 @@ async function main() {
         finishedAt: null,
         error: null,
         mode: null,
-        prNumbers: null,
+        prs: null,
       };
       const fakeLog = { start: () => {}, stop: () => {} };
       sm.startScheduler(fakeReviewPRs, fakeState, fakeLog);

@@ -50,6 +50,11 @@ const {
   endProgress,
 } = require('./reviewProgress');
 const { postLowTokenAlert } = require('../slackNotifier');
+const { GITHUB_OWNER, GITHUB_REPOS } = require('../constants');
+
+const MONITORED_REPOS = GITHUB_REPOS.map((r) => `${GITHUB_OWNER}/${r}`).join(
+  ', '
+);
 
 // ── State file location ──────────────────────────────────────────────────────
 
@@ -624,7 +629,7 @@ async function tick(reviewPRs, reviewState, reviewLog) {
       percentRemaining: balance.percentRemaining,
       threshold: lowPct,
       agent: adapter.id,
-      repo: `${process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system'}/${process.env.GITHUB_AI_AGENT_REPO || 'carbon'}`,
+      repo: MONITORED_REPOS,
       isReminder: true,
     });
     return;
@@ -694,7 +699,7 @@ async function tick(reviewPRs, reviewState, reviewLog) {
       percentRemaining: balance.percentRemaining,
       threshold: lowPct,
       agent: adapter.id,
-      repo: `${process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system'}/${process.env.GITHUB_AI_AGENT_REPO || 'carbon'}`,
+      repo: MONITORED_REPOS,
       isReminder: false,
     });
     return;
@@ -721,14 +726,14 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   }
 
   // 7. Claim the single-flight lock synchronously, exactly as handleReviewTrigger
-  //    does (server.js lines 532–537). No async gap between the check above and
-  //    this claim — we are on the single-threaded event loop.
+  //    does in server.js. No async gap between the check above and this claim —
+  //    we are on the single-threaded event loop.
   reviewState.running = true;
   reviewState.startedAt = new Date().toISOString();
   reviewState.finishedAt = null;
   reviewState.error = null;
   reviewState.mode = 'auto';
-  reviewState.prNumbers = null;
+  reviewState.prs = null;
   startProgress(reviewState);
 
   console.log(

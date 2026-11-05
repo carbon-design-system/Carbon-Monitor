@@ -111,6 +111,7 @@ const INDEX_MAPPING = {
       fields: { keyword: { type: 'keyword', ignore_above: 512 } },
     },
     agent: { type: 'keyword' },
+    profile: { type: 'keyword' },
     commit_sha: { type: 'keyword' },
     payload: {
       dynamic: true,

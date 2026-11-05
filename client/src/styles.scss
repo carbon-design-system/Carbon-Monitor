@@ -336,6 +336,56 @@ body {
     margin: 0;
     overflow-wrap: anywhere;
   }
+
+  // Below Carbon md the value column is too narrow beside its label (WCAG 1.4.10
+  // reflow at 320 CSS px), so each label sits above its value.
+  @media (max-width: 41.98rem) {
+    grid-template-columns: 1fr;
+    gap: 0 $spacing-05;
+
+    dd + dt {
+      margin-top: $spacing-03;
+    }
+  }
+}
+
+// PR refs grouped by repo (PrRefList). Must reflow at 320 CSS px and at 400%
+// zoom with no horizontal scroll: groups wrap, a number never splits, and the
+// repo tag stays beside its first number.
+.cm-pr-refs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-03 $spacing-05;
+}
+
+.cm-pr-refs__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: $spacing-02 $spacing-03;
+  min-width: 0;
+}
+
+.cm-pr-refs__num {
+  white-space: nowrap;
+}
+
+// Below Carbon md each repo group starts on its own line.
+@media (max-width: 41.98rem) {
+  .cm-pr-refs {
+    flex-direction: column;
+  }
+}
+
+// The Repos row: a wrapping row of tags.
+.cm-repo-order {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-02 $spacing-03;
 }
 
 // ── Bobcoins ──────────────────────────────────────────────────────────────
@@ -626,6 +676,13 @@ body {
   align-items: center;
   gap: $spacing-05;
   @include type-style('body-01');
+
+  // Status, repo tag and number can outgrow a 320 px row, so the title drops to
+  // its own line there (it still ellipsises within it).
+  @media (max-width: 41.98rem) {
+    flex-wrap: wrap;
+    gap: $spacing-03 $spacing-05;
+  }
 }
 
 // Carbon's InlineLoading is inline-size:100% — built to fill a form field. In
@@ -657,6 +714,7 @@ body {
   // A nowrap flex item will not shrink below its content width without this, so a
   // long title would overflow the tile edge instead of ellipsising within the row.
   min-inline-size: 0;
+  max-inline-size: 100%;
 }
 
 .cm-log__notice {
@@ -841,4 +899,34 @@ body {
     @include type-style('body-01');
     margin-bottom: $spacing-02;
   }
+}
+
+// ── Collision dialog ──────────────────────────────────────────────────────
+// One group of tiles per ambiguous PR number. Tiles stack full width and wrap
+// their text, so the dialog reflows at 320 CSS px.
+.cm-collision__group {
+  margin-block-start: $spacing-05;
+}
+
+// Spans, not divs: a radio tile's content sits inside a <label>.
+.cm-collision__tile-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-02 $spacing-03;
+}
+
+.cm-collision__title {
+  display: block;
+  @include type-style('body-compact-01');
+  margin-block-start: $spacing-03;
+  overflow-wrap: anywhere;
+}
+
+.cm-collision__meta {
+  display: block;
+  @include type-style('helper-text-01');
+  color: $text-secondary;
+  margin-block-start: $spacing-02;
+  overflow-wrap: anywhere;
 }

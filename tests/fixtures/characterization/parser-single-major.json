@@ -1,0 +1,36 @@
+{
+  "summaryMarkdown": "One issue.",
+  "findings": [
+    {
+      "severity": "major",
+      "file": "src/Button.js",
+      "line": 10,
+      "title": "Missing aria-label",
+      "body": "Add aria-label.",
+      "carbonVerified": false,
+      "verificationSource": "not-carbon-specific"
+    }
+  ],
+  "verificationStats": {
+    "total": 1,
+    "carbonSpecific": 0,
+    "carbonVerified": 0,
+    "carbonBuilderVerified": 0,
+    "carbonBuilderRejected": 0,
+    "filtered": 0,
+    "skillFilesRead": []
+  },
+  "hasCatalogue": true,
+  "recommendation": "suggested-improvements",
+  "recommendationRationale": "1 finding worth considering: 1 major.",
+  "catalogueWarning": null,
+  "findingsTable": [
+    {
+      "area": "General",
+      "category": "Cat 2",
+      "severity": "major",
+      "title": "Missing aria-label",
+      "file": "src/Button.js"
+    }
+  ]
+}

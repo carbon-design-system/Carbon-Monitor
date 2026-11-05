@@ -17,7 +17,7 @@ export NODE_ENV=production
 
 : "${APP:=carbon-monitor}"
 : "${IMAGE_NAME:=carbon-monitor}"
-: "${VERSION:=1.4.0}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
+: "${VERSION:=1.5.0}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
 
 # Secret holding this app's credentials. 
 : "${SECRET_NAME:=carbon-monitor-secrets}"
@@ -59,8 +59,9 @@ export NODE_ENV=production
 # is enough. Memory is 4 GB because Bob Shell documents 4 GB as its minimum per
 # process (https://bob.ibm.com/docs/shell/getting-started/install-and-setup); 1 vCPU
 # / 4 GB is a valid Code Engine pairing. REVIEW_CONCURRENCY (default 2) runs that many agent processes
-# (Bob or Claude) at once, each budgeted at Bob's 4 GB: at 4G a large PR may OOM one review, so pair 2 with
-# MEMORY=8G in the best case, or set REVIEW_CONCURRENCY=1.
+# (Bob or Claude) at once, so memory is reviews in flight times the per-review need. Bob's 4 GB
+# is a minimum, and at 4G a large PR may OOM one review. The maintainer runs 4 reviews at 8G,
+# set in .env; with less memory, lower REVIEW_CONCURRENCY (1 is sequential).
 : "${CPU:=1}"
 : "${MEMORY:=4G}"
 : "${CONCURRENCY:=100}"
@@ -450,7 +451,7 @@ COMMON_FLAGS=(
   --env "CONSOLE_CONTACT_EMAIL=${CONSOLE_CONTACT_EMAIL:-}"
   --env GITHUB_AI_AGENT_CLI="${GITHUB_AI_AGENT_CLI:-bob}"
   --env GITHUB_AI_AGENT_OWNER="${GITHUB_AI_AGENT_OWNER:-carbon-design-system}"
-  --env GITHUB_AI_AGENT_REPO="${GITHUB_AI_AGENT_REPO:-carbon}"
+  --env GITHUB_AI_AGENT_REPOS="${GITHUB_AI_AGENT_REPOS:-${GITHUB_AI_AGENT_REPO:-carbon}}"
   --env GITHUB_AI_AGENT_MAX_PRS="${GITHUB_AI_AGENT_MAX_PRS:-10}"
   --env GITHUB_AI_AGENT_DAYS_BACK="${GITHUB_AI_AGENT_DAYS_BACK:-21}"
   --env GITHUB_AI_AGENT_REVIEW_LABEL="${GITHUB_AI_AGENT_REVIEW_LABEL:-AIReviewed}"

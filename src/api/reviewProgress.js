@@ -4,14 +4,17 @@ const { EFFECTIVE_REVIEW_CONCURRENCY } = require('../constants');
 // imports server state; the server and the scheduler both feed it into
 // reviewState with these helpers.
 
-/** Reset the progress fields when a batch claims reviewState. */
+/** Reset the progress fields when a batch claims reviewState. `queued` holds `repo#number` keys. */
 function startProgress(state, queued = []) {
   state.inFlight = [];
   state.queued = [...queued];
   state.concurrency = EFFECTIVE_REVIEW_CONCURRENCY;
 }
 
-/** Copy a { inFlight, queued, concurrency } snapshot from reviewPRs. */
+/**
+ * Copy a { inFlight, queued, concurrency } snapshot from reviewPRs: inFlight
+ * entries are { worker, repo, pr, startedAt }, queued entries `repo#number`.
+ */
 function applyProgress(state, snapshot) {
   state.inFlight = snapshot.inFlight;
   state.queued = snapshot.queued;

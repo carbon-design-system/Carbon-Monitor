@@ -9,12 +9,15 @@
  *  3. A missing or slow binary is reported by the adapter's product name
  *  4. runAll registers the Bobcoins tile for Bob and the spend tile otherwise
  *  5. The spend tile: unmetered, within budget, low, and exhausted
+ *  6. The GitHub tile probes every configured repo and names the first failure
+ *  7. The profile tile fails when a repo's profile cannot run with the agent
  */
 
 'use strict';
 
 const assert = require('assert');
 const fs = require('fs');
+const http = require('http');
 const os = require('os');
 const path = require('path');
 
@@ -24,6 +27,9 @@ fs.mkdirSync(binDir);
 process.env.HOME = sandbox;
 process.env.CREDIT_LEDGER_PATH = path.join(sandbox, 'ledger.jsonl');
 delete process.env.ES_URL;
+process.env.GITHUB_AI_AGENT_REPOS = 'carbon,carbon-ai-chat';
+delete process.env.GITHUB_AI_AGENT_OWNER;
+delete process.env.GITHUB_AI_AGENT_REPO;
 for (const k of [
   'GITHUB_AI_AGENT_TOKEN',
   'BOB_API_KEY',
@@ -171,16 +177,196 @@ async function main() {
     const bob = await health.runAll();
     assert.deepStrictEqual(
       bob.checks.map((c) => c.id),
-      ['agent', 'bobcoins', 'carbon-mcp', 'github', 'elasticsearch']
+      ['agent', 'profiles', 'bobcoins', 'carbon-mcp', 'github', 'elasticsearch']
     );
 
     useAgent('claude');
     const claude = await health.runAll();
     assert.deepStrictEqual(
       claude.checks.map((c) => c.id),
-      ['agent', 'spend', 'carbon-mcp', 'github', 'elasticsearch']
+      ['agent', 'profiles', 'spend', 'carbon-mcp', 'github', 'elasticsearch']
     );
-    assert.strictEqual(claude.checks[1].label, 'Spend');
+    assert.strictEqual(claude.checks[2].label, 'Spend');
+  });
+
+  // ── GitHub tile: every configured repository is probed ─────────────────────
+  // `repos` maps a repo name to { status, delay, body, message }; the default is
+  // a 200 with push access.
+  async function withGithub(repos, fn) {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const seen = [];
+    const server = http.createServer((req, res) => {
+      const repo = /^\/repos\/[^/]+\/([^/]+)$/.exec(req.url)?.[1];
+      const respond = (status, body) => {
+        res.writeHead(status, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(body));
+      };
+      if (req.url === '/rate_limit') {
+        return respond(200, {
+          resources: { core: { remaining: 4900, limit: 5000 } },
+        });
+      }
+      const spec = repos[repo] || {};
+      seen.push(repo);
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      setTimeout(() => {
+        inFlight--;
+        respond(
+          spec.status || 200,
+          spec.body || { permissions: { push: true }, message: spec.message }
+        );
+      }, spec.delay || 0);
+    });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    process.env.GITHUB_AI_AGENT_TOKEN = 'token';
+    process.env.GITHUB_API_BASE_URL = `http://127.0.0.1:${server.address().port}`;
+    try {
+      return await fn({ seen, maxInFlight: () => maxInFlight });
+    } finally {
+      delete process.env.GITHUB_AI_AGENT_TOKEN;
+      delete process.env.GITHUB_API_BASE_URL;
+      server.closeAllConnections();
+      await new Promise((r) => server.close(r));
+    }
+  }
+
+  await test('GitHub: every repo is probed together, and all OK reads as before with the repos named', async () => {
+    await withGithub(
+      { carbon: { delay: 100 }, 'carbon-ai-chat': { delay: 100 } },
+      async (probe) => {
+        const tile = await health.checkGitHub();
+        assert.deepStrictEqual(tile, {
+          id: 'github',
+          label: 'GitHub',
+          status: 'succeeded',
+          detail: '4900/5000 API calls remaining',
+          hint: 'Monitoring carbon, carbon-ai-chat',
+        });
+        assert.deepStrictEqual([...probe.seen].sort(), [
+          'carbon',
+          'carbon-ai-chat',
+        ]);
+        assert.strictEqual(probe.maxInFlight(), 2, 'probed concurrently');
+      }
+    );
+  });
+
+  await test('GitHub: one of two repos failing fails the tile and names the repo and the reason', async () => {
+    await withGithub({ 'carbon-ai-chat': { status: 404 } }, async () => {
+      const tile = await health.checkGitHub();
+      assert.strictEqual(tile.status, 'failed');
+      assert.strictEqual(
+        tile.detail,
+        'carbon-ai-chat: 404 (token cannot see this repository)'
+      );
+      assert.ok(/fine-grained token/.test(tile.hint), tile.hint);
+    });
+  });
+
+  await test('GitHub: with two failures the first in list order is reported, whichever answers first', async () => {
+    await withGithub(
+      {
+        carbon: {
+          status: 403,
+          message: 'Resource protected by SAML SSO',
+          delay: 150,
+        },
+        'carbon-ai-chat': { status: 404 },
+      },
+      async () => {
+        const tile = await health.checkGitHub();
+        assert.strictEqual(
+          tile.detail,
+          'carbon: not SSO-authorized for carbon-design-system'
+        );
+        assert.ok(tile.hint.includes('/orgs/carbon-design-system/sso'));
+      }
+    );
+  });
+
+  await test('GitHub: a rejected token, another 403 and a server error each name the repo', async () => {
+    const detail = async (spec) =>
+      withGithub(
+        { 'carbon-ai-chat': spec },
+        async () => (await health.checkGitHub()).detail
+      );
+    assert.strictEqual(
+      await detail({ status: 401 }),
+      'carbon-ai-chat: token rejected'
+    );
+    assert.strictEqual(
+      await detail({ status: 403, message: 'Forbidden' }),
+      'carbon-ai-chat: access forbidden'
+    );
+    assert.strictEqual(
+      await detail({ status: 502 }),
+      'carbon-ai-chat: HTTP 502'
+    );
+  });
+
+  await test('GitHub: an unreachable host fails the tile naming the first repo', async () => {
+    await withGithub({}, async () => {
+      process.env.GITHUB_API_BASE_URL = 'http://127.0.0.1:1';
+      const tile = await health.checkGitHub();
+      assert.strictEqual(tile.status, 'failed');
+      assert.strictEqual(tile.detail, 'carbon: unreachable');
+    });
+  });
+
+  await test('GitHub: a repo the token can read but not label is a warning that names it', async () => {
+    await withGithub(
+      { 'carbon-ai-chat': { body: { permissions: { pull: true } } } },
+      async () => {
+        const tile = await health.checkGitHub();
+        assert.strictEqual(tile.status, 'caution-major');
+        assert.strictEqual(
+          tile.detail,
+          'Read-only on carbon-design-system/carbon-ai-chat'
+        );
+      }
+    );
+  });
+
+  await test('GitHub: no token is still one failure, before any probe', async () => {
+    delete process.env.GITHUB_AI_AGENT_TOKEN;
+    const tile = await health.checkGitHub();
+    assert.strictEqual(tile.detail, 'No token configured');
+  });
+
+  // ── Profile tile ────────────────────────────────────────────────────────────
+  await test('profiles: Bob can run every configured repo, and the tile lists each profile', async () => {
+    useAgent('bob');
+    assert.deepStrictEqual(await health.checkProfiles(), {
+      id: 'profiles',
+      label: 'Review profiles',
+      status: 'succeeded',
+      detail: 'carbon: core, carbon-ai-chat: caic',
+      hint: null,
+    });
+  });
+
+  await test('profiles: the caic profile with Claude is a FAILED tile carrying the error', async () => {
+    useAgent('claude');
+    const tile = await health.checkProfiles();
+    assert.strictEqual(tile.id, 'profiles');
+    assert.strictEqual(tile.status, 'failed');
+    assert.strictEqual(
+      tile.detail,
+      'carbon-ai-chat uses the caic profile, which runs on Bob only (GITHUB_AI_AGENT_CLI is "claude").'
+    );
+    script('claude', 'echo 2.1.302');
+    process.env.PATH = binDir;
+    const all = await health.runAll();
+    const found = all.checks.find((c) => c.id === 'profiles');
+    assert.strictEqual(found.status, 'failed');
+    assert.strictEqual(all.overall, 'failed');
+  });
+
+  await test('profiles: with no agent named the default (Bob) is checked', async () => {
+    delete process.env.GITHUB_AI_AGENT_CLI;
+    assert.strictEqual((await health.checkProfiles()).status, 'succeeded');
   });
 
   await test('spend tile: unmetered shows the month so far and says why there is no percentage', async () => {

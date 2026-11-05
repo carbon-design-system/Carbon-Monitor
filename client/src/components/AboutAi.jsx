@@ -99,7 +99,7 @@ function AboutAi() {
           <li>
             <strong>Fetch pull requests.</strong> Either the numbers typed into
             the console, or the most recent open pull requests in the configured
-            repository.
+            repositories, carbon first.
           </li>
           <li>
             <strong>Build a review bundle.</strong> The diff, the changed files

@@ -41,7 +41,14 @@ function fileOfSize(filename, total) {
   return { ...base, patch: base.patch + 'x'.repeat(pad) };
 }
 
-// o.files: { [pr]: file[] } replaces a PR's file list; o.changedFiles: { [pr]: n } sets its changed_files.
+// Per-PR fixtures are keyed by `repo#number` (`carbon-ai-chat#1204`); a bare number
+// applies to that number in every repo.
+const pick = (map, repo, n) => map?.[`${repo}#${n}`] ?? map?.[n];
+
+// o.files: { [key]: file[] } replaces a PR's file list; o.changedFiles: { [key]: n } sets its changed_files.
+// o.repoOf: { [number]: repo | repo[] } (or a function returning it) limits which repos have a PR with that number (404 elsewhere).
+// o.prStates: { [key]: { state, merged_at, draft, title } } overrides what the PR itself reports.
+// o.open: { [repo]: number[] } is what the open-PR listing returns, newest first.
 function startMockGithub(o = {}) {
   const writes = [];
   const server = http.createServer((req, res) => {
@@ -50,9 +57,10 @@ function startMockGithub(o = {}) {
     req.on('end', () => {
       const url = new URL(req.url, 'http://127.0.0.1');
       const m =
-        /^\/repos\/[^/]+\/[^/]+\/(pulls|issues|contents)\/([^/]+)(?:\/(\w+))?$/.exec(
+        /^\/repos\/([^/]+)\/([^/]+)\/(pulls|issues|contents)\/([^/]+)(?:\/(\w+))?$/.exec(
           url.pathname
         );
+      const listing = /^\/repos\/([^/]+)\/([^/]+)\/pulls$/.exec(url.pathname);
       const json = (status, body) => {
         res.writeHead(status, { 'content-type': 'application/json' });
         res.end(JSON.stringify(body));
@@ -71,31 +79,51 @@ function startMockGithub(o = {}) {
           body,
         });
       }
+      const prBody = (rep, num) => ({
+        number: num,
+        title: `Mock PR ${num}`,
+        body: '',
+        state: 'open',
+        draft: false,
+        user: { login: 'tester', type: 'User' },
+        created_at: '2026-10-01T00:00:00Z',
+        updated_at: '2026-10-01T00:00:00Z',
+        html_url: `https://github.com/mock/mock/pull/${num}`,
+        head: { sha: `sha${num}` },
+        labels: [],
+        changed_files:
+          pick(o.changedFiles, rep, num) ??
+          (pick(o.files, rep, num) || DEFAULT_FILES).length,
+        ...o.prStates?.[`${rep}#${num}`],
+      });
+
+      if (req.method === 'GET' && listing) {
+        const numbers = o.open?.[listing[2]] || [];
+        // Newest first, all inside any age window.
+        return json(
+          200,
+          numbers.map((num, i) => ({
+            ...prBody(listing[2], num),
+            created_at: new Date(Date.now() - (i + 1) * 3600e3).toISOString(),
+          }))
+        );
+      }
       if (!m) return json(404, { message: 'Not Found' });
-      const [, area, id, sub] = m;
+      const [, , repo, area, id, sub] = m;
       const n = Number(id);
 
       if (req.method === 'GET' && area === 'pulls' && !sub) {
-        return json(200, {
-          number: n,
-          title: `Mock PR ${n}`,
-          body: '',
-          state: 'open',
-          draft: false,
-          user: { login: 'tester' },
-          created_at: '2026-10-01T00:00:00Z',
-          updated_at: '2026-10-01T00:00:00Z',
-          html_url: `https://github.com/mock/mock/pull/${n}`,
-          head: { sha: `sha${n}` },
-          labels: [],
-          changed_files:
-            o.changedFiles?.[n] ?? (o.files?.[n] || DEFAULT_FILES).length,
-        });
+        const repoOf = typeof o.repoOf === 'function' ? o.repoOf() : o.repoOf;
+        const only = repoOf?.[n];
+        if (only !== undefined && ![].concat(only).includes(repo)) {
+          return json(404, { message: 'Not Found' });
+        }
+        return json(200, prBody(repo, n));
       }
       if (req.method === 'GET' && area === 'pulls' && sub === 'files') {
         const perPage = Number(url.searchParams.get('per_page')) || 30;
         const page = Number(url.searchParams.get('page')) || 1;
-        const all = o.files?.[n] || DEFAULT_FILES;
+        const all = pick(o.files, repo, n) || DEFAULT_FILES;
         return json(200, all.slice((page - 1) * perPage, page * perPage));
       }
       if (req.method === 'POST' && area === 'issues' && sub === 'comments') {
@@ -181,7 +209,7 @@ function writeFixtures(dir, spec, agent = 'bob') {
   }
 }
 
-const state = { digest: null, timeoutMs: 0, balance: null };
+const state = { digest: null, timeoutMs: 0, balance: null, events: [] };
 let reviewPRs = null;
 let reviewLog = null;
 
@@ -206,6 +234,15 @@ function install() {
     state.digest = digest;
   };
 
+  const eventService = require(
+    path.join(root, 'src', 'observability', 'eventService')
+  );
+  const emitEvent = eventService.emitEvent;
+  eventService.emitEvent = (event) => {
+    state.events.push(event);
+    return emitEvent(event);
+  };
+
   const credits = require(path.join(root, 'src', 'api', 'bobCredits'));
   const getBalance = credits.getBalance;
   credits.getBalance = async (o) =>
@@ -227,8 +264,13 @@ function install() {
  * @param {Object|Function} [o.balance] - fake getBalance() result, or a function of its options
  * @param {Object[]} [o.ledgerSeed] - ledger entries present before the run
  * @param {boolean} [o.rejectReviews] - the mock answers 422 to grouped reviews
- * @param {Object} [o.files] - { [pr]: file[] } a PR's changed files, served paged; see DEFAULT_FILES
- * @param {Object} [o.changedFiles] - { [pr]: n } the changed_files the mock reports for a PR
+ * @param {Object} [o.files] - { [key]: file[] } a PR's changed files, served paged; see DEFAULT_FILES
+ * @param {Object} [o.changedFiles] - { [key]: n } the changed_files the mock reports for a PR
+ * @param {Object|Function} [o.repoOf] - { [number]: repo | repo[] } the repos that have a PR with that number
+ * @param {Object} [o.prStates] - { [key]: fields } what the mock's PR reports, e.g. state and merged_at
+ * @param {Object} [o.open] - { [repo]: number[] } what the open-PR listing returns, newest first
+ *
+ * Fixtures, `key`s and the accessors below take a bare number or `repo#number`.
  * @param {Function} fn - async ({ reviewPRs, reviewLog }) => value
  */
 async function sandbox(o, fn) {
@@ -237,6 +279,9 @@ async function sandbox(o, fn) {
     rejectReviews: o.rejectReviews,
     files: o.files,
     changedFiles: o.changedFiles,
+    repoOf: o.repoOf,
+    prStates: o.prStates,
+    open: o.open,
   });
   const fixtureDir = path.join(tmp, 'fixtures');
   fs.mkdirSync(fixtureDir);
@@ -318,6 +363,7 @@ async function sandbox(o, fn) {
   }
 
   state.digest = null;
+  state.events = [];
   state.timeoutMs = o.bobTimeoutMs || 0;
   state.balance = o.balance || null;
   install();
@@ -350,33 +396,32 @@ async function sandbox(o, fn) {
   const bundles = {};
   const ws = env.BOB_WORKSPACE_ROOT;
   for (const name of fs.existsSync(ws) ? fs.readdirSync(ws) : []) {
-    const pr = Number(/pull-(\d+)-/.exec(name)[1]);
+    const [, repoName, number] = /__([^_]+)__pull-(\d+)-/.exec(name);
+    const pr = Number(number);
     const dir = path.join(ws, name);
     const envFile = ['fake-bob-env.json', 'fake-claude-env.json']
       .map((f) => path.join(dir, f))
       .find((f) => fs.existsSync(f));
-    bundles[pr] = {
+    bundles[`${repoName}#${pr}`] = bundles[pr] = {
       dir,
       env: envFile ? JSON.parse(fs.readFileSync(envFile, 'utf8')) : null,
     };
   }
 
-  const comments = (pr) =>
-    mock.writes.filter(
-      (w) => w.path.endsWith(`/issues/${pr}/comments`) && w.method === 'POST'
+  // id: a number, or `repo#number` to tell one repo's PR from another's.
+  const posts = (id, area, sub) => {
+    const [, repoName, number] = /^(?:(.+)#)?(\d+)$/.exec(String(id));
+    const tail = `/${area}/${number}/${sub}`;
+    return mock.writes.filter(
+      (w) =>
+        w.method === 'POST' &&
+        w.path.endsWith(repoName ? `/${repoName}${tail}` : tail)
     );
-  const reviews = (pr) =>
-    mock.writes.filter(
-      (w) => w.path.endsWith(`/pulls/${pr}/reviews`) && w.method === 'POST'
-    );
-  const inlineComments = (pr) =>
-    mock.writes.filter(
-      (w) => w.path.endsWith(`/pulls/${pr}/comments`) && w.method === 'POST'
-    );
-  const labels = (pr) =>
-    mock.writes.filter(
-      (w) => w.path.endsWith(`/issues/${pr}/labels`) && w.method === 'POST'
-    );
+  };
+  const comments = (pr) => posts(pr, 'issues', 'comments');
+  const reviews = (pr) => posts(pr, 'pulls', 'reviews');
+  const inlineComments = (pr) => posts(pr, 'pulls', 'comments');
+  const labels = (pr) => posts(pr, 'issues', 'labels');
 
   return {
     value,
@@ -386,6 +431,7 @@ async function sandbox(o, fn) {
     reviews,
     inlineComments,
     labels,
+    events: state.events.slice(),
     ledger: readJsonl(env.CREDIT_LEDGER_PATH),
     bobRuns: readJsonl(env.BOB_FAKE_LOG),
     claudeRuns: readJsonl(env.CLAUDE_FAKE_LOG),
@@ -400,25 +446,44 @@ async function sandbox(o, fn) {
 /**
  * Run one batch against the mock and fake Bob.
  * @param {Object} o - sandbox options plus:
- * @param {number[]} o.prNumbers
+ * @param {number[]} [o.prNumbers] - bare numbers; unless o.repoOf says otherwise they exist only in the first configured repo
+ * @param {Object[]} [o.prs] - { repo, number } refs, in place of prNumbers
+ * @param {Object[]} [o.resolutionNotes] - passed through with prs
+ * @param {string} [o.triggeredBy='schedule']
  * @param {boolean} [o.envOnly] - rely on the REVIEW_CONCURRENCY environment variable alone
  */
 async function runBatch(o) {
   const snapshots = [];
-  const run = await sandbox(o, async ({ reviewPRs, reviewLog }) => {
-    reviewLog.start('test');
-    try {
-      await reviewPRs({
-        prNumbers: o.prNumbers,
-        triggeredBy: 'schedule',
-        ...(o.envOnly ? {} : { concurrency: o.concurrency }),
-        onProgress: (s) => snapshots.push({ at: Date.now(), ...s }),
-      });
-    } finally {
-      reviewLog.stop();
+  // Read per request: constants.js loads only once the sandbox env is set.
+  const repoOf =
+    o.repoOf ||
+    (o.prNumbers &&
+      (() =>
+        Object.fromEntries(
+          o.prNumbers.map((n) => [
+            n,
+            require(path.join(root, 'src', 'constants')).GITHUB_REPOS[0],
+          ])
+        )));
+  const run = await sandbox(
+    { ...o, repoOf },
+    async ({ reviewPRs, reviewLog }) => {
+      reviewLog.start('test');
+      try {
+        await reviewPRs({
+          prNumbers: o.prNumbers,
+          prs: o.prs,
+          resolutionNotes: o.resolutionNotes,
+          triggeredBy: o.triggeredBy || 'schedule',
+          ...(o.envOnly ? {} : { concurrency: o.concurrency }),
+          onProgress: (s) => snapshots.push({ at: Date.now(), ...s }),
+        });
+      } finally {
+        reviewLog.stop();
+      }
+      return reviewLog.read(0, 100000).lines;
     }
-    return reviewLog.read(0, 100000).lines;
-  });
+  );
   return {
     ...run,
     snapshots,
@@ -431,6 +496,7 @@ async function runBatch(o) {
 module.exports = {
   runBatch,
   sandbox,
+  install,
   startMockGithub,
   DEFAULT_FILES,
   fileOfSize,

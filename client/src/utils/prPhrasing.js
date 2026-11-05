@@ -19,7 +19,7 @@ export function pluralPRs(count) {
 }
 
 /**
- * "Up to 10 pull requests opened in the last 21 days".
+ * "Up to 10 pull requests per repository, opened in the last 21 days".
  *
  * Returns null when either limit has not loaded yet (both are null before
  * GET /api/config answers), so a caller can fall back to a loading state
@@ -31,7 +31,7 @@ export function pluralPRs(count) {
  */
 export function targetWindowText(maxPRs, daysBack) {
   if (maxPRs == null || daysBack == null) return null;
-  return `Up to ${pluralPRs(maxPRs)} opened in the last ${daysBack} days`;
+  return `Up to ${pluralPRs(maxPRs)} per repository, opened in the last ${daysBack} days`;
 }
 
 /**
@@ -39,11 +39,15 @@ export function targetWindowText(maxPRs, daysBack) {
  * longer selection to a count so the button stays a fixed size instead of
  * growing with the numbers entered.
  *
- * @param {number[]} prNumbers
+ * @param {Array<{repo: string|null, number: number}>} entries - typed entries;
+ *   a null repo means a bare number
  * @returns {string}
  */
-export function reviewButtonLabel(prNumbers) {
-  if (!prNumbers || prNumbers.length === 0) return 'Review listed PRs';
-  if (prNumbers.length === 1) return `Review #${prNumbers[0]}`;
-  return `Review ${prNumbers.length} listed PRs`;
+export function reviewButtonLabel(entries) {
+  if (!entries || entries.length === 0) return 'Review listed PRs';
+  if (entries.length === 1) {
+    const [{ repo, number }] = entries;
+    return `Review ${repo ? `${repo}#${number}` : `#${number}`}`;
+  }
+  return `Review ${entries.length} listed PRs`;
 }

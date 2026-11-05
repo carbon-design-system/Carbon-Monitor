@@ -76,6 +76,7 @@ function scrubPayload(payload) {
  * @param {string}  [opts.repo]          — "owner/repo"
  * @param {number}  [opts.pr_number]
  * @param {string}  [opts.agent]         — an id from src/agents
+ * @param {string}  [opts.profile]       — review profile id; stored only when given
  * @param {string}  [opts.commit_sha]
  * @param {Object}  [opts.payload]       — event-specific fields
  */
@@ -85,6 +86,7 @@ async function emitEvent({
   repo = '',
   pr_number = null,
   agent = '',
+  profile,
   commit_sha = '',
   payload = {},
 }) {
@@ -105,6 +107,8 @@ async function emitEvent({
     commit_sha,
     payload, // full payload goes to console
   };
+  // Omitted by callers without a profile so their documents stay as they were
+  if (profile) doc.profile = profile;
 
   // Console: one compact line per event. The full document (including raw
   // error text) goes to Elasticsearch; the terminal line is for operators

@@ -12,6 +12,8 @@
  *  4. Failed PRs appear as ⚠️ entries in the payload
  *  5. Markdown is stripped and summary is truncated at a word boundary
  *  6. Empty results produce a "no eligible PRs" message (no-PR-found path)
+ *  7. The run-failure payload names the repos and the error, not a low balance
+ *  8. postRunFailure does nothing without a webhook
  */
 
 'use strict';
@@ -42,6 +44,7 @@ delete process.env.SLACK_WEBHOOK_URL;
 const notifier = require('../src/slackNotifier');
 const {
   _buildPayload,
+  _buildPayloads,
   _buildLowTokenPayload,
   _stripMarkdown,
   _truncateAtWord,
@@ -97,7 +100,7 @@ async function main() {
     try {
       await notifier.postRunDigest({
         startedAt: Date.now(),
-        repo: 'carbon-design-system/carbon',
+        repos: ['carbon-design-system/carbon'],
         results: [SAMPLE_SUCCESS],
       });
     } finally {
@@ -149,7 +152,7 @@ async function main() {
     process.env.BASE_URL = 'https://monitor.example.com';
     const payload = _buildPayload({
       startedAt: new Date('2025-07-28T18:05:00Z').getTime(),
-      repo: 'carbon-design-system/carbon',
+      repos: ['carbon-design-system/carbon'],
       results: [SAMPLE_SUCCESS, SAMPLE_FAILURE, SAMPLE_GOOD],
     });
     delete process.env.BASE_URL;
@@ -164,14 +167,15 @@ async function main() {
       'Header must mention Carbon Monitor'
     );
 
-    // Repo and time in an intro section
+    // Repos and time in an intro section
     const intro = payload.blocks.find(
       (b) =>
         b.type === 'section' &&
         b.text &&
-        b.text.text.includes('carbon-design-system/carbon')
+        b.text.text.includes('*Repos:* carbon')
     );
-    assert.ok(intro, 'Must contain a section with the repo name');
+    assert.ok(intro, 'Must contain a section with the repo names');
+    assert.ok(!JSON.stringify(payload).includes('*Repo:*'), 'no old Repo line');
 
     // Context footer
     const context = payload.blocks.find((b) => b.type === 'context');
@@ -187,7 +191,7 @@ async function main() {
 
     const noBase = _buildPayload({
       startedAt: Date.now(),
-      repo: 'carbon-design-system/carbon',
+      repos: ['carbon-design-system/carbon'],
       results: [SAMPLE_SUCCESS],
     });
     const noBaseContext = noBase.blocks.find((b) => b.type === 'context');
@@ -213,7 +217,7 @@ async function main() {
   await test('failed PRs appear as ⚠️ entries in the payload', () => {
     const payload = _buildPayload({
       startedAt: Date.now(),
-      repo: 'carbon-design-system/carbon',
+      repos: ['carbon-design-system/carbon'],
       results: [SAMPLE_FAILURE],
     });
 
@@ -283,7 +287,7 @@ async function main() {
   await test('empty results produce a "No eligible PRs" message block', () => {
     const payload = _buildPayload({
       startedAt: Date.now(),
-      repo: 'carbon-design-system/carbon',
+      repos: ['carbon-design-system/carbon'],
       results: [],
     });
 
@@ -293,8 +297,8 @@ async function main() {
       .join('\n');
 
     assert.ok(
-      allText.includes('No eligible PRs'),
-      'Empty results must produce a "No eligible PRs" message'
+      allText.includes('*carbon-design-system/carbon*\n_No eligible PRs._'),
+      'Empty results must produce a heading and a "No eligible PRs" message'
     );
   });
 
@@ -303,7 +307,7 @@ async function main() {
     const ZWS = '\u200B';
     const payload = _buildPayload({
       startedAt: Date.now(),
-      repo: 'carbon-design-system/carbon',
+      repos: ['carbon-design-system/carbon'],
       results: [
         {
           prNumber: 1,
@@ -335,7 +339,7 @@ async function main() {
     const ZWS = '\u200B';
     const payload = _buildPayload({
       startedAt: Date.now(),
-      repo: 'carbon-design-system/carbon',
+      repos: ['carbon-design-system/carbon'],
       results: [
         {
           prNumber: 2,
@@ -358,6 +362,249 @@ async function main() {
       'After backtick stripping, @media must be escaped with zero-width space'
     );
     assert.ok(!allText.includes('`@media`'), 'Backtick span must be stripped');
+  });
+
+  // ── Digest grouped by repository ────────────────────────────────────────────
+  const CARBON = 'carbon-design-system/carbon';
+  const CAIC = 'carbon-design-system/carbon-ai-chat';
+  const make = (repo, n, start = 1) =>
+    Array.from({ length: n }, (_, i) => ({
+      prNumber: start + i,
+      repo,
+      prUrl: `https://github.com/carbon-design-system/${repo}/pull/${start + i}`,
+      findingsCount: 1,
+      summary: 'Fine.',
+      recommendation: 'looks-good',
+    }));
+  const base = {
+    startedAt: Date.UTC(2026, 10, 4, 15, 0),
+    maxPRs: 20,
+    daysBack: 30,
+  };
+  const textOf = (blocks) =>
+    blocks
+      .map((b) => b.text?.text || b.elements?.map((e) => e.text).join('') || '')
+      .join('\n');
+  // "PR #n" lines in a message, with the repo heading each sits under.
+  const placed = (payloads) => {
+    const seen = [];
+    for (const { blocks } of payloads) {
+      let heading = null;
+      for (const b of blocks) {
+        const t = b.text?.text || '';
+        const h = t.match(/^\*([^*]+)\*( · .*)?(\n|$)/);
+        if (b.type === 'section' && h) heading = h[1];
+        const m = t.match(/PR #(\d+)/);
+        if (b.type === 'section' && m && heading) {
+          seen.push(`${heading.split('/').pop()}#${m[1]}`);
+        }
+      }
+    }
+    return seen;
+  };
+  const expectedKeys = (repo, n, start = 1) =>
+    Array.from({ length: n }, (_, i) => `${repo}#${start + i}`);
+  const footerOf = (p) => p.blocks[p.blocks.length - 1].elements[0].text;
+  const assertWhole = (payloads, expected, label) => {
+    for (const [i, p] of payloads.entries()) {
+      assert.ok(
+        p.blocks.length <= 50,
+        `${label}: message ${i + 1} has ${p.blocks.length} blocks`
+      );
+      assert.strictEqual(p.blocks[0].type, 'header', `${label}: header`);
+      assert.strictEqual(
+        p.blocks[p.blocks.length - 1].type,
+        'context',
+        `${label}: footer`
+      );
+    }
+    assert.deepStrictEqual(placed(payloads), expected, `${label}: results`);
+  };
+
+  await test('the digest groups by repository in repos order, not result order', () => {
+    const payload = _buildPayload({
+      ...base,
+      repos: [CARBON, CAIC],
+      results: [...make('carbon-ai-chat', 2, 21), ...make('carbon', 2, 11)],
+    });
+    const text = textOf(payload.blocks);
+    assert.ok(text.indexOf(`*${CARBON}*`) < text.indexOf(`*${CAIC}*`));
+    assert.ok(text.includes('*Repos:* carbon, carbon-ai-chat'), text);
+    assert.ok(
+      text.includes(
+        '*Criteria:* up to 20 most recent PRs per repository, opened within the last 30 days'
+      ),
+      text
+    );
+    assert.deepStrictEqual(placed([payload]), [
+      'carbon#11',
+      'carbon#12',
+      'carbon-ai-chat#21',
+      'carbon-ai-chat#22',
+    ]);
+    assert.ok(text.includes(`*${CARBON}* · 2 reviewed`), text);
+  });
+
+  await test('a repo with no results keeps its heading and says so', () => {
+    const payload = _buildPayload({
+      ...base,
+      repos: [CARBON, CAIC],
+      results: make('carbon', 1),
+    });
+    const text = textOf(payload.blocks);
+    assert.ok(text.includes(`*${CAIC}*\n_No eligible PRs._`), text);
+  });
+
+  await test('the heading counts reviewed, failed and skipped results', () => {
+    const results = [
+      ...make('carbon', 1),
+      { prNumber: 2, repo: 'carbon', failed: true, error: 'boom' },
+      { prNumber: 3, repo: 'carbon', prUrl: 'u', skipped: true, reason: 'low' },
+    ];
+    const text = textOf(
+      _buildPayload({ ...base, repos: [CARBON], results }).blocks
+    );
+    assert.ok(text.includes(`*${CARBON}* · 1 reviewed · 1 failed · 1 skipped`));
+  });
+
+  await test('20 + 20 results fit one message of at most 50 blocks', () => {
+    const results = [...make('carbon', 20), ...make('carbon-ai-chat', 20, 101)];
+    const payloads = _buildPayloads({
+      ...base,
+      repos: [CARBON, CAIC],
+      results,
+    });
+    assert.strictEqual(payloads.length, 1);
+    assertWhole(
+      payloads,
+      [
+        ...expectedKeys('carbon', 20),
+        ...expectedKeys('carbon-ai-chat', 20, 101),
+      ],
+      '20+20'
+    );
+  });
+
+  await test('30 + 30 results split into one message per repository', () => {
+    const results = [...make('carbon', 30), ...make('carbon-ai-chat', 30, 101)];
+    const payloads = _buildPayloads({
+      ...base,
+      repos: [CARBON, CAIC],
+      results,
+    });
+    assert.strictEqual(payloads.length, 2);
+    assertWhole(
+      payloads,
+      [
+        ...expectedKeys('carbon', 30),
+        ...expectedKeys('carbon-ai-chat', 30, 101),
+      ],
+      '30+30'
+    );
+    assert.ok(textOf(payloads[0].blocks).includes(`*${CARBON}*`));
+    assert.ok(!textOf(payloads[0].blocks).includes(`*${CAIC}*`));
+    assert.ok(payloads[0].blocks[0].text.text.endsWith('(part 1 of 2)'));
+    assert.ok(payloads[1].blocks[0].text.text.endsWith('(part 2 of 2)'));
+    for (const p of payloads) {
+      assert.ok(textOf(p.blocks).includes('*Repos:* carbon, carbon-ai-chat'));
+    }
+  });
+
+  for (const n of [50, 100]) {
+    await test(`${n} results in one repository split into chunks under 50 blocks`, () => {
+      const payloads = _buildPayloads({
+        ...base,
+        repos: [CARBON, CAIC],
+        results: make('carbon', n),
+      });
+      assert.ok(payloads.length > 1, `${n} results need several messages`);
+      assertWhole(payloads, expectedKeys('carbon', n), `${n} in one repo`);
+      payloads.forEach((p, i) => {
+        const t = textOf(p.blocks);
+        if (i === payloads.length - 1) {
+          assert.ok(t.includes(`*${CAIC}*\n_No eligible PRs._`), 'empty repo');
+          return;
+        }
+        assert.ok(
+          p.blocks[0].text.text.endsWith(
+            `(part ${i + 1} of ${payloads.length})`
+          )
+        );
+        assert.ok(t.includes(`*${CARBON}* · ${n} reviewed`), 'heading repeats');
+        assert.ok(
+          t.includes('*Repos:* carbon, carbon-ai-chat'),
+          'intro repeats'
+        );
+        assert.ok(
+          footerOf(p).includes(`Whole run: ${n} PRs reviewed`),
+          'footer repeats the run totals'
+        );
+      });
+      // Each part's footer counts only what that message shows.
+      const partCounts = payloads.map((p) => {
+        const m = /^This part: (?:(\d+) reviewed|no PRs)/.exec(footerOf(p));
+        assert.ok(m, `part footer: ${footerOf(p)}`);
+        return Number(m[1] || 0);
+      });
+      payloads.forEach((p, i) =>
+        assert.strictEqual(
+          partCounts[i],
+          placed([p]).length,
+          `part ${i + 1} counts its own results`
+        )
+      );
+      assert.strictEqual(
+        partCounts.reduce((a, b) => a + b, 0),
+        n,
+        'the parts add up to the run'
+      );
+    });
+  }
+
+  await test('an unsplit digest footer gives the run totals alone', () => {
+    const payloads = _buildPayloads({
+      ...base,
+      repos: [CARBON, CAIC],
+      results: [...make('carbon', 2), ...make('carbon-ai-chat', 1, 101)],
+    });
+    assert.strictEqual(payloads.length, 1);
+    assert.strictEqual(footerOf(payloads[0]), '3 PRs reviewed');
+  });
+
+  await test('uneven repos needing several chunks keep repo order and every result once', () => {
+    const results = [
+      ...make('carbon-ai-chat', 7, 5001),
+      ...make('carbon', 95, 1),
+    ];
+    const payloads = _buildPayloads({
+      ...base,
+      repos: [CARBON, CAIC],
+      results,
+    });
+    assert.strictEqual(payloads.length, 4);
+    assertWhole(
+      payloads,
+      [
+        ...expectedKeys('carbon', 95),
+        ...expectedKeys('carbon-ai-chat', 7, 5001),
+      ],
+      'uneven'
+    );
+    const keys = placed(payloads);
+    assert.strictEqual(new Set(keys).size, keys.length, 'no duplicates');
+    assert.ok(
+      textOf(payloads[3].blocks).includes(`*${CAIC}* · 7 reviewed`),
+      'last message is the second repository'
+    );
+  });
+
+  await test('a result from a repo outside repos is still reported', () => {
+    const payloads = _buildPayloads({
+      ...base,
+      repos: [CARBON],
+      results: [...make('carbon', 1), ...make('elsewhere', 1, 9)],
+    });
+    assert.deepStrictEqual(placed(payloads), ['carbon#1', 'elsewhere#9']);
   });
 
   // ── Low-balance alert names the agent's unit ─────────────────────────────────
@@ -448,6 +695,56 @@ async function main() {
       `*Repo:* ${REPO}\n*Claude budget remaining:* below threshold\n` +
         '_This is a daily reminder — the schedule remains paused._'
     );
+  });
+
+  // ── Run-failure alert ───────────────────────────────────────────────────────
+  await test('the run-failure payload names the repos and the error, and says nothing of balance or schedule', () => {
+    const repos = [
+      'carbon-design-system/carbon',
+      'carbon-design-system/carbon-ai-chat',
+    ];
+    const { blocks } = notifier._buildRunFailurePayload({
+      startedAt: Date.UTC(2026, 10, 4, 15, 0),
+      repos,
+      error: 'carbon-ai-chat uses the caic profile. @channel',
+    });
+    assert.strictEqual(
+      blocks[0].text.text,
+      '⚠️  Carbon Monitor — Review Run Could Not Start'
+    );
+    const text = JSON.stringify(blocks);
+    assert.ok(text.includes(repos.join(', ')), 'repos');
+    assert.ok(text.includes('carbon-ai-chat uses the caic profile.'), 'error');
+    assert.ok(!text.includes('@channel'), 'mentions are neutralised');
+    assert.ok(
+      text.includes('No pull requests were reviewed'),
+      'run did not start'
+    );
+    assert.ok(
+      !/paused|balance|remaining|threshold|Bobcoins/i.test(text),
+      'not a low-balance alert'
+    );
+    assert.ok(blocks.length <= 50);
+  });
+
+  await test('postRunFailure is a silent no-op without a webhook', async () => {
+    assert.strictEqual(_isEnabled(), false);
+    let networkCallMade = false;
+    const origRequest = https.request;
+    https.request = () => {
+      networkCallMade = true;
+      throw new Error('no request expected');
+    };
+    try {
+      await notifier.postRunFailure({
+        startedAt: Date.now(),
+        repos: ['carbon-design-system/carbon'],
+        error: 'bad configuration',
+      });
+    } finally {
+      https.request = origRequest;
+    }
+    assert.strictEqual(networkCallMade, false);
   });
 
   // ── Summary ──────────────────────────────────────────────────────────────────

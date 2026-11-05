@@ -32,7 +32,7 @@ const { runBatch } = require('../../tests/fixtures/concurrencyHarness');
     [1]
   );
   const started = r.lines
-    .filter((l) => /Reviewing PR #/.test(l.text))
+    .filter((l) => /Reviewing \S+#\d+:/.test(l.text))
     .map((l) => [l.worker, l.pr]);
   assert.deepStrictEqual(
     started,
