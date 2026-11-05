@@ -103,6 +103,13 @@ function HelpGuide() {
                   per repository, opened within the configured number of days.
                 </li>
                 <li>
+                  <strong>Repos</strong> — the repositories this app reviews,
+                  shown as tags. A batch works through them in that order, so
+                  when the balance runs low the last repository is the one
+                  skipped. The same tag marks each pull request in the Reviewing
+                  and Last run rows.
+                </li>
+                <li>
                   <strong>Pull request numbers</strong> — type specific PR
                   numbers, comma-separated, to review only those.
                 </li>
@@ -144,7 +151,11 @@ function HelpGuide() {
             </AccordionItem>
 
             <AccordionItem title="E — Spend &amp; recent reviews">
-              <p>What past reviews cost, plus a per-pull-request history.</p>
+              <p>
+                What past reviews cost, plus a per-pull-request history. The
+                Repository column shows which repository each review belonged
+                to.
+              </p>
             </AccordionItem>
 
             <AccordionItem title="F — Settings">

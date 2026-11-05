@@ -626,20 +626,14 @@ function Console({ authRequired = false, onSignOut }) {
                   </>
                 )}
 
-                {/* Batch order matters when the budget runs low: the repos
-                    listed last are the ones skipped. */}
+                {/* Tags in batch order; the order itself needs no calling out. */}
                 {repos.length > 1 && (
                   <>
-                    <dt>Order</dt>
+                    <dt>Repos</dt>
                     <dd>
                       <span className="cm-repo-order">
-                        {repos.map((repo, i) => (
-                          <React.Fragment key={repo}>
-                            {i > 0 && <span>then</span>}
-                            <RepoTag repo={repo} repos={repos} />
-                            {i === 0 && <span>first,</span>}
-                            {i > 0 && i < repos.length - 1 && <span>,</span>}
-                          </React.Fragment>
+                        {repos.map((repo) => (
+                          <RepoTag key={repo} repo={repo} repos={repos} />
                         ))}
                       </span>
                     </dd>
