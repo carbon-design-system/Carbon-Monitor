@@ -242,12 +242,13 @@ async function main() {
     assert.deepStrictEqual(budgeted.digest.results, [
       {
         prNumber: 1,
+        repo: 'carbon',
         prUrl: 'https://github.com/mock/mock/pull/1',
         skipped: true,
         reason: 'Claude budget at 5% (below 10% threshold)',
       },
     ]);
-    assert.ok(has(budgeted.lines, /PR #1 skipped — Claude budget at 5%/));
+    assert.ok(has(budgeted.lines, /carbon#1 skipped — Claude budget at 5%/));
   });
   await budgeted.cleanup();
 

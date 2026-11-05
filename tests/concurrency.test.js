@@ -16,6 +16,9 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+// These cases review one repo; the two-repo cases are in reviewTargeting.test.js.
+process.env.GITHUB_AI_AGENT_REPOS = 'carbon';
+
 const { runBatch, sandbox } = require('./fixtures/concurrencyHarness');
 
 let passed = 0;
@@ -89,13 +92,13 @@ async function main() {
     assert.strictEqual(four.maxInFlight, 2);
     const started = four.snapshots.find((s) => s.inFlight.length === 2);
     assert.deepStrictEqual(
-      started.inFlight.map((f) => [f.worker, f.pr]),
+      started.inFlight.map((f) => [f.worker, f.repo, f.pr]),
       [
-        [1, 1],
-        [2, 2],
+        [1, 'carbon', 1],
+        [2, 'carbon', 2],
       ]
     );
-    assert.deepStrictEqual(started.queued, [3, 4]);
+    assert.deepStrictEqual(started.queued, ['carbon#3', 'carbon#4']);
     assert.strictEqual(started.concurrency, 2);
     const queueLengths = four.snapshots.map((s) => s.queued.length);
     for (const n of [2, 1, 0]) assert(queueLengths.includes(n), `queue ${n}`);
@@ -127,9 +130,15 @@ async function main() {
       const own = four.lines.filter((l) => l.pr === pr);
       assert.strictEqual(new Set(own.map((l) => l.worker)).size, 1);
       const at = (needle) => own.findIndex((l) => l.text.includes(needle));
-      assert(at('Reviewing PR') >= 0, `start line for #${pr}`);
-      assert(at('Reviewing PR') < at('Bobcoins spent'), 'start before cost');
-      assert(at('Bobcoins spent') < at('review complete'), 'cost before end');
+      assert(at(`Reviewing carbon#${pr}:`) >= 0, `start line for #${pr}`);
+      assert(
+        at(`Reviewing carbon#${pr}:`) < at('Bobcoins spent'),
+        'start before cost'
+      );
+      assert(
+        at('Bobcoins spent') < at(`carbon#${pr} review complete`),
+        'cost before end'
+      );
       // The child's progress lines inherit the review context.
       assert(
         own.some((l) => l.text.includes('use_skill')),
@@ -173,6 +182,22 @@ async function main() {
       four.digest.results.map((r) => r.prNumber),
       [1, 2, 3, 4]
     );
+    for (const r of four.digest.results) assert.strictEqual(r.repo, 'carbon');
+  });
+
+  await test('ledger rows and per-PR events carry the PR own repository', () => {
+    for (const row of four.ledger) {
+      assert.strictEqual(row.repo, 'carbon-design-system/carbon');
+    }
+    const perPr = four.events.filter((e) => e.pr_number);
+    assert(perPr.length >= 8, 'started and completed events');
+    for (const e of perPr) {
+      assert.strictEqual(e.repo, 'carbon-design-system/carbon');
+      assert.strictEqual(e.profile, 'core');
+    }
+    const run = four.events.find((e) => e.event_type === 'run_completed');
+    assert.strictEqual(run.repo, 'carbon-design-system/carbon');
+    assert.deepStrictEqual(run.payload.repos, ['carbon-design-system/carbon']);
   });
   await four.cleanup();
 

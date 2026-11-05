@@ -1,11 +1,11 @@
 /******************************************************************************
  * Carbon PR Review Agent
  *
- * Simplified PR review agent for carbon-design-system/carbon repository
+ * Simplified PR review agent for the repositories in GITHUB_AI_AGENT_REPOS
  * Uses modular architecture with CLI agents (see src/agents)
  *
  * Based on the original agent_prs.js but streamlined for Carbon's needs:
- * - Single repository only (no multi-repo loop)
+ * - Repositories reviewed in list order, each with its own profile
  * - Minimal metadata (only AIReviewed label)
  * - CLI agents instead of WatsonX
  * - Spec-compliant comments with Carbon verification
@@ -18,13 +18,18 @@
 // process.env itself, which loadEnv's override:true would otherwise clobber.
 if (require.main === module) require('./loadEnv');
 
+// Needed before the other requires: --pr is checked against the repo list.
+const { GITHUB_REPOS } = require('./constants');
+
 // Resolve target PR: CLI flag --pr takes precedence over env var
 const _cliPrIdx = process.argv.indexOf('--pr');
 const _cliPrFlagPresent = _cliPrIdx !== -1;
 
 if (_cliPrFlagPresent && process.argv[_cliPrIdx + 1] === undefined) {
   console.error('❌ --pr flag requires a PR number.');
-  console.error('   Example: node src/index.js --pr 12345');
+  console.error(
+    '   Example: node src/index.js --pr 12345  or  --pr carbon-ai-chat#12345'
+  );
   process.exit(1);
 }
 
@@ -32,17 +37,29 @@ const _rawTargetPR = _cliPrFlagPresent
   ? process.argv[_cliPrIdx + 1]
   : process.env.GITHUB_AI_AGENT_PR_NUMBER || null;
 
+// { repo: string|null, number }; a null repo is looked up in reviewPRs.
 let TARGET_PR = null;
 if (_rawTargetPR != null) {
-  const _parsed = Number(_rawTargetPR);
-  if (!Number.isInteger(_parsed) || _parsed <= 0) {
+  const _match = /^(?:([A-Za-z0-9._-]+)#)?(\d+)$/.exec(
+    String(_rawTargetPR).trim()
+  );
+  const _number = _match ? Number(_match[2]) : NaN;
+  if (!Number.isSafeInteger(_number) || _number <= 0) {
     console.error(
-      `❌ Invalid PR number: "${_rawTargetPR}". Must be a positive integer.`
+      `❌ Invalid PR number: "${_rawTargetPR}". Must be a positive integer, or repo#number.`
     );
-    console.error('   Example: node src/index.js --pr 12345');
+    console.error(
+      '   Example: node src/index.js --pr 12345  or  --pr carbon-ai-chat#12345'
+    );
     process.exit(1);
   }
-  TARGET_PR = _parsed;
+  if (_match[1] && !GITHUB_REPOS.includes(_match[1])) {
+    console.error(
+      `❌ Unknown repository "${_match[1]}" in "${_rawTargetPR}". Configured repositories: ${GITHUB_REPOS.join(', ')}.`
+    );
+    process.exit(1);
+  }
+  TARGET_PR = { repo: _match[1] || null, number: _number };
 }
 
 const { randomUUID } = require('crypto');
@@ -68,22 +85,21 @@ const {
   estimateTokenUsage,
 } = require('./reviewPrompt');
 const { splitFindings } = require('./diffMapper');
+const profiles = require('./profiles');
+const { resolveNumbers } = require('./prResolver');
 const { emitEvent } = require('./observability/eventService');
 const bobCredits = require('./api/bobCredits');
 const creditLedger = require('./api/creditLedger');
 const reviewLog = require('./api/reviewLog');
-const { postRunDigest } = require('./slackNotifier');
+const { postRunDigest, postRunFailure } = require('./slackNotifier');
 const {
   GITHUB_OWNER,
-  GITHUB_REPOS,
   REVIEW_LABEL,
   REVIEW_AGENT,
   N_DAYS_SINCE_PR_CREATED,
   MAX_PRS_PER_REPO,
   REVIEW_CONCURRENCY,
 } = require('./constants');
-
-const GITHUB_REPO = GITHUB_REPOS[0]; // Phase 4 replaces this with per-item repos
 
 // Load GitHub token from environment
 const GITHUB_TOKEN = process.env.GITHUB_AI_AGENT_TOKEN;
@@ -247,6 +263,7 @@ function sumCalls(calls) {
  *
  * @param {Object} opts
  * @param {string} opts.correlationId
+ * @param {string} opts.repo - "owner/repo" the PR belongs to
  * @param {Object} opts.pr
  * @param {Object|null} opts.after  - Balance snapshot taken after the run
  * @param {number|null} opts.coinsSpent
@@ -258,6 +275,7 @@ function sumCalls(calls) {
  */
 async function recordReviewCost({
   correlationId,
+  repo,
   pr,
   after,
   coinsSpent,
@@ -273,7 +291,7 @@ async function recordReviewCost({
     await creditLedger.record({
       at: new Date().toISOString(),
       prNumber: pr.number,
-      repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+      repo,
       correlationId,
       coinsSpent,
       remainingAfter: balance ? balance.remaining : null,
@@ -444,13 +462,84 @@ function parsePrNumbers(
   return { ok: true, prNumbers };
 }
 
+const refKey = (ref) => `${ref.repo}#${ref.number}`;
+
+/** Deduplicates by key, order preserved: two summary comments on one PR is a bug. */
+function dedupeRefs(refs) {
+  const seen = new Set();
+  return refs.filter((ref) => !seen.has(refKey(ref)) && seen.add(refKey(ref)));
+}
+
+/** An error string when any repository has more than `maxPerRepo` refs, else null. */
+function overRepoCap(refs, maxPerRepo = MAX_PRS_PER_REPO) {
+  for (const repo of GITHUB_REPOS) {
+    const n = refs.filter((ref) => ref.repo === repo).length;
+    if (n > maxPerRepo) {
+      return (
+        `Too many PRs for ${repo}: ${n} requested, but at most ${maxPerRepo} may be ` +
+        'reviewed per repository (GITHUB_AI_AGENT_MAX_PRS).'
+      );
+    }
+  }
+  return null;
+}
+
+/**
+ * Parse and validate an operator-supplied list of PR refs ({ repo, number }).
+ *
+ * Total, like parsePrNumbers: every rejection is a returned string. An absent or
+ * empty list means "not given". The cap is per repository and counted after
+ * deduplication.
+ *
+ * @param {Array|null|undefined} input
+ * @param {number} [maxPerRepo]
+ * @returns {{ok: boolean, refs: Array<{repo: string, number: number}>|null, error?: string}}
+ */
+function parsePrRefs(input, maxPerRepo = MAX_PRS_PER_REPO) {
+  if (input === undefined || input === null) return { ok: true, refs: null };
+  const fail = (error) => ({ ok: false, refs: null, error });
+  if (!Array.isArray(input)) {
+    return fail(
+      'prs must be an array of { repo, number } objects, ' +
+        `but received ${typeof input}: ${describeValue(input)}`
+    );
+  }
+  if (input.length === 0) return { ok: true, refs: null };
+
+  const refs = [];
+  for (const entry of input) {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      return fail(
+        `Invalid PR ref ${describeValue(entry)} — every entry must be { repo, number }.`
+      );
+    }
+    if (typeof entry.repo !== 'string' || !GITHUB_REPOS.includes(entry.repo)) {
+      return fail(
+        `Unknown repository ${describeValue(entry.repo)} — must be one of: ${GITHUB_REPOS.join(', ')}.`
+      );
+    }
+    if (!Number.isSafeInteger(entry.number) || entry.number <= 0) {
+      return fail(
+        `Invalid PR number ${describeValue(entry.number)} for ${entry.repo} — must be a positive integer.`
+      );
+    }
+    refs.push({ repo: entry.repo, number: entry.number });
+  }
+
+  const unique = dedupeRefs(refs);
+  const capError = overRepoCap(unique, maxPerRepo);
+  return capError ? fail(capError) : { ok: true, refs: unique };
+}
+
 /**
  * Decide which PRs a run will actually review.
  *
  * Precedence, strongest first:
- *   1. an explicit `prNumbers` argument — someone just asked for these
- *   2. TARGET_PR — the --pr flag or GITHUB_AI_AGENT_PR_NUMBER this process started with
- *   3. auto-select the most recent reviewable PRs
+ *   1. an explicit `prs` argument — refs that already name their repository
+ *   2. an explicit `prNumbers` argument — someone just asked for these; reviewPRs
+ *      finds each number's repository
+ *   3. TARGET_PR — the --pr flag or GITHUB_AI_AGENT_PR_NUMBER this process started with
+ *   4. auto-select the most recent reviewable PRs
  *
  * The argument outranks TARGET_PR because containers are routinely deployed with
  * GITHUB_AI_AGENT_PR_NUMBER pinned for debugging. If the environment won, every
@@ -459,28 +548,42 @@ function parsePrNumbers(
  *
  * @param {Object} [options]
  * @param {number[]|string|null} [options.prNumbers] - Re-validated here
- * @param {number|null} [targetPr=TARGET_PR] - This process's --pr/env target, read
- *        at call time. Injectable so precedence can be tested without reloading
- *        the module under a different environment.
- * @returns {{ok: boolean, mode: 'explicit'|'auto', prNumbers: number[]|null, source: string, error?: string}}
+ * @param {Array<{repo: string, number: number}>|null} [options.prs] - Re-validated here
+ * @param {{repo: string|null, number: number}|null} [targetPr=TARGET_PR] - This
+ *        process's --pr/env target, read at call time. Injectable so precedence can
+ *        be tested without reloading the module under a different environment.
+ * @returns {{ok: boolean, mode: 'explicit'|'auto', prNumbers: number[]|null, refs: Array<{repo: string, number: number}>|null, source: string, error?: string}}
+ *          `prNumbers` still need a repository; `refs` already have one.
  */
 function resolveReviewTargets(options = {}, targetPr = TARGET_PR) {
-  const parsed = parsePrNumbers(options.prNumbers);
+  const refsParsed = parsePrRefs(options.prs);
+  const parsed = refsParsed.ok ? parsePrNumbers(options.prNumbers) : refsParsed;
   if (!parsed.ok) {
     return {
       ok: false,
       mode: 'auto',
       prNumbers: null,
+      refs: null,
       source: 'argument',
       error: parsed.error,
     };
   }
 
+  if (refsParsed.refs) {
+    return {
+      ok: true,
+      mode: 'explicit',
+      prNumbers: null,
+      refs: refsParsed.refs,
+      source: 'argument',
+    };
+  }
   if (parsed.prNumbers) {
     return {
       ok: true,
       mode: 'explicit',
       prNumbers: parsed.prNumbers,
+      refs: null,
       source: 'argument',
     };
   }
@@ -488,32 +591,86 @@ function resolveReviewTargets(options = {}, targetPr = TARGET_PR) {
     return {
       ok: true,
       mode: 'explicit',
-      prNumbers: [targetPr],
+      prNumbers: targetPr.repo ? null : [targetPr.number],
+      refs: targetPr.repo
+        ? [{ repo: targetPr.repo, number: targetPr.number }]
+        : null,
       source: 'cli-env',
     };
   }
-  return { ok: true, mode: 'auto', prNumbers: null, source: 'auto' };
+  return {
+    ok: true,
+    mode: 'auto',
+    prNumbers: null,
+    refs: null,
+    source: 'auto',
+  };
+}
+
+const joinWith = (list, last) =>
+  list.length < 2
+    ? list.join('')
+    : `${list.slice(0, -1).join(', ')} ${last} ${list[list.length - 1]}`;
+
+/** The failure text for a typed number that did not resolve to exactly one PR. */
+function unresolvedMessage(result) {
+  const found = result.matches.map((m) => m.repo);
+  if (found.length === 0) {
+    return `PR #${result.number} was not found in ${joinWith(GITHUB_REPOS, 'or')}.`;
+  }
+  return (
+    `PR #${result.number} matches ${joinWith(found, 'and')}. ` +
+    `Name it as ${found[found.length - 1]}#${result.number}.`
+  );
 }
 
 /**
- * Main function to review PRs in the Carbon repository
+ * The log line for a number the open-PR tiebreak resolved, or null for a note
+ * that does not describe a chosen ref. Alternatives are listed in repo order.
+ */
+function formatResolutionNote(note) {
+  if (
+    !note ||
+    typeof note.repo !== 'string' ||
+    !Number.isSafeInteger(note.number) ||
+    !Array.isArray(note.alternatives)
+  ) {
+    return null;
+  }
+  const order = (alt) => GITHUB_REPOS.indexOf(alt.repo);
+  const alternatives = note.alternatives
+    .filter((alt) => alt && typeof alt.repo === 'string')
+    .sort((a, b) => order(a) - order(b))
+    .map(
+      (alt) =>
+        `${alt.repo}#${note.number} was ${alt.mergedAt ? 'merged' : 'closed'} at lookup`
+    );
+  return `📌 #${note.number} → ${note.repo}#${note.number} (${alternatives.join(', ')})`;
+}
+
+/**
+ * Main function to review PRs in the configured repositories
  *
  * @param {Object} [options] - Omitted (the CLI path) falls back to --pr / the env
  *        var, and then to auto-select — exactly as it behaved before options existed
+ * @param {Array<{repo: string, number: number}>} [options.prs] - Review exactly
+ *        these PRs, outranking prNumbers
  * @param {number[]|string|null} [options.prNumbers] - Review exactly these PRs,
- *        outranking --pr and GITHUB_AI_AGENT_PR_NUMBER
+ *        outranking --pr and GITHUB_AI_AGENT_PR_NUMBER; each number's repository
+ *        is looked up here
+ * @param {Array} [options.resolutionNotes] - With `prs`: numbers the caller
+ *        resolved by the open-PR tiebreak, logged before any review starts
  */
 async function reviewPRs(options = {}) {
   // Decided before anything expensive happens, and reported like every other
   // run parameter — "which PRs" is the first question asked of a run's logs.
   //
-  // A rejection here is logged and returned, never thrown and never exited on:
-  // reviewPRs runs detached in the API server's background, where an escaping
-  // error becomes an unhandled rejection.
+  // A rejection is logged and thrown, never exited on: the CLI's .catch turns it
+  // into a non-zero exit, and the API server's .catch keeps the message in status.
   const target = resolveReviewTargets(options);
   if (!target.ok) {
     console.error(`❌ ${target.error}`);
-    return;
+    throw new Error(target.error);
   }
 
   // One UUID ties every ES event + log line from this invocation together
@@ -523,15 +680,18 @@ async function reviewPRs(options = {}) {
   // Accumulates per-PR outcomes for the Slack digest (scheduled runs only)
   const runResults = [];
 
+  const fullNames = GITHUB_REPOS.map((r) => `${GITHUB_OWNER}/${r}`);
+  const runRepo = fullNames.join(',');
+
   // Spec-compliant startup logging
-  console.log(`[Carbon-Monitor] repo=${GITHUB_OWNER}/${GITHUB_REPO}`);
+  console.log(`[Carbon-Monitor] repos=${runRepo}`);
   console.log(`[Carbon-Monitor] selectedAgent=${REVIEW_AGENT}`);
   console.log(`[Carbon-Monitor] label=${REVIEW_LABEL}`);
   console.log(`[Carbon-Monitor] correlationId=${correlationId}`);
   console.log(
     `[Carbon-Monitor] target=${
       target.mode === 'explicit'
-        ? `${target.prNumbers.map((n) => `#${n}`).join(', ')} (${target.source})`
+        ? `${(target.refs ? target.refs.map(refKey) : target.prNumbers.map((n) => `#${n}`)).join(', ')} (${target.source})`
         : `auto (max ${MAX_PRS_PER_REPO}, last ${N_DAYS_SINCE_PR_CREATED} days)`
     }`
   );
@@ -552,6 +712,37 @@ async function reviewPRs(options = {}) {
       `❌ Invalid agent: ${agent}. Must be one of: ${agents.ids().join(', ')}`
     );
     return;
+  }
+
+  // A repo whose profile cannot run with this agent must stop the run before
+  // any PR is touched, and be visible: log, event, Slack for scheduled runs.
+  try {
+    profiles.checkRepos(GITHUB_REPOS, agent);
+  } catch (profileErr) {
+    console.error(`❌ Profile error: ${profileErr.message}`);
+    try {
+      await emitEvent({
+        event_type: 'run_failed',
+        correlation_id: correlationId,
+        repo: runRepo,
+        agent: REVIEW_AGENT,
+        payload: { repos: fullNames, error: profileErr.message },
+      });
+      if (options.triggeredBy === 'schedule') {
+        await postRunFailure({
+          startedAt: runStartedAt,
+          repos: fullNames,
+          error: profileErr.message,
+        });
+      }
+    } catch (reportErr) {
+      // Reporting must not replace the configuration error the caller needs.
+      console.warn(
+        `⚠️  Could not report the failed start: ${reportErr.message}`
+      );
+    }
+    // Thrown, not returned: the server and scheduler clear their error on a normal return.
+    throw profileErr;
   }
 
   // Check if agent is available
@@ -579,11 +770,62 @@ async function reviewPRs(options = {}) {
   });
   const client = createGitHubClient(octokit);
 
+  // Finding each typed number's repository and the per-repo cap come before the
+  // run exists: a failure here throws, so a CLI exits non-zero and a caller's
+  // .catch keeps the message.
+  const reject = (message) => {
+    console.error(`❌ ${message}`);
+    throw new Error(message);
+  };
+  let refs = target.refs;
+  const notes =
+    refs && target.source === 'argument' ? options.resolutionNotes : [];
+  const resolutionNotes = Array.isArray(notes) ? [...notes] : [];
+  if (target.prNumbers) {
+    const resolved = await resolveNumbers({
+      client,
+      owner: GITHUB_OWNER,
+      repos: GITHUB_REPOS,
+      numbers: target.prNumbers,
+    });
+    const unresolved = resolved.filter((r) => !r.choice);
+    if (unresolved.length > 0)
+      reject(unresolved.map(unresolvedMessage).join(' '));
+    refs = resolved.map((r) => r.choice);
+    for (const r of resolved) {
+      if (r.resolution !== 'only-open') continue;
+      resolutionNotes.push({
+        repo: r.choice.repo,
+        number: r.choice.number,
+        alternatives: r.matches
+          .filter((m) => m.repo !== r.choice.repo)
+          .map((m) => ({ repo: m.repo, state: m.state, mergedAt: m.mergedAt })),
+      });
+    }
+  }
+  if (refs) {
+    refs = dedupeRefs(refs);
+    const capError = overRepoCap(refs);
+    if (capError) reject(capError);
+  }
+
+  // After capture has started and before any review: the operator typed a bare
+  // number and a different PR may have been meant.
+  for (const note of resolutionNotes) {
+    if (
+      !refs.some((ref) => ref.repo === note.repo && ref.number === note.number)
+    )
+      continue;
+    const line = formatResolutionNote(note);
+    if (line) console.log(line);
+  }
+
   await emitEvent({
     event_type: 'run_started',
     correlation_id: correlationId,
-    repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+    repo: runRepo,
     agent: REVIEW_AGENT,
+    payload: { repos: fullNames },
   });
 
   // PRs named explicitly but not fetchable. Counted rather than thrown so the
@@ -591,67 +833,80 @@ async function reviewPRs(options = {}) {
   const fetchFailures = [];
 
   try {
-    // Fetch PRs — targeted (API request / --pr / env var) or auto-select
-    let prs;
-    if (target.mode === 'explicit') {
+    // One list of work items across the repositories. List order is batch
+    // order, for the budget too: every PR of the first repo is queued first.
+    const explicit = target.mode === 'explicit';
+    if (explicit) {
       console.log(
-        `🎯 Targeting ${target.prNumbers.length} specific PR(s) ` +
-          `(skipping auto-selection): ${target.prNumbers.map((n) => `#${n}`).join(', ')}`
+        `🎯 Targeting ${refs.length} specific PR(s) ` +
+          `(skipping auto-selection): ${refs.map(refKey).join(', ')}`
       );
-
-      // fetchSinglePR deliberately applies no label, draft or age filtering —
-      // an explicitly named PR is reviewed on the operator's authority, exactly
-      // as --pr has always behaved.
-      prs = [];
-      for (const pullNumber of target.prNumbers) {
-        try {
-          prs.push(
-            await client.fetchSinglePR({
-              owner: GITHUB_OWNER,
-              repo: GITHUB_REPO,
-              pullNumber,
-            })
-          );
-        } catch (fetchError) {
-          // One bad number — a typo, a PR from another repo, one since deleted —
-          // must not cost the operator the rest of the list. Naming several PRs
-          // is a request for one pass over all of them, not an all-or-nothing bet.
-          console.error(
-            `❌ Could not fetch PR #${pullNumber}: ${fetchError.message}`
-          );
-          fetchFailures.push(pullNumber);
-          await emitEvent({
-            event_type: 'pr_review_failed',
-            correlation_id: correlationId,
-            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
-            pr_number: pullNumber,
-            agent: REVIEW_AGENT,
-            payload: { error: `Could not fetch PR: ${fetchError.message}` },
-          });
+    }
+    const items = [];
+    for (const repo of GITHUB_REPOS) {
+      const profile = profiles.forRepo(repo);
+      let prs = [];
+      if (explicit) {
+        // fetchSinglePR deliberately applies no label, draft or age filtering —
+        // an explicitly named PR is reviewed on the operator's authority, exactly
+        // as --pr has always behaved.
+        for (const { number: pullNumber } of refs.filter(
+          (ref) => ref.repo === repo
+        )) {
+          try {
+            prs.push(
+              await client.fetchSinglePR({
+                owner: GITHUB_OWNER,
+                repo,
+                pullNumber,
+              })
+            );
+          } catch (fetchError) {
+            // One bad number — a typo, one since deleted — must not cost the
+            // operator the rest of the list. Naming several PRs is a request for
+            // one pass over all of them, not an all-or-nothing bet.
+            console.error(
+              `❌ Could not fetch ${repo}#${pullNumber}: ${fetchError.message}`
+            );
+            fetchFailures.push(pullNumber);
+            await emitEvent({
+              event_type: 'pr_review_failed',
+              correlation_id: correlationId,
+              repo: `${GITHUB_OWNER}/${repo}`,
+              pr_number: pullNumber,
+              agent: REVIEW_AGENT,
+              profile: profile.id,
+              payload: { error: `Could not fetch PR: ${fetchError.message}` },
+            });
+          }
         }
+      } else {
+        console.log(`📥 Fetching reviewable PRs from ${repo}...`);
+        prs = await client.fetchReviewablePRs({
+          owner: GITHUB_OWNER,
+          repo,
+          label: REVIEW_LABEL,
+          maxPRs: MAX_PRS_PER_REPO,
+          daysBack: N_DAYS_SINCE_PR_CREATED,
+        });
       }
+      for (const pr of prs) {
+        items.push({ pr, owner: GITHUB_OWNER, repo, profile });
+      }
+    }
 
-      if (prs.length === 0) {
+    if (items.length === 0) {
+      if (explicit) {
         console.error('❌ None of the requested PRs could be fetched');
-      }
-    } else {
-      console.log('📥 Fetching reviewable PRs...');
-      prs = await client.fetchReviewablePRs({
-        owner: GITHUB_OWNER,
-        repo: GITHUB_REPO,
-        label: REVIEW_LABEL,
-        maxPRs: MAX_PRS_PER_REPO,
-        daysBack: N_DAYS_SINCE_PR_CREATED,
-      });
-
-      if (prs.length === 0) {
+      } else {
         console.log('✅ No PRs need review');
         // Scheduled run: post a "nothing to review" ping so the channel
         // confirms the scheduler fired even when no PRs were eligible.
         if (options.triggeredBy === 'schedule') {
           await postRunDigest({
             startedAt: runStartedAt,
-            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            repo: runRepo,
+            repos: fullNames,
             results: [],
             maxPRs: MAX_PRS_PER_REPO,
             daysBack: N_DAYS_SINCE_PR_CREATED,
@@ -672,7 +927,9 @@ async function reviewPRs(options = {}) {
     const markNow = () => ({ inFlight: inFlight.length, starts: started });
 
     // Review each PR
-    const reviewOne = async (pr) => {
+    const reviewOne = async (item) => {
+      const { pr, owner, repo, profile } = item;
+      const fullName = `${owner}/${repo}`;
       // This review's outcomes; the pool joins them back in list order.
       const prResults = [];
       const prStartedAt = Date.now();
@@ -685,9 +942,12 @@ async function reviewPRs(options = {}) {
         if (options.triggeredBy === 'schedule') {
           const credits = await adapter.credits();
           if (credits.available && credits.low) {
-            console.warn(`⏭️  PR #${pr.number} skipped — ${credits.summary}`);
+            console.warn(
+              `⏭️  ${repo}#${pr.number} skipped — ${credits.summary}`
+            );
             prResults.push({
               prNumber: pr.number,
+              repo,
               prUrl: pr.html_url,
               skipped: true,
               reason: credits.summary,
@@ -697,7 +957,7 @@ async function reviewPRs(options = {}) {
         }
 
         console.log(`\n${'='.repeat(80)}`);
-        console.log(`📌 Reviewing PR #${pr.number}: ${pr.title}`);
+        console.log(`📌 Reviewing ${repo}#${pr.number}: ${pr.title}`);
         console.log(`   Author: @${pr.user.login}`);
         console.log(
           `   Created: ${new Date(pr.created_at).toLocaleDateString()}`
@@ -710,8 +970,8 @@ async function reviewPRs(options = {}) {
         let files;
         try {
           const { data: filesFile } = await octokit.rest.repos.getContent({
-            owner: GITHUB_OWNER,
-            repo: GITHUB_REPO,
+            owner,
+            repo,
             path: 'ORIGINAL_FILES.json',
             ref: pr.head.sha,
           });
@@ -723,8 +983,8 @@ async function reviewPRs(options = {}) {
           );
         } catch {
           files = await client.fetchPRFiles({
-            owner: GITHUB_OWNER,
-            repo: GITHUB_REPO,
+            owner,
+            repo,
             pullNumber: pr.number,
           });
           console.log(`✅ Files: ${files.length} changed`);
@@ -736,9 +996,10 @@ async function reviewPRs(options = {}) {
         await emitEvent({
           event_type: 'pr_review_started',
           correlation_id: correlationId,
-          repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+          repo: fullName,
           pr_number: pr.number,
           agent: REVIEW_AGENT,
+          profile: profile.id,
           commit_sha: pr.head.sha,
         });
 
@@ -747,26 +1008,27 @@ async function reviewPRs(options = {}) {
         if (files.length === LISTING_LIMIT) {
           try {
             ({ changed_files: changedFilesTotal } = await client.fetchSinglePR({
-              owner: GITHUB_OWNER,
-              repo: GITHUB_REPO,
+              owner,
+              repo,
               pullNumber: pr.number,
             }));
           } catch (countErr) {
             console.warn(
-              `⚠️  Could not read PR #${pr.number}'s file count: ${countErr.message}`
+              `⚠️  Could not read ${repo}#${pr.number}'s file count: ${countErr.message}`
             );
           }
         }
 
         // Build review bundle; it assembles the diff from the files' patches
         bundle = await buildReviewBundle({
-          owner: GITHUB_OWNER,
-          repo: GITHUB_REPO,
+          owner,
+          repo,
           pr,
           files,
           client,
           agent,
           changedFilesTotal,
+          profile,
         });
         console.log(`✅ Bundle: ${bundle.dir}`);
         const { coverage } = bundle;
@@ -787,14 +1049,15 @@ async function reviewPRs(options = {}) {
         // label is set, or the PR would be picked again on every run.
         if (bundle.diff === '' && coverage.partial) {
           console.warn(
-            `⚠️  PR #${pr.number}: no changed file fits the diff budget, so no agent runs`
+            `⚠️  ${repo}#${pr.number}: no changed file fits the diff budget, so no agent runs`
           );
           await emitEvent({
             event_type: 'pr_review_completed',
             correlation_id: correlationId,
-            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            repo: fullName,
             pr_number: pr.number,
             agent: REVIEW_AGENT,
+            profile: profile.id,
             commit_sha: pr.head.sha,
             payload: {
               pr_title: pr.title,
@@ -806,24 +1069,28 @@ async function reviewPRs(options = {}) {
           });
           if (process.env.GITHUB_AI_AGENT_POST_SUMMARY_COMMENT !== 'false') {
             await client.postSummaryComment({
-              owner: GITHUB_OWNER,
-              repo: GITHUB_REPO,
+              owner,
+              repo,
               pullNumber: pr.number,
               body: formatNotReviewedComment({
                 commitSha: pr.head.sha,
                 coverage,
                 filesUrl: `${pr.html_url}/files`,
+                ...(profile.headerLabel
+                  ? { headerLabel: profile.headerLabel }
+                  : {}),
               }),
             });
           }
           await client.addReviewedLabel({
-            owner: GITHUB_OWNER,
-            repo: GITHUB_REPO,
+            owner,
+            repo,
             pullNumber: pr.number,
             label: REVIEW_LABEL,
           });
           prResults.push({
             prNumber: pr.number,
+            repo,
             prUrl: pr.html_url,
             skipped: true,
             reason: `Nothing fit the diff budget (0 of ${coverage.files_total} files reviewed)`,
@@ -871,9 +1138,10 @@ async function reviewPRs(options = {}) {
           await emitEvent({
             event_type: 'agent_limit_reached',
             correlation_id: correlationId,
-            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            repo: fullName,
             pr_number: pr.number,
             agent: REVIEW_AGENT,
+            profile: profile.id,
             commit_sha: pr.head.sha,
             payload: {
               kind: err.kind,
@@ -907,9 +1175,10 @@ async function reviewPRs(options = {}) {
             await emitEvent({
               event_type: 'agent_timeout',
               correlation_id: correlationId,
-              repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+              repo: fullName,
               pr_number: pr.number,
               agent: REVIEW_AGENT,
+              profile: profile.id,
               commit_sha: pr.head.sha,
               payload: { error: agentErr.message },
             });
@@ -947,6 +1216,7 @@ async function reviewPRs(options = {}) {
 
             await recordReviewCost({
               correlationId,
+              repo: fullName,
               pr,
               after: coinsAfter,
               coinsSpent,
@@ -1086,6 +1356,7 @@ async function reviewPRs(options = {}) {
                 totalSource = sum.source;
                 await recordReviewCost({
                   correlationId,
+                  repo: fullName,
                   pr,
                   after: retryCoinsAfter,
                   coinsSpent: retrySpend.coinsSpent,
@@ -1140,9 +1411,10 @@ async function reviewPRs(options = {}) {
           await emitEvent({
             event_type: 'parse_failed',
             correlation_id: correlationId,
-            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            repo: fullName,
             pr_number: pr.number,
             agent: REVIEW_AGENT,
+            profile: profile.id,
             commit_sha: pr.head.sha,
           });
           // The `finally` below removes the bundle on the way out.
@@ -1169,9 +1441,10 @@ async function reviewPRs(options = {}) {
           await emitEvent({
             event_type: 'skill_unavailable',
             correlation_id: correlationId,
-            repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+            repo: fullName,
             pr_number: pr.number,
             agent: REVIEW_AGENT,
+            profile: profile.id,
             commit_sha: pr.head.sha,
           });
         }
@@ -1208,8 +1481,8 @@ async function reviewPRs(options = {}) {
           }));
 
           const reviewResult = await client.postReviewComments({
-            owner: GITHUB_OWNER,
-            repo: GITHUB_REPO,
+            owner,
+            repo,
             pullNumber: pr.number,
             commitId: pr.head.sha,
             comments: inlineComments,
@@ -1282,9 +1555,10 @@ async function reviewPRs(options = {}) {
         await emitEvent({
           event_type: 'pr_review_completed',
           correlation_id: correlationId,
-          repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+          repo: fullName,
           pr_number: pr.number,
           agent: REVIEW_AGENT,
+          profile: profile.id,
           commit_sha: pr.head.sha,
           payload: {
             // pr_title is stored so Kibana runtime fields can extract any embedded
@@ -1322,6 +1596,20 @@ async function reviewPRs(options = {}) {
               : null,
             tool_calls: observed ? evidence.total : null,
             mcp_tool_calls: observed ? sumCalls(evidence.mcpCalls) : null,
+            // Bob use_skill calls for this profile's extra skills; absent without any.
+            ...(profile.extraSkills && profile.extraSkills.length > 0
+              ? {
+                  extra_skills_used: (finalRun.toolCalls || [])
+                    .filter(
+                      (c) =>
+                        c.name === 'use_skill' &&
+                        profile.extraSkills.some(
+                          (s) => s.name === (c.params || {}).skill_name
+                        )
+                    )
+                    .map((c) => (c.params || {}).skill_name),
+                }
+              : {}),
             runs,
             coinsSpent: totalSpent,
             remainingAfter:
@@ -1351,6 +1639,9 @@ async function reviewPRs(options = {}) {
                   nitFindings,
                   coverage,
                   filesUrl: `${pr.html_url}/files`,
+                  ...(profile.headerLabel
+                    ? { headerLabel: profile.headerLabel }
+                    : {}),
                 })
               : formatSummaryComment({
                   agent,
@@ -1368,11 +1659,22 @@ async function reviewPRs(options = {}) {
                   nitFindings,
                   coverage,
                   filesUrl: `${pr.html_url}/files`,
+                  ...(profile.headerLabel
+                    ? { headerLabel: profile.headerLabel }
+                    : {}),
+                  ...(() => {
+                    // A boolean (core) or a function of the review (caic: only with Cat 1 findings).
+                    const scv = profile.showCarbonVerification;
+                    const val = typeof scv === 'function' ? scv(review) : scv;
+                    return val !== undefined
+                      ? { showCarbonVerification: val }
+                      : {};
+                  })(),
                 });
 
           await client.postSummaryComment({
-            owner: GITHUB_OWNER,
-            repo: GITHUB_REPO,
+            owner,
+            repo,
             pullNumber: pr.number,
             body: commentBody,
           });
@@ -1383,18 +1685,19 @@ async function reviewPRs(options = {}) {
 
         // Add AIReviewed label
         await client.addReviewedLabel({
-          owner: GITHUB_OWNER,
-          repo: GITHUB_REPO,
+          owner,
+          repo,
           pullNumber: pr.number,
           label: REVIEW_LABEL,
         });
         console.log('✅ Label added');
 
-        console.log(`\n✅ PR #${pr.number} review complete`);
+        console.log(`\n✅ ${repo}#${pr.number} review complete`);
 
         // Record success for the Slack digest
         prResults.push({
           prNumber: pr.number,
+          repo,
           prUrl: pr.html_url,
           findingsCount: review.findings.length,
           summary: review.summaryMarkdown,
@@ -1403,22 +1706,24 @@ async function reviewPRs(options = {}) {
         });
       } catch (prError) {
         console.error(
-          `\n❌ Error reviewing PR #${pr.number}:`,
+          `\n❌ Error reviewing ${repo}#${pr.number}:`,
           prError.message
         );
         console.error(prError.stack);
         await emitEvent({
           event_type: 'pr_review_failed',
           correlation_id: correlationId,
-          repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+          repo: fullName,
           pr_number: pr.number,
           agent: REVIEW_AGENT,
+          profile: profile.id,
           payload: { error: prError.message },
         });
         // Record failure for the Slack digest so it appears as a ⚠️ entry
         // rather than silently vanishing from the summary.
         prResults.push({
           prNumber: pr.number,
+          repo,
           failed: true,
           error: prError.message,
         });
@@ -1431,7 +1736,7 @@ async function reviewPRs(options = {}) {
       return prResults;
     };
 
-    // REVIEW_CONCURRENCY workers, numbered from 1, each take the next PR in
+    // REVIEW_CONCURRENCY workers, numbered from 1, each take the next item in
     // list order and take another when it finishes. `options.concurrency` is a
     // test hook. One review's failure never reaches another; the batch waits
     // for all of them.
@@ -1447,22 +1752,25 @@ async function reviewPRs(options = {}) {
         `ℹ️  REVIEW_CONCURRENCY=${requested} ignored — '${agent}' shares one HOME, so reviews run one at a time`
       );
     }
-    const pending = prs.map((pr, index) => ({ pr, index }));
+    const pending = items.map((item, index) => ({ item, index }));
     const perPr = [];
     const report = () =>
       options.onProgress?.({
         inFlight: inFlight.map((entry) => ({ ...entry })),
-        queued: pending.map(({ pr }) => pr.number),
+        queued: pending.map(({ item }) =>
+          refKey({ repo: item.repo, number: item.pr.number })
+        ),
         concurrency,
       });
     report();
 
     const work = async (slot) => {
       while (pending.length > 0) {
-        const { pr, index } = pending.shift();
+        const { item, index } = pending.shift();
         const entry = {
           worker: slot,
-          pr: pr.number,
+          repo: item.repo,
+          pr: item.pr.number,
           startedAt: new Date().toISOString(),
         };
         inFlight.push(entry);
@@ -1470,13 +1778,18 @@ async function reviewPRs(options = {}) {
         report();
         try {
           perPr[index] = await reviewLog.runWithContext(
-            { worker: slot, pr: pr.number },
-            () => reviewOne(pr)
+            { worker: slot, repo: item.repo, pr: item.pr.number },
+            () => reviewOne(item)
           );
         } catch (error) {
           // reviewOne handles its own errors; this is a failure in its handler.
           perPr[index] = [
-            { prNumber: pr.number, failed: true, error: error.message },
+            {
+              prNumber: item.pr.number,
+              repo: item.repo,
+              failed: true,
+              error: error.message,
+            },
           ];
         } finally {
           inFlight.splice(inFlight.indexOf(entry), 1);
@@ -1485,7 +1798,7 @@ async function reviewPRs(options = {}) {
       }
     };
     await Promise.all(
-      Array.from({ length: Math.min(concurrency, prs.length) }, (_, i) =>
+      Array.from({ length: Math.min(concurrency, items.length) }, (_, i) =>
         work(i + 1)
       )
     );
@@ -1495,15 +1808,15 @@ async function reviewPRs(options = {}) {
     await emitEvent({
       event_type: 'run_completed',
       correlation_id: correlationId,
-      repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+      repo: runRepo,
       agent: REVIEW_AGENT,
       payload: {
+        repos: fullNames,
         prs_reviewed: prsReviewedThisRun,
         duration_ms: runDurationMs,
         // Flat scalars, matching the rest of the payloads: a run that reviewed
         // two of the three PRs it was given is not the same as one given two.
-        prs_requested:
-          target.mode === 'explicit' ? target.prNumbers.length : null,
+        prs_requested: explicit ? refs.length : null,
         prs_fetch_failed: fetchFailures.length,
         target_mode: target.mode,
       },
@@ -1513,7 +1826,8 @@ async function reviewPRs(options = {}) {
     if (options.triggeredBy === 'schedule') {
       await postRunDigest({
         startedAt: runStartedAt,
-        repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+        repo: runRepo,
+        repos: fullNames,
         results: runResults,
         maxPRs: MAX_PRS_PER_REPO,
         daysBack: N_DAYS_SINCE_PR_CREATED,
@@ -1530,9 +1844,9 @@ async function reviewPRs(options = {}) {
     await emitEvent({
       event_type: 'run_failed',
       correlation_id: correlationId,
-      repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+      repo: runRepo,
       agent: REVIEW_AGENT,
-      payload: { error: error.message },
+      payload: { repos: fullNames, error: error.message },
     });
   }
 }
@@ -1553,6 +1867,7 @@ function _countBy(arr, field) {
 module.exports = {
   reviewPRs,
   parsePrNumbers,
+  parsePrRefs,
   resolveReviewTargets,
   resolveSpend,
   tokensFromStats,
