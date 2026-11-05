@@ -214,6 +214,53 @@ function buildLowTokenPayload({
   return { blocks };
 }
 
+// ── Run-failure Block Kit builder ────────────────────────────────────────────
+
+/**
+ * Build the Slack Block Kit payload for a run that could not start because of
+ * its configuration. Says nothing about the balance or the schedule: neither is
+ * the cause, and neither is changed.
+ *
+ * @param {Object}   opts
+ * @param {number}   opts.startedAt - epoch ms when the run was attempted
+ * @param {string[]} opts.repos     - "owner/repo" for every configured repository
+ * @param {string}   opts.error     - The configuration error
+ * @returns {Object} Slack API blocks payload
+ */
+function buildRunFailurePayload({ startedAt, repos, error }) {
+  return {
+    blocks: [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text',
+          text: '⚠️  Carbon Monitor — Review Run Could Not Start',
+          emoji: true,
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: [
+            `*Repos:* ${repos.join(', ')}`,
+            `*Run attempted:* ${formatEasternTime(startedAt)}`,
+            `*Configuration error:* _${escapeAtSign(truncateAtWord(error || 'Unknown error', 500))}_`,
+          ].join('\n'),
+        },
+      },
+      { type: 'divider' },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: '*Action required:* No pull requests were reviewed. Correct the configuration, then start a review from the console.',
+        },
+      },
+    ],
+  };
+}
+
 // ── Block Kit builder ─────────────────────────────────────────────────────────
 
 /**
@@ -460,6 +507,29 @@ async function postRunDigest({
 }
 
 /**
+ * Post a run-failure alert to Slack. No-ops silently when SLACK_WEBHOOK_URL is
+ * unset. Never throws — a Slack failure must never replace the error that
+ * stopped the run.
+ *
+ * @param {Object}   opts
+ * @param {number}   opts.startedAt - epoch ms when the run was attempted
+ * @param {string[]} opts.repos     - "owner/repo" for every configured repository
+ * @param {string}   opts.error     - The configuration error
+ * @returns {Promise<void>}
+ */
+async function postRunFailure({ startedAt, repos, error }) {
+  if (!_enabled) return;
+
+  try {
+    await postToSlack(buildRunFailurePayload({ startedAt, repos, error }));
+    console.log('[slack] run-failure alert posted');
+  } catch (err) {
+    // Log the error message only — never the URL
+    console.warn(`[slack] run-failure alert post failed: ${err.message}`);
+  }
+}
+
+/**
  * Post a low-token alert to Slack. Used for both the initial auto-pause
  * notification and daily reminders while the schedule remains paused.
  *
@@ -532,10 +602,12 @@ async function postLowTokenAlert({
 
 module.exports = {
   postRunDigest,
+  postRunFailure,
   postLowTokenAlert,
   // Exported for testing only
   _buildPayload: buildPayload,
   _buildLowTokenPayload: buildLowTokenPayload,
+  _buildRunFailurePayload: buildRunFailurePayload,
   _stripMarkdown: stripMarkdown,
   _truncateAtWord: truncateAtWord,
   _flagFor: flagFor,

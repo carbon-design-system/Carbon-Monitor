@@ -12,6 +12,8 @@
  *  4. Failed PRs appear as ⚠️ entries in the payload
  *  5. Markdown is stripped and summary is truncated at a word boundary
  *  6. Empty results produce a "no eligible PRs" message (no-PR-found path)
+ *  7. The run-failure payload names the repos and the error, not a low balance
+ *  8. postRunFailure does nothing without a webhook
  */
 
 'use strict';
@@ -448,6 +450,56 @@ async function main() {
       `*Repo:* ${REPO}\n*Claude budget remaining:* below threshold\n` +
         '_This is a daily reminder — the schedule remains paused._'
     );
+  });
+
+  // ── Run-failure alert ───────────────────────────────────────────────────────
+  await test('the run-failure payload names the repos and the error, and says nothing of balance or schedule', () => {
+    const repos = [
+      'carbon-design-system/carbon',
+      'carbon-design-system/carbon-ai-chat',
+    ];
+    const { blocks } = notifier._buildRunFailurePayload({
+      startedAt: Date.UTC(2026, 10, 4, 15, 0),
+      repos,
+      error: 'carbon-ai-chat uses the caic profile. @channel',
+    });
+    assert.strictEqual(
+      blocks[0].text.text,
+      '⚠️  Carbon Monitor — Review Run Could Not Start'
+    );
+    const text = JSON.stringify(blocks);
+    assert.ok(text.includes(repos.join(', ')), 'repos');
+    assert.ok(text.includes('carbon-ai-chat uses the caic profile.'), 'error');
+    assert.ok(!text.includes('@channel'), 'mentions are neutralised');
+    assert.ok(
+      text.includes('No pull requests were reviewed'),
+      'run did not start'
+    );
+    assert.ok(
+      !/paused|balance|remaining|threshold|Bobcoins/i.test(text),
+      'not a low-balance alert'
+    );
+    assert.ok(blocks.length <= 50);
+  });
+
+  await test('postRunFailure is a silent no-op without a webhook', async () => {
+    assert.strictEqual(_isEnabled(), false);
+    let networkCallMade = false;
+    const origRequest = https.request;
+    https.request = () => {
+      networkCallMade = true;
+      throw new Error('no request expected');
+    };
+    try {
+      await notifier.postRunFailure({
+        startedAt: Date.now(),
+        repos: ['carbon-design-system/carbon'],
+        error: 'bad configuration',
+      });
+    } finally {
+      https.request = origRequest;
+    }
+    assert.strictEqual(networkCallMade, false);
   });
 
   // ── Summary ──────────────────────────────────────────────────────────────────
