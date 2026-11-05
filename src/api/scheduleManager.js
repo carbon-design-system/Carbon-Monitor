@@ -50,6 +50,11 @@ const {
   endProgress,
 } = require('./reviewProgress');
 const { postLowTokenAlert } = require('../slackNotifier');
+const { GITHUB_OWNER, GITHUB_REPOS } = require('../constants');
+
+const MONITORED_REPOS = GITHUB_REPOS.map((r) => `${GITHUB_OWNER}/${r}`).join(
+  ', '
+);
 
 // ── State file location ──────────────────────────────────────────────────────
 
@@ -624,7 +629,7 @@ async function tick(reviewPRs, reviewState, reviewLog) {
       percentRemaining: balance.percentRemaining,
       threshold: lowPct,
       agent: adapter.id,
-      repo: `${process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system'}/${process.env.GITHUB_AI_AGENT_REPO || 'carbon'}`,
+      repo: MONITORED_REPOS,
       isReminder: true,
     });
     return;
@@ -694,7 +699,7 @@ async function tick(reviewPRs, reviewState, reviewLog) {
       percentRemaining: balance.percentRemaining,
       threshold: lowPct,
       agent: adapter.id,
-      repo: `${process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system'}/${process.env.GITHUB_AI_AGENT_REPO || 'carbon'}`,
+      repo: MONITORED_REPOS,
       isReminder: false,
     });
     return;
@@ -728,7 +733,7 @@ async function tick(reviewPRs, reviewState, reviewLog) {
   reviewState.finishedAt = null;
   reviewState.error = null;
   reviewState.mode = 'auto';
-  reviewState.prNumbers = null;
+  reviewState.prs = null;
   startProgress(reviewState);
 
   console.log(

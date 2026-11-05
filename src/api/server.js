@@ -39,11 +39,20 @@ const {
   endProgress,
 } = require('./reviewProgress');
 const scheduleManager = require('./scheduleManager');
-const { reviewPRs, parsePrNumbers, resolveReviewTargets } = require('../index');
+const {
+  reviewPRs,
+  parsePrNumbers,
+  parsePrRefs,
+  resolveReviewTargets,
+} = require('../index');
+const { resolveNumbers } = require('../prResolver');
+const { createGitHubClient, createOctokit } = require('../githubClient');
 const { isAgentAvailable, getConfiguredAgent } = require('../agentRunner');
 const agents = require('../agents');
 const { checkStartup, getStartupProblems } = require('../config/env');
 const {
+  GITHUB_OWNER,
+  GITHUB_REPOS,
   MAX_PRS_PER_REPO,
   N_DAYS_SINCE_PR_CREATED,
   EFFECTIVE_REVIEW_CONCURRENCY,
@@ -518,10 +527,11 @@ function handleConfig(req, res) {
       agent: process.env.GITHUB_AI_AGENT_CLI || agents.DEFAULT_ID,
       agentName: adapter.displayName,
       agentCli: adapter.cliName,
-      owner: process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system',
-      repo: process.env.GITHUB_AI_AGENT_REPO || 'carbon',
+      owner: GITHUB_OWNER,
+      repos: GITHUB_REPOS,
       label: process.env.GITHUB_AI_AGENT_REVIEW_LABEL || 'AIReviewed',
-      maxPRs: parseInt(process.env.GITHUB_AI_AGENT_MAX_PRS || '10', 10),
+      // Per repository, not per run.
+      maxPRs: MAX_PRS_PER_REPO,
       daysBack: parseInt(process.env.GITHUB_AI_AGENT_DAYS_BACK || '21', 10),
       targetPR: process.env.GITHUB_AI_AGENT_PR_NUMBER || null,
       postInlineComments:
@@ -818,27 +828,205 @@ const reviewState = {
   startedAt: null,
   finishedAt: null,
   error: null,
-  // What this run is reviewing, so the console can say "reviewing #22971, #22972"
+  // What this run is reviewing, so the console can say "reviewing carbon#22971"
   // instead of just "running". Both fields are rewritten on every trigger — a
-  // finished explicit run must not leave its numbers behind for the auto run
+  // finished explicit run must not leave its refs behind for the auto run
   // after it to appear to own.
   mode: null,
-  prNumbers: null,
+  prs: null,
   // Reviews running side by side inside the batch, and the PRs still waiting.
   inFlight: [],
   queued: [],
   concurrency: EFFECTIVE_REVIEW_CONCURRENCY,
 };
 
+const keysOf = (refs) => refs.map((ref) => `${ref.repo}#${ref.number}`);
+
+const TIMESTAMP =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
+const isPositiveInt = (n) => Number.isSafeInteger(n) && n > 0;
+const isPlainObject = (v) =>
+  v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * Validate the optional `resolutionNotes` of a trigger body. Notes are
+ * informational snapshots of the console's lookup: they are never targets, so
+ * only their shape and their link to a chosen ref in `prs` are checked.
+ *
+ * @returns {{ok: boolean, notes?: Array, error?: string}}
+ */
+function parseResolutionNotes(input, refs) {
+  if (input === undefined || input === null) return { ok: true, notes: [] };
+  const fail = (error) => ({ ok: false, error: `resolutionNotes: ${error}` });
+  if (!Array.isArray(input)) return fail('must be an array.');
+
+  const chosen = new Set(keysOf(refs || []));
+  const seen = new Set();
+  const notes = [];
+  for (const note of input) {
+    if (!isPlainObject(note)) return fail('every note must be an object.');
+    if (!GITHUB_REPOS.includes(note.repo)) {
+      return fail(
+        `unknown repository ${JSON.stringify(note.repo)} — must be one of: ${GITHUB_REPOS.join(', ')}.`
+      );
+    }
+    if (!isPositiveInt(note.number)) {
+      return fail(`invalid PR number ${JSON.stringify(note.number)}.`);
+    }
+    const key = `${note.repo}#${note.number}`;
+    if (!chosen.has(key)) return fail(`${key} is not in prs.`);
+    if (seen.has(key)) return fail(`more than one note for ${key}.`);
+    seen.add(key);
+
+    if (!Array.isArray(note.alternatives) || note.alternatives.length === 0) {
+      return fail(`${key} needs a non-empty alternatives array.`);
+    }
+    const alternatives = [];
+    for (const alt of note.alternatives) {
+      if (!isPlainObject(alt)) {
+        return fail(`${key} has an alternative that is not an object.`);
+      }
+      if (!GITHUB_REPOS.includes(alt.repo) || alt.repo === note.repo) {
+        return fail(
+          `${key} has an alternative in ${JSON.stringify(alt.repo)}, which must be another configured repository.`
+        );
+      }
+      if (alternatives.some((a) => a.repo === alt.repo)) {
+        return fail(`${key} lists ${alt.repo} more than once.`);
+      }
+      if (alt.state !== 'closed') {
+        return fail(`${key} alternative ${alt.repo} must have state "closed".`);
+      }
+      const validStamp =
+        alt.mergedAt === null ||
+        (typeof alt.mergedAt === 'string' &&
+          TIMESTAMP.test(alt.mergedAt) &&
+          Number.isFinite(Date.parse(alt.mergedAt)));
+      if (!validStamp) {
+        return fail(
+          `${key} alternative ${alt.repo} needs mergedAt as an ISO timestamp or null.`
+        );
+      }
+      alternatives.push({
+        repo: alt.repo,
+        state: 'closed',
+        mergedAt: alt.mergedAt,
+      });
+    }
+    notes.push({ repo: note.repo, number: note.number, alternatives });
+  }
+  return { ok: true, notes };
+}
+
+/** What resolveNumbers found, as the notes the open-PR tiebreak leaves behind. */
+function notesFromResolution(results) {
+  return results
+    .filter((r) => r.resolution === 'only-open')
+    .map((r) => ({
+      repo: r.choice.repo,
+      number: r.choice.number,
+      alternatives: r.matches
+        .filter((m) => m.repo !== r.choice.repo)
+        .map((m) => ({ repo: m.repo, state: m.state, mergedAt: m.mergedAt })),
+    }));
+}
+
+/** The text for a number that did not resolve to exactly one PR. */
+function describeUnresolved(result) {
+  const found = result.matches.map((m) => m.repo);
+  if (found.length === 0) {
+    return `PR #${result.number} was not found in ${GITHUB_REPOS.join(', ')}.`;
+  }
+  return (
+    `PR #${result.number} matches ${found.join(' and ')}. ` +
+    `Name it as ${found[found.length - 1]}#${result.number}.`
+  );
+}
+
+/**
+ * Look up typed PR numbers in every configured repository. A thrown error is a
+ * GitHub failure other than 404 (the resolver treats 404 as "not in this repo").
+ */
+async function lookUpNumbers(numbers) {
+  const token = process.env.GITHUB_AI_AGENT_TOKEN;
+  if (!token) {
+    const error = new Error('GITHUB_AI_AGENT_TOKEN is not set');
+    error.notConfigured = true;
+    throw error;
+  }
+  const octokit = await createOctokit({
+    auth: token,
+    baseUrl: process.env.GITHUB_API_BASE_URL || 'https://api.github.com',
+  });
+  return resolveNumbers({
+    client: createGitHubClient(octokit),
+    owner: GITHUB_OWNER,
+    repos: GITHUB_REPOS,
+    numbers,
+  });
+}
+
+/** Answers a failed lookup: 503 when GitHub cannot be asked at all, else 502. */
+function sendLookupError(res, error) {
+  if (error.notConfigured) return sendError(res, 503, error.message);
+  return sendError(res, 502, `GitHub lookup failed: ${error.message}`);
+}
+
+/**
+ * POST /api/review/resolve
+ *
+ * Body: { prNumbers } — an array or a comma-separated string. Reports, for each
+ * number, which configured repositories have that PR and which one a review
+ * would use. Discovery only: it changes nothing and does not take the review
+ * lock, and the per-repository cap is enforced by the trigger.
+ */
+async function handleReviewResolve(req, res) {
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    return sendError(res, 400, `Could not read request body: ${error.message}`);
+  }
+  if (!isPlainObject(body)) {
+    return sendError(
+      res,
+      400,
+      'Request body must be a JSON object, e.g. {"prNumbers": [22971]}'
+    );
+  }
+
+  const parsed = parsePrNumbers(body.prNumbers);
+  if (!parsed.ok) return sendError(res, 400, parsed.error);
+  if (!parsed.prNumbers) {
+    return sendError(res, 400, 'prNumbers must list at least one PR number.');
+  }
+
+  let results;
+  try {
+    results = await lookUpNumbers(parsed.prNumbers);
+  } catch (error) {
+    return sendLookupError(res, error);
+  }
+  sendJSON(res, 200, {
+    success: true,
+    results,
+    timestamp: new Date().toISOString(),
+  });
+}
+
 /**
  * POST /api/review/trigger
  *
- * Body is optional. `prNumbers` — an array or a comma-separated string — reviews
- * exactly those PRs with no label, draft or age filtering, the same contract as
- * the --pr flag. Without it the run auto-selects as it always has.
+ * Body is optional. `prs` — [{ repo, number }] — reviews exactly those PRs, and
+ * `prNumbers` — an array or a comma-separated string — reviews exactly those
+ * numbers after finding each one's repository; both may be given. Neither applies
+ * label, draft or age filtering, the same contract as the --pr flag. Without them
+ * the run auto-selects as it always has. `resolutionNotes` optionally records
+ * which `prs` entries the console chose by the open-PR tiebreak.
  *
  * Returns 202 immediately and runs in the background: a review can take minutes,
- * far longer than Code Engine's 300-second request ceiling.
+ * far longer than Code Engine's 300-second request ceiling. A number that matches
+ * no repository, or several, is a 422 with the lookup results.
  */
 async function handleReviewTrigger(req, res) {
   let body;
@@ -851,27 +1039,78 @@ async function handleReviewTrigger(req, res) {
   // JSON.parse happily returns null, a number or an array. `null.prNumbers`
   // throws, which would turn a malformed request into a 500 — and an array body
   // would be read as "no list" and silently start an auto review instead.
-  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+  if (!isPlainObject(body)) {
     return sendError(
       res,
       400,
-      'Request body must be a JSON object, e.g. {"prNumbers": [22971]}'
+      'Request body must be a JSON object, e.g. {"prs": [{"repo": "carbon", "number": 22971}]}'
     );
   }
 
-  // Validated by the very function reviewPRs uses, which returns an error string
+  // Validated by the very functions reviewPRs uses, which return an error string
   // rather than throwing or exiting. index.js resolves --pr and
   // GITHUB_AI_AGENT_PR_NUMBER at module load and calls process.exit(1) on a bad
   // value; that is correct for a CLI and fatal here, where one malformed body
   // would take down the console and the review loop with it. No request can
   // reach that code — it ran once, at require time, before the server existed.
+  const parsedRefs = parsePrRefs(body.prs);
+  if (!parsedRefs.ok) return sendError(res, 400, parsedRefs.error);
   const parsed = parsePrNumbers(body.prNumbers);
   if (!parsed.ok) return sendError(res, 400, parsed.error);
+  const parsedNotes = parseResolutionNotes(
+    body.resolutionNotes,
+    parsedRefs.refs
+  );
+  if (!parsedNotes.ok) return sendError(res, 400, parsedNotes.error);
+
+  // Resolved rather than inferred from the body, so the response names what will
+  // actually be reviewed: a container pinned with GITHUB_AI_AGENT_PR_NUMBER runs
+  // that PR even when the request named none.
+  let numbers = parsed.prNumbers;
+  let refs = parsedRefs.refs;
+  if (!refs && !numbers) {
+    const target = resolveReviewTargets({});
+    refs = target.refs;
+    numbers = target.prNumbers;
+  }
+
+  let notes = parsedNotes.notes;
+  if (numbers) {
+    let results;
+    try {
+      results = await lookUpNumbers(numbers);
+    } catch (error) {
+      return sendLookupError(res, error);
+    }
+    const unresolved = results.filter((r) => !r.choice);
+    if (unresolved.length > 0) {
+      const code = unresolved.some((r) => r.matches.length > 1)
+        ? 'ambiguous'
+        : 'not-found';
+      return sendJSON(res, 422, {
+        success: false,
+        code,
+        message: unresolved.map(describeUnresolved).join(' '),
+        results,
+      });
+    }
+    refs = [...(refs || []), ...results.map((r) => r.choice)];
+    notes = [...notes, ...notesFromResolution(results)];
+  }
+
+  // Counted once, after typed numbers and typed refs are merged and
+  // deduplicated: the same PR named both ways is one review.
+  if (refs) {
+    const merged = parsePrRefs(refs);
+    if (!merged.ok) return sendError(res, 400, merged.error);
+    refs = merged.refs;
+  }
 
   // Checked AFTER the awaits above, not before them. Two triggers arriving
   // together would both have passed an earlier check while their bodies were
-  // still being read, and two agents on one PR post duplicate comments. The
-  // claim below is synchronous from here, so there is no window left.
+  // still being read or their numbers looked up, and two agents on one PR post
+  // duplicate comments. The claim below is synchronous from here, so there is no
+  // window left.
   if (reviewState.running) {
     // Single-flight by design: one review at a time across this instance, so two
     // agents never review the same PR and post duplicate comments. The message is
@@ -879,8 +1118,8 @@ async function handleReviewTrigger(req, res) {
     // (curl, CI, another script) still learns what is running and since when. The
     // structured fields below are what the console's "already running" modal reads.
     const runningWhat =
-      reviewState.mode === 'explicit' && reviewState.prNumbers?.length
-        ? reviewState.prNumbers.map((n) => `#${n}`).join(', ')
+      reviewState.mode === 'explicit' && reviewState.prs?.length
+        ? keysOf(reviewState.prs).join(', ')
         : 'auto-selected PRs';
     return sendJSON(res, 409, {
       success: false,
@@ -889,37 +1128,31 @@ async function handleReviewTrigger(req, res) {
         'Carbon Monitor runs one review session at a time — wait for it to finish before starting another.',
       startedAt: reviewState.startedAt,
       mode: reviewState.mode,
-      prNumbers: reviewState.prNumbers,
+      prs: reviewState.prs,
     });
   }
-
-  // Resolved rather than inferred from the body, so the response names what will
-  // actually be reviewed: a container pinned with GITHUB_AI_AGENT_PR_NUMBER runs
-  // that PR even when the request named none.
-  const target = resolveReviewTargets({ prNumbers: parsed.prNumbers });
 
   reviewState.running = true;
   reviewState.startedAt = new Date().toISOString();
   reviewState.finishedAt = null;
   reviewState.error = null;
-  reviewState.mode = target.mode;
-  reviewState.prNumbers = target.prNumbers;
-  startProgress(reviewState, target.prNumbers || []);
+  reviewState.mode = refs ? 'explicit' : 'auto';
+  reviewState.prs = refs;
+  startProgress(reviewState, refs ? keysOf(refs) : []);
 
   sendJSON(res, 202, {
     success: true,
-    message:
-      target.mode === 'explicit'
-        ? `Review triggered for ${target.prNumbers.map((n) => `#${n}`).join(', ')}, running in background`
-        : 'Review triggered, running in background',
+    message: refs
+      ? `Review triggered for ${keysOf(refs).join(', ')}, running in background`
+      : 'Review triggered, running in background',
     startedAt: reviewState.startedAt,
-    mode: target.mode,
-    prNumbers: target.prNumbers,
+    mode: reviewState.mode,
+    prs: refs,
     maxPRs: MAX_PRS_PER_REPO,
     concurrency: EFFECTIVE_REVIEW_CONCURRENCY,
     // Auto mode only. An explicit list ignores the age window entirely, so
     // reporting it there would describe a filter that is not being applied.
-    daysBack: target.mode === 'auto' ? N_DAYS_SINCE_PR_CREATED : undefined,
+    daysBack: refs ? undefined : N_DAYS_SINCE_PR_CREATED,
   });
 
   // Capture the run's output so the console can show progress instead of a
@@ -929,7 +1162,8 @@ async function handleReviewTrigger(req, res) {
   reviewLog.start(reviewState.startedAt);
 
   reviewPRs({
-    prNumbers: parsed.prNumbers,
+    prs: refs,
+    resolutionNotes: notes,
     onProgress: (snapshot) => applyProgress(reviewState, snapshot),
   })
     .then(() => {
@@ -948,7 +1182,7 @@ async function handleReviewTrigger(req, res) {
 }
 
 /**
- * GET /api/review/logs?since=N&limit=M&pr=P&worker=W
+ * GET /api/review/logs?since=N&limit=M&repo=R&pr=P&worker=W
  *
  * Incremental log tail for the console. The client keeps the `nextSince` cursor
  * from the previous response and polls with it, so each request carries only new
@@ -966,8 +1200,11 @@ function handleReviewLogs(req, res) {
       ? Math.min(requested, 1000)
       : 500;
 
-  // Unfiltered unless asked: ?pr=<n> and ?worker=<n> narrow to one review.
+  // Unfiltered unless asked: ?repo=<name>, ?pr=<n> and ?worker=<n> narrow to one
+  // review. ?pr= alone matches by number in every repository, as it did before
+  // there were several.
   const filter = {
+    repo: url.searchParams.get('repo') || undefined,
     pr: Number(url.searchParams.get('pr')) || undefined,
     worker: Number(url.searchParams.get('worker')) || undefined,
   };
@@ -1008,7 +1245,7 @@ function handleReviewLogsClear(req, res) {
 
 /**
  * GET /api/review/status — state of the most recent or current run, including
- * `mode` and `prNumbers` so the console can show what is being reviewed.
+ * `mode` and `prs` so the console can show what is being reviewed.
  */
 function handleReviewStatus(req, res) {
   sendJSON(res, 200, {
@@ -1128,6 +1365,7 @@ const ROUTES = {
   'POST /api/mcp/refresh': handleMcpRefresh,
   'POST /api/mcp/test': handleMcpTest,
   'POST /api/mcp/disconnect': handleMcpDisconnect,
+  'POST /api/review/resolve': handleReviewResolve,
   'POST /api/review/trigger': handleReviewTrigger,
   'GET /api/review/status': handleReviewStatus,
   'GET /api/review/logs': handleReviewLogs,

@@ -15,6 +15,8 @@ const mcpConnection = require('./mcpConnection');
 const bobCredits = require('./bobCredits');
 const agents = require('../agents');
 const spend = require('./spend');
+const profiles = require('../profiles');
+const { GITHUB_OWNER, GITHUB_REPOS } = require('../constants');
 
 /**
  * Status vocabulary, matching Carbon's IconIndicator `kind` values so the UI can
@@ -255,11 +257,11 @@ async function checkCarbonMcp() {
 /**
  * Check the GitHub token by calling an endpoint that reports its own limits.
  *
- * Probes the target repository so the check fails for the same reasons a review
- * would: an unauthorised org (SAML SSO), an invisible repository, or a role too
- * low to apply the review label. /rate_limit is read afterwards only for the
- * number shown on the tile — it is exempt from rate limiting, so polling it
- * cannot consume the budget it reports.
+ * Probes every repository in GITHUB_REPOS so the check fails for the same
+ * reasons a review would: an unauthorised org (SAML SSO), an invisible
+ * repository, or a role too low to apply the review label. /rate_limit is read
+ * afterwards only for the number shown on the tile — it is exempt from rate
+ * limiting, so polling it cannot consume the budget it reports.
  *
  * @returns {Promise<Object>}
  */
@@ -279,8 +281,7 @@ async function checkGitHub() {
     };
   }
 
-  const owner = process.env.GITHUB_AI_AGENT_OWNER || 'carbon-design-system';
-  const repo = process.env.GITHUB_AI_AGENT_REPO || 'carbon';
+  const owner = GITHUB_OWNER;
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/vnd.github+json',
@@ -295,144 +296,176 @@ async function checkGitHub() {
     );
   };
 
-  try {
-    // Probe the TARGET REPOSITORY, not just /rate_limit.
-    //
-    // /rate_limit is user-scoped: it answers 200 for a token that cannot touch
-    // the repository at all. Under SAML SSO enforcement — which
-    // carbon-design-system has — an unauthorised token passes /rate_limit and
-    // then 403s on the very first real call, so probing it alone reported a
-    // healthy tile while every review failed. Verified against a live token:
-    // /rate_limit → 200, /repos/carbon-design-system/carbon → 403.
-    //
-    // This call also returns the viewer's `permissions`, which is the only way to
-    // detect the Triage requirement before a run hits it.
-    const repoRes = await get(`${apiBase}/repos/${owner}/${repo}`);
+  const failed = (repo, reason, hint) => ({
+    id: 'github',
+    label: 'GitHub',
+    status: FAILED,
+    detail: `${repo}: ${reason}`,
+    hint,
+  });
 
-    if (repoRes.status === 401) {
-      return {
-        id: 'github',
-        label: 'GitHub',
-        status: FAILED,
-        detail: 'Token rejected',
-        hint: 'GITHUB_AI_AGENT_TOKEN is invalid, revoked or expired.',
-      };
-    }
-
-    if (repoRes.status === 403) {
-      let message = '';
-      try {
-        message = (await repoRes.json()).message || '';
-      } catch (_) {
-        /* body may not be JSON */
-      }
-
-      // GitHub returns this verbatim, and it is genuinely actionable: the token
-      // exists and works elsewhere, it simply has not been authorised for the org.
-      if (/SAML|SSO/i.test(message)) {
-        return {
-          id: 'github',
-          label: 'GitHub',
-          status: FAILED,
-          detail: `Not SSO-authorized for ${owner}`,
-          hint:
-            'The token is valid but has not been granted access to this ' +
-            `organization. Authorize it at https://github.com/orgs/${owner}/sso ` +
-            '(or Settings → Developer settings → your token → Configure SSO).',
-        };
-      }
-
-      return {
-        id: 'github',
-        label: 'GitHub',
-        status: FAILED,
-        detail: 'Access forbidden',
-        hint: message || `The token cannot access ${owner}/${repo}.`,
-      };
-    }
-
-    if (repoRes.status === 404) {
-      return {
-        id: 'github',
-        label: 'GitHub',
-        status: FAILED,
-        detail: `${owner}/${repo} not found`,
-        hint:
-          'Either the repository does not exist or the token cannot see it. A ' +
-          'fine-grained token must list this repository under Repository access.',
-      };
-    }
-
-    if (!repoRes.ok) {
-      return {
-        id: 'github',
-        label: 'GitHub',
-        status: FAILED,
-        detail: `HTTP ${repoRes.status}`,
-        hint: 'GitHub API returned an unexpected status.',
-      };
-    }
-
-    const repoBody = await repoRes.json();
-
-    // Labelling a PR needs Triage or higher, and no token scope grants it — the
-    // account itself must hold the role. Worth catching here: addReviewedLabel
-    // throws, and because the label is the de-duplication key, a run without it
-    // re-reviews the same PRs and posts duplicate comments every time.
-    const perms = repoBody.permissions || {};
-    const canLabel = !!(
-      perms.push ||
-      perms.triage ||
-      perms.maintain ||
-      perms.admin
-    );
-
-    // Reported second and non-fatally: it is a number for the tile, not a gate,
-    // and /rate_limit is itself exempt from rate limiting.
-    let quota = '';
-    let low = false;
+  // One repository, as one tile-shaped result: a failure, or `repoBody` on success.
+  const probe = async (repo) => {
     try {
-      const limitRes = await get(`${apiBase}/rate_limit`);
-      if (limitRes.ok) {
-        const core = (await limitRes.json()).resources?.core;
-        if (core) {
-          quota = `${core.remaining}/${core.limit} API calls remaining`;
-          low = core.remaining < 100;
-        }
+      // Probe the TARGET REPOSITORY, not just /rate_limit.
+      //
+      // /rate_limit is user-scoped: it answers 200 for a token that cannot touch
+      // the repository at all. Under SAML SSO enforcement — which
+      // carbon-design-system has — an unauthorised token passes /rate_limit and
+      // then 403s on the very first real call, so probing it alone reported a
+      // healthy tile while every review failed. Verified against a live token:
+      // /rate_limit → 200, /repos/carbon-design-system/carbon → 403.
+      //
+      // This call also returns the viewer's `permissions`, which is the only way to
+      // detect the Triage requirement before a run hits it.
+      const repoRes = await get(`${apiBase}/repos/${owner}/${repo}`);
+
+      if (repoRes.status === 401) {
+        return failed(
+          repo,
+          'token rejected',
+          'GITHUB_AI_AGENT_TOKEN is invalid, revoked or expired.'
+        );
       }
-    } catch (_) {
-      /* quota is decoration; never fail the check on it */
-    }
 
-    if (!canLabel) {
-      return {
-        id: 'github',
-        label: 'GitHub',
-        status: WARNING,
-        detail: `Read-only on ${owner}/${repo}`,
-        hint:
-          'The token can read but not apply the review label (needs Triage or ' +
-          'higher). Reviews will fail at the labelling step, and because the ' +
-          'label marks a PR as done, the same PRs get reviewed again next run.',
-      };
-    }
+      if (repoRes.status === 403) {
+        let message = '';
+        try {
+          message = (await repoRes.json()).message || '';
+        } catch (_) {
+          /* body may not be JSON */
+        }
 
+        // GitHub returns this verbatim, and it is genuinely actionable: the token
+        // exists and works elsewhere, it simply has not been authorised for the org.
+        if (/SAML|SSO/i.test(message)) {
+          return failed(
+            repo,
+            `not SSO-authorized for ${owner}`,
+            'The token is valid but has not been granted access to this ' +
+              `organization. Authorize it at https://github.com/orgs/${owner}/sso ` +
+              '(or Settings → Developer settings → your token → Configure SSO).'
+          );
+        }
+
+        return failed(
+          repo,
+          'access forbidden',
+          message || `The token cannot access ${owner}/${repo}.`
+        );
+      }
+
+      if (repoRes.status === 404) {
+        return failed(
+          repo,
+          '404 (token cannot see this repository)',
+          'Either the repository does not exist or the token cannot see it. A ' +
+            'fine-grained token must list this repository under Repository access.'
+        );
+      }
+
+      if (!repoRes.ok) {
+        return failed(
+          repo,
+          `HTTP ${repoRes.status}`,
+          'GitHub API returned an unexpected status.'
+        );
+      }
+
+      return { repoBody: await repoRes.json() };
+    } catch (error) {
+      return failed(repo, 'unreachable', error.message);
+    }
+  };
+
+  const probed = await Promise.all(GITHUB_REPOS.map(probe));
+  // The first failure in list order, so the tile does not change with timing.
+  const firstFailure = probed.find((p) => !p.repoBody);
+  if (firstFailure) return firstFailure;
+
+  // Labelling a PR needs Triage or higher, and no token scope grants it — the
+  // account itself must hold the role. Worth catching here: addReviewedLabel
+  // throws, and because the label is the de-duplication key, a run without it
+  // re-reviews the same PRs and posts duplicate comments every time.
+  const readOnly = GITHUB_REPOS.find((_, i) => {
+    const perms = probed[i].repoBody.permissions || {};
+    return !(perms.push || perms.triage || perms.maintain || perms.admin);
+  });
+
+  // Reported second and non-fatally: it is a number for the tile, not a gate,
+  // and /rate_limit is itself exempt from rate limiting.
+  let quota = '';
+  let low = false;
+  try {
+    const limitRes = await get(`${apiBase}/rate_limit`);
+    if (limitRes.ok) {
+      const core = (await limitRes.json()).resources?.core;
+      if (core) {
+        quota = `${core.remaining}/${core.limit} API calls remaining`;
+        low = core.remaining < 100;
+      }
+    }
+  } catch (_) {
+    /* quota is decoration; never fail the check on it */
+  }
+
+  if (readOnly) {
     return {
       id: 'github',
       label: 'GitHub',
-      status: low ? WARNING : OK,
-      detail: quota || `Connected to ${owner}/${repo}`,
-      hint: `Monitoring ${owner}/${repo}${quota ? '' : ' — quota unavailable'}`,
-    };
-  } catch (error) {
-    return {
-      id: 'github',
-      label: 'GitHub',
-      status: FAILED,
-      detail: 'Unreachable',
-      hint: error.message,
+      status: WARNING,
+      detail: `Read-only on ${owner}/${readOnly}`,
+      hint:
+        'The token can read but not apply the review label (needs Triage or ' +
+        'higher). Reviews will fail at the labelling step, and because the ' +
+        'label marks a PR as done, the same PRs get reviewed again next run.',
     };
   }
+
+  return {
+    id: 'github',
+    label: 'GitHub',
+    status: low ? WARNING : OK,
+    detail:
+      quota ||
+      `Connected to ${GITHUB_REPOS.map((r) => `${owner}/${r}`).join(', ')}`,
+    hint: `Monitoring ${GITHUB_REPOS.join(', ')}${quota ? '' : ' — quota unavailable'}`,
+  };
+}
+
+/**
+ * Check that every configured repository's review profile can run with the
+ * configured agent, so a bad combination shows on the console at boot rather
+ * than when the first review is refused.
+ *
+ * @returns {Promise<Object>}
+ */
+async function checkProfiles() {
+  const id = 'profiles';
+  const label = 'Review profiles';
+  try {
+    profiles.checkRepos(
+      GITHUB_REPOS,
+      process.env.GITHUB_AI_AGENT_CLI || agents.DEFAULT_ID
+    );
+  } catch (error) {
+    return {
+      id,
+      label,
+      status: FAILED,
+      detail: error.message,
+      hint: 'Reviews will not start until GITHUB_AI_AGENT_REPOS and GITHUB_AI_AGENT_CLI agree.',
+    };
+  }
+  return {
+    id,
+    label,
+    status: OK,
+    detail: GITHUB_REPOS.map((r) => `${r}: ${profiles.forRepo(r).id}`).join(
+      ', '
+    ),
+    hint: null,
+  };
 }
 
 /**
@@ -670,6 +703,7 @@ async function runAll() {
   const bobcoins = agents.resolve().costUnit === 'bobcoins';
   const runners = [
     ['agent', checkAgent],
+    ['profiles', checkProfiles],
     bobcoins ? ['bobcoins', checkBobCredits] : ['spend', checkSpend],
     ['carbon-mcp', checkCarbonMcp],
     ['github', checkGitHub],
@@ -706,6 +740,7 @@ async function runAll() {
 module.exports = {
   runAll,
   checkAgent,
+  checkProfiles,
   checkBobCredits,
   checkSpend,
   checkCarbonMcp,

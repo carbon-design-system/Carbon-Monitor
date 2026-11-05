@@ -400,7 +400,12 @@ async function main() {
     const { second } = server.value;
     assert.strictEqual(second.status, 409);
     assert.strictEqual(second.json.success, false);
-    assert.deepStrictEqual(second.json.prNumbers, five);
+    assert.deepStrictEqual(
+      second.json.prs,
+      five.map((number) => ({ repo: 'carbon', number }))
+    );
+    assert(second.json.message.includes('carbon#1, carbon#2'));
+    assert(!('prNumbers' in second.json));
     assert(/is already running/.test(second.json.message));
     assert(/one review session at a time/.test(second.json.message));
   });
