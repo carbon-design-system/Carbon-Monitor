@@ -55,7 +55,7 @@
  * 44. --pr and GITHUB_AI_AGENT_PR_NUMBER take 1204 or repo#1204 and reject a repo not listed
  * 45. Auto mode queues every carbon PR before any carbon-ai-chat PR, capped per repo
  * 46. An explicit prs list in caic-then-carbon order is reviewed carbon first
- * 47. carbon#1204 and carbon-ai-chat#1204 post to their own repos
+ * 47. carbon#1204 and carbon-ai-chat#1204 post to their own repos with distinct log tags
  * 48. Run and per-PR events, the ledger and the digest name the right repositories
  * 49. Typed numbers resolve with a cap of 2: 2 + 2 succeed, 3 in one repo fail before any review
  * 50. The same final cap holds for prs; duplicates collapse before it is counted
@@ -1212,20 +1212,37 @@ async function main() {
     fixtures: fx(1204),
   });
 
-  await test('carbon#1204 and carbon-ai-chat#1204 post to their own repos', () => {
+  await test('carbon#1204 and carbon-ai-chat#1204 post to their own repos with distinct log tags', () => {
     for (const key of ['carbon#1204', 'carbon-ai-chat#1204']) {
       assertEqual(same.comments(key).length, 1, `summary on ${key}`);
       assertEqual(same.reviews(key).length, 1, `review on ${key}`);
       assertEqual(same.labels(key).length, 1, `label on ${key}`);
     }
     assertEqual(same.comments(1204).length, 2, 'a bare number matches both');
-    for (const repo of ['carbon', 'carbon-ai-chat']) {
+    const tags = new Set(
+      texts(same)
+        .map((t) => /^\[agent \d+ [^\]]+\]/.exec(t))
+        .filter(Boolean)
+        .map((m) => m[0])
+    );
+    assertEqual(tags.size, 2, `two tags, got ${[...tags]}`);
+    for (const tag of [
+      /^\[agent \d carbon#1204\]$/,
+      /^\[agent \d carbon-ai-chat#1204\]$/,
+    ]) {
       assert(
-        texts(same).some((t) => t.includes(`Reviewing ${repo}#1204:`)),
+        [...tags].some((t) => tag.test(t)),
+        `${tag} in ${[...tags]}`
+      );
+    }
+    for (const repo of ['carbon', 'carbon-ai-chat']) {
+      const own = same.lines.filter((l) => l.repo === repo);
+      assert(
+        own.some((l) => l.text.includes(`Reviewing ${repo}#1204:`)),
         repo
       );
       assert(
-        texts(same).some((t) => t.includes(`${repo}#1204 review complete`)),
+        own.some((l) => l.text.includes(`${repo}#1204 review complete`)),
         repo
       );
     }
