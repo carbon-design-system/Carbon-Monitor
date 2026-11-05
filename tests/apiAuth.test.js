@@ -180,6 +180,79 @@ async function main() {
     assert(res.statusCode === 404, `expected 404, got ${res.statusCode}`);
   });
 
+  await test('the review routes are behind the gate, and the resolve route is one of them', async () => {
+    const send = async (method, url, headers) => {
+      const res = fakeRes();
+      const { Readable } = require('stream');
+      const req = Readable.from(method === 'POST' ? ['{}'] : []);
+      Object.assign(req, {
+        method,
+        url,
+        headers: { host: 'localhost', ...headers },
+      });
+      await handleRequest(req, res);
+      return res;
+    };
+    const routes = [
+      ['POST', '/api/review/resolve'],
+      ['POST', '/api/review/trigger'],
+      ['GET', '/api/review/status'],
+      ['GET', '/api/review/logs?repo=carbon&pr=1'],
+    ];
+    for (const [method, url] of routes) {
+      const anonymous = await send(method, url, {});
+      assert(
+        anonymous.statusCode === 401,
+        `${method} ${url}: ${anonymous.statusCode}`
+      );
+      const wrong = await send(method, url, { authorization: 'Bearer nope' });
+      assert(
+        wrong.statusCode === 401,
+        `${method} ${url} wrong token: ${wrong.statusCode}`
+      );
+    }
+    // Past the gate the resolve route answers for itself: {} names no numbers.
+    const bearer = await send('POST', '/api/review/resolve', {
+      authorization: 'Bearer supersecret',
+    });
+    assert(bearer.statusCode === 400, `bearer: ${bearer.statusCode}`);
+  });
+
+  await test('a signed-in session reaches the resolve route', async () => {
+    const { Readable } = require('stream');
+    const login = fakeRes();
+    login.headers = {};
+    login.setHeader = (k, v) => {
+      login.headers[k] = v;
+    };
+    const loginReq = Readable.from([
+      JSON.stringify({
+        username: 'operator',
+        password: 'correct-horse-battery',
+      }),
+    ]);
+    Object.assign(loginReq, {
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: { host: 'localhost', 'x-forwarded-for': '203.0.113.50' },
+    });
+    await handleRequest(loginReq, login);
+    assert(login.statusCode === 200, `login: ${login.statusCode}`);
+    const setCookie = [].concat(login.headers['Set-Cookie'] || []);
+    assert(setCookie.length > 0, 'login must set a session cookie');
+    const cookie = setCookie.map((c) => c.split(';')[0]).join('; ');
+
+    const res = fakeRes();
+    const req = Readable.from(['{}']);
+    Object.assign(req, {
+      method: 'POST',
+      url: '/api/review/resolve',
+      headers: { host: 'localhost', cookie },
+    });
+    await handleRequest(req, res);
+    assert(res.statusCode === 400, `session: ${res.statusCode}`);
+  });
+
   const { Readable } = require('stream');
   const attempt = async (password, forwarded) => {
     const res = fakeRes();

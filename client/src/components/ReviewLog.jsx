@@ -12,20 +12,23 @@ import {
 import { Download } from '@carbon/icons-react';
 import { api } from '../api';
 import AboutAi from './AboutAi';
+import RepoTag from './RepoTag';
+import { keyOf } from '../utils/prRefs';
 
 /** How often to pull new output while a review is running. */
 const TAIL_INTERVAL_MS = 2000;
 
 // ── Per-PR progress ───────────────────────────────────────────────────────────
-// A multi-PR run reviews its PRs one after another, but the server exposes only a
+// A multi-PR run reviews its PRs in a batch, but the server exposes only a
 // single `running` flag — no per-PR index. The per-PR view is therefore
 // reconstructed from the live log, which already prints a start marker
-// ("📌 Reviewing PR #123: title") and a completion marker
-// ("✅ PR #123 review complete") for each PR. Lines also carry an "[agent 1 #123] "
-// prefix and `worker` / `pr` fields; the regexes are unanchored so the prefix is
-// harmless, and the `pr` field is preferred when present.
-const PR_START_RE = /Reviewing PR #(\d+):\s*(.*)/;
-const PR_DONE_RE = /PR #(\d+) review complete/;
+// ("📌 Reviewing carbon#123: title") and a completion marker
+// ("✅ carbon#123 review complete") for each PR. Lines also carry an
+// "[agent 1 carbon#123] " prefix and `worker` / `repo` / `pr` fields; the regexes
+// are unanchored so the prefix is harmless, and the fields are preferred when
+// present. Keep the wording in step with src/index.js.
+const PR_START_RE = /Reviewing ([A-Za-z0-9._-]+)#(\d+):\s*(.*)/;
+const PR_DONE_RE = /([A-Za-z0-9._-]+)#(\d+) review complete/;
 const ALL_OUTPUT = { id: 'all', label: 'All output' };
 
 // Derived status → Carbon IconIndicator `kind` + a human label. Kinds are
@@ -40,54 +43,72 @@ const PR_STATUS = {
 /**
  * Reconstruct per-PR status from the log lines.
  *
- * @param {Array}  lines     - review log lines ({ text })
- * @param {number[]|null} prNumbers - the run's explicit PR targets, if any
+ * @param {Array}  lines     - review log lines ({ text, repo, pr })
+ * @param {Array<{repo:string, number:number}>|null} prs - the run's explicit
+ *   PR targets, if any
  * @param {boolean} running  - whether the run is still in flight
- * @returns {Array<{number:number, title:string, status:string}>}
+ * @returns {Array<{repo:string, number:number, title:string, status:string}>}
  */
-function parsePrProgress(lines, prNumbers, running) {
-  const started = new Map(); // number -> { title, order }
+function parsePrProgress(lines, prs, running) {
+  const started = new Map(); // key -> { repo, number, title, order }
   const done = new Set();
   let order = 0;
+
+  // Two repos can share a number, so identity is repo + number. The line's own
+  // fields win over the text, as `pr` always did.
+  const refOf = (line, match) => ({
+    repo: line.repo ?? match[1],
+    number: line.pr ?? Number(match[2]),
+  });
 
   for (const line of lines) {
     const text = line.text || '';
     const start = PR_START_RE.exec(text);
     if (start) {
-      const n = line.pr ?? Number(start[1]);
-      if (!started.has(n))
-        started.set(n, { title: (start[2] || '').trim(), order: order++ });
+      const ref = refOf(line, start);
+      const key = keyOf(ref);
+      if (!started.has(key))
+        started.set(key, {
+          ...ref,
+          title: (start[3] || '').trim(),
+          order: order++,
+        });
       continue;
     }
     const fin = PR_DONE_RE.exec(text);
     if (fin) {
-      done.add(line.pr ?? Number(fin[1]));
+      done.add(keyOf(refOf(line, fin)));
       continue;
     }
   }
 
-  const statusFor = (n) => {
-    if (done.has(n)) return 'succeeded';
-    if (started.has(n)) return running ? 'in-progress' : 'failed';
+  const statusFor = (key) => {
+    if (done.has(key)) return 'succeeded';
+    if (started.has(key)) return running ? 'in-progress' : 'failed';
     return 'not-started';
   };
 
   // Explicit runs list every target in the order given, so queued PRs show before
   // the agent reaches them. Auto runs only know a PR once the agent names it in
   // the log, so those list in the order they appear.
-  if (prNumbers && prNumbers.length) {
-    return prNumbers.map((n) => ({
-      number: n,
-      title: started.get(n)?.title || '',
-      status: statusFor(n),
-    }));
+  if (prs && prs.length) {
+    return prs.map((ref) => {
+      const key = keyOf(ref);
+      return {
+        repo: ref.repo,
+        number: ref.number,
+        title: started.get(key)?.title || '',
+        status: statusFor(key),
+      };
+    });
   }
   return [...started.entries()]
     .sort((a, b) => a[1].order - b[1].order)
-    .map(([n, meta]) => ({
-      number: n,
+    .map(([key, meta]) => ({
+      repo: meta.repo,
+      number: meta.number,
       title: meta.title,
-      status: statusFor(n),
+      status: statusFor(key),
     }));
 }
 
@@ -113,9 +134,9 @@ function ReviewLog({
   running,
   startedAt,
   onVisibilityChange,
-  prNumbers,
+  prs,
   owner,
-  repo,
+  repos,
 }) {
   const [lines, setLines] = useState([]);
   const [filter, setFilter] = useState(ALL_OUTPUT);
@@ -196,7 +217,7 @@ function ReviewLog({
 
   // Rebuilt each render from the current lines — cheap, and it guarantees the
   // per-PR view can never disagree with the log it is derived from.
-  const prProgress = parsePrProgress(lines, prNumbers, running);
+  const prProgress = parsePrProgress(lines, prs, running);
 
   // Filter choices come from the lines themselves: one entry per agent slot seen
   // so far. Offered only once a second slot has logged, so a single review looks
@@ -408,7 +429,7 @@ function ReviewLog({
           {prProgress.map((pr) => {
             const meta = PR_STATUS[pr.status] || PR_STATUS['not-started'];
             return (
-              <li className="cm-pr-progress__row" key={pr.number}>
+              <li className="cm-pr-progress__row" key={keyOf(pr)}>
                 {pr.status === 'in-progress' ? (
                   <InlineLoading
                     className="cm-pr-progress__spinner"
@@ -422,9 +443,10 @@ function ReviewLog({
                     size={16}
                   />
                 )}
-                {owner && repo ? (
+                <RepoTag repo={pr.repo} repos={repos} />
+                {owner ? (
                   <Link
-                    href={`https://github.com/${owner}/${repo}/pull/${pr.number}`}
+                    href={`https://github.com/${owner}/${pr.repo}/pull/${pr.number}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     size="sm"

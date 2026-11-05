@@ -112,7 +112,7 @@ module.exports = {
     return env;
   },
 
-  async prepareBundle(bundleDir, { rules, skillSource }) {
+  async prepareBundle(bundleDir, { rules, skillSource, extraSkills = [] }) {
     // Bob v2 reads BOB_API_KEY from the environment (renamed from BOBSHELL_API_KEY in v1).
     // 0600, not the 0644 a bare writeFile would produce: this is the only file
     // in the bundle that carries a live credential, and it must not be the most
@@ -134,6 +134,14 @@ module.exports = {
       skillSource,
       path.join(bundleDir, '.bob', 'skills', 'carbon-builder')
     );
+
+    // Profile skills (caic-pr-review) are copied beside carbon-builder for Bob to discover
+    for (const { name, source } of extraSkills) {
+      await bundle().copySkill(
+        source,
+        path.join(bundleDir, '.bob', 'skills', name)
+      );
+    }
   },
 
   async seedHome(bundleDir) {

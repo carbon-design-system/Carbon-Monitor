@@ -13,6 +13,7 @@ import { GaugeChart } from '@carbon/charts-react';
 // than the PNG so the mark stays sharp at any size and on any density.
 import bobMark from '../assets/bob.svg';
 import claudeMark from '../assets/agents/claude.svg';
+import RepoTag from './RepoTag';
 
 /**
  * Bobcoin budget and burn-down, or Claude's dollar spend.
@@ -563,6 +564,24 @@ function SpendTile({ balance, check }) {
 }
 
 /**
+ * The repository a ledger entry was recorded against, as a tag. The API sends
+ * `owner/name`, so the owner is dropped; ledger lines from before repos were
+ * recorded have none and show a dash.
+ */
+function EntryRepo({ repo, repos }) {
+  const name = repo ? repo.split('/').pop() : '';
+  if (!name) {
+    return (
+      <>
+        <span aria-hidden="true">—</span>
+        <span className="cds--visually-hidden">Repository not recorded</span>
+      </>
+    );
+  }
+  return <RepoTag repo={name} repos={repos} />;
+}
+
+/**
  * The per-review ledger.
  *
  * "Remaining after" is the depletion story told plainly: read down the column
@@ -570,7 +589,7 @@ function SpendTile({ balance, check }) {
  * where a balance snapshot succeeded, so nulls are expected and shown as such
  * rather than as zeros.
  */
-function LedgerTile({ entries, hasCredits, summary, balance }) {
+function LedgerTile({ entries, hasCredits, summary, balance, repos }) {
   const rows = [...entries]
     .sort((a, b) => new Date(b.at) - new Date(a.at))
     .slice(0, 10);
@@ -646,6 +665,7 @@ function LedgerTile({ entries, hasCredits, summary, balance }) {
         >
           <StructuredListHead>
             <StructuredListRow head>
+              <StructuredListCell head>Repository</StructuredListCell>
               <StructuredListCell head>Pull request</StructuredListCell>
               <StructuredListCell head>Finished</StructuredListCell>
               <StructuredListCell head>Spent</StructuredListCell>
@@ -659,6 +679,9 @@ function LedgerTile({ entries, hasCredits, summary, balance }) {
           <StructuredListBody>
             {rows.map((entry) => (
               <StructuredListRow key={entry.correlationId || entry.at}>
+                <StructuredListCell noWrap>
+                  <EntryRepo repo={entry.repo} repos={repos} />
+                </StructuredListCell>
                 <StructuredListCell noWrap>
                   {entry.prNumber ? `#${entry.prNumber}` : 'All open PRs'}
                 </StructuredListCell>
@@ -753,7 +776,7 @@ function BobcoinsPanel({ credits, check }) {
  * all" apart from "it has accounting and no reviews have run yet" — two states
  * that look identical from an empty list.
  */
-function BobcoinsLedger({ credits, history }) {
+function BobcoinsLedger({ credits, history, repos }) {
   if (!credits) {
     return (
       <Tile>
@@ -771,6 +794,7 @@ function BobcoinsLedger({ credits, history }) {
       hasCredits={Boolean(history)}
       summary={credits.summary}
       balance={credits.balance}
+      repos={repos}
     />
   );
 }

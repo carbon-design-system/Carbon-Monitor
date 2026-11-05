@@ -43,7 +43,7 @@ Each morning at 06:00 America/New_York, the reviewer selects up to 10 open, non-
 | Task · orchestrator               | `src/index.js` `reviewPRs`, `resolveReviewTargets`, `parsePrNumbers`, `recordReviewCost`, `cleanupBundle`                                                                            | keep      |                                                                                                                                              |
 | Task · work-item source           | `src/githubClient.js` `fetchReviewablePRs`, `fetchSinglePR`, `fetchPRFiles`                                                                                                          | modify    | Path filter in `fetchReviewablePRs` only; see section 4                                                                                      |
 | Task · done marker                | `addReviewedLabel`; `REVIEW_LABEL`, `SKIP_LABELS` in `src/constants.js`                                                                                                              | modify    | Append `'status: blocked'` to the hard-coded `SKIP_LABELS` array; the two existing entries stay. `REVIEW_LABEL` stays `AIReviewed`           |
-| Task · selection limits           | `src/constants.js` `MAX_PRS_PER_RUN`, `N_DAYS_SINCE_PR_CREATED`, `MAX_FILES_PER_PR`, `MAX_INPUT_TOKENS`                                                                              | configure | `GITHUB_AI_AGENT_MAX_PRS=10`, `GITHUB_AI_AGENT_DAYS_BACK=14`; the other two keep their defaults                                              |
+| Task · selection limits           | `src/constants.js` `MAX_PRS_PER_REPO`, `N_DAYS_SINCE_PR_CREATED`, `MAX_FILES_PER_PR`, `MAX_INPUT_TOKENS`                                                                             | configure | `GITHUB_AI_AGENT_MAX_PRS=10`, `GITHUB_AI_AGENT_DAYS_BACK=14`; the other two keep their defaults                                              |
 | Task · workspace                  | `src/reviewBundle.js` `buildReviewBundle`, `getWorkspaceRoot`; `src/reviewCoverage.js` `selectCoverage`                                                                              | keep      |                                                                                                                                              |
 | Task · prompt                     | `src/reviewPrompt.js` `buildReviewPrompt`, `estimateTokenUsage`                                                                                                                      | modify    | Category 1 also covers Carbon for IBM Products components; see section 5                                                                     |
 | Task · output contract and parser | `src/reviewParser.js` `parseReviewOutput`, `computeRecommendation`, `filterUnverifiedCarbonFindings`, `extractCarbonBuilderSkillReads`                                               | keep      | `looksCarbonSpecific` already matches `/ibm-products/`                                                                                       |
@@ -87,7 +87,7 @@ none
 
 ```
 GITHUB_AI_AGENT_OWNER=carbon-design-system
-GITHUB_AI_AGENT_REPO=ibm-products
+GITHUB_AI_AGENT_REPOS=ibm-products
 GITHUB_AI_AGENT_MAX_PRS=10
 GITHUB_AI_AGENT_DAYS_BACK=14
 GITHUB_AI_AGENT_REVIEW_LABEL=AIReviewed

@@ -34,9 +34,9 @@ function HelpGuide() {
           <h1 className="cm-help__title">Help &amp; usage guide</h1>
           <p className="cm-help__lede">
             Carbon Monitor runs an AI agent (IBM Bob or Claude) that reviews
-            open pull requests in the configured GitHub repository and posts its
-            findings back to GitHub. This guide walks through the screen. Each
-            lettered badge on the images matches a letter below it.
+            open pull requests in each configured GitHub repository and posts
+            its findings back to GitHub. This guide walks through the screen.
+            Each lettered badge on the images matches a letter below it.
           </p>
 
           {/* ── The main screen ─────────────────────────────────────────── */}
@@ -50,7 +50,7 @@ function HelpGuide() {
           <Accordion className="cm-help__accordion">
             <AccordionItem title="A — Pre-checks">
               <p>
-                Four tiles across the top. All must be green before a review can
+                Five tiles across the top. All must be green before a review can
                 run.
               </p>
               <ul className="cm-help__list">
@@ -60,14 +60,21 @@ function HelpGuide() {
                   is installed and has an API key.
                 </li>
                 <li>
+                  <strong>Review profiles</strong> — whether each listed
+                  repository&rsquo;s review profile can run with this agent. The
+                  carbon-ai-chat profile runs on Bob only, so this tile turns
+                  red if it is listed while the agent is Claude.
+                </li>
+                <li>
                   <strong>Carbon MCP</strong> — the Carbon docs and tools the
                   agent checks its facts against. Green means connected, with
                   its token refreshing on its own.
                 </li>
                 <li>
-                  <strong>GitHub</strong> — access to the repository. Green
-                  means the token works and can read and label pull requests. It
-                  also shows how many API calls are left for the hour.
+                  <strong>GitHub</strong> — access to every listed repository.
+                  Green means the token works and can read and label pull
+                  requests in each one; red names the repository it cannot read.
+                  It also shows how many API calls are left for the hour.
                 </li>
                 <li>
                   <strong>ElasticDB</strong> — where run telemetry is stored
@@ -91,22 +98,35 @@ function HelpGuide() {
                   the most recent run.
                 </li>
                 <li>
-                  <strong>Target</strong> — what a blank run reviews: up to 10
-                  pull requests opened in the last 21 days.
+                  <strong>Target</strong> — what a blank run reviews, as the
+                  screen shows it: up to the configured number of pull requests
+                  per repository, opened within the configured number of days.
+                </li>
+                <li>
+                  <strong>Repos</strong> — the repositories this app reviews,
+                  shown as tags. A batch works through them in that order, so
+                  when the balance runs low the last repository is the one
+                  skipped. The same tag marks each pull request in the Reviewing
+                  and Last run rows.
                 </li>
                 <li>
                   <strong>Pull request numbers</strong> — type specific PR
                   numbers, comma-separated, to review only those.
                 </li>
                 <li>
-                  <strong>Review latest 10 PRs</strong> — reviews recent open
-                  PRs and ignores the box.
+                  <strong>Review latest PRs</strong> — reviews recent open PRs
+                  and ignores the box.
                 </li>
                 <li>
                   <strong>Review listed PRs</strong> — reviews only the numbers
                   you typed (enabled once you type one).
                 </li>
               </ul>
+              <p>
+                Type numbers only. If a number exists in more than one
+                repository, a dialog asks which one. To name the repository
+                yourself, type it as <code>carbon#1204</code>.
+              </p>
               <p>
                 Up to REVIEW_CONCURRENCY reviews run inside one batch (default
                 2). A second batch waits for the first to finish.
@@ -131,7 +151,11 @@ function HelpGuide() {
             </AccordionItem>
 
             <AccordionItem title="E — Spend &amp; recent reviews">
-              <p>What past reviews cost, plus a per-pull-request history.</p>
+              <p>
+                What past reviews cost, plus a per-pull-request history. The
+                Repository column shows which repository each review belonged
+                to.
+              </p>
             </AccordionItem>
 
             <AccordionItem title="F — Settings">
@@ -284,10 +308,11 @@ function HelpGuide() {
             <AccordionItem title="M — Target">
               <p>
                 What each run reviews — the same set as{' '}
-                <strong>Review latest 10 PRs</strong> on the Operations screen:
-                up to 10 pull requests opened in the last 21 days. Shown
-                read-only; it follows the deployment&rsquo;s configured limits
-                and is not changed here.
+                <strong>Review latest PRs</strong> on the Operations screen: up
+                to the configured number of pull requests per repository, opened
+                within the configured number of days. Shown read-only; it
+                follows the deployment&rsquo;s configured limits and is not
+                changed here.
               </p>
             </AccordionItem>
 

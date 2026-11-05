@@ -8,6 +8,12 @@ comments and labels. Adding the `AIReviewed` label needs the **Triage role or
 higher** on the repository. That label is also the de-duplication key, so an
 account that can comment but not label re-reviews the same PR on every run.
 
+`GITHUB_AI_AGENT_REPOS` can list more than one repository, such as `carbon` and
+`carbon-ai-chat`. The account needs Triage on **every** listed repository, so
+`AIReviewed` can be added in each, and the token must be able to reach each one.
+The console's GitHub tile probes every listed repository and fails, naming the
+one, when the token cannot read it.
+
 ## GitHub token
 
 The agent makes ten distinct API calls. Six are reads:
@@ -34,7 +40,8 @@ Four write:
 
 **Adding a label needs the Triage role or higher on the repository.** No token
 scope grants this on its own — the _account_ the token belongs to must hold that
-role on `carbon-design-system/carbon`.
+role on `carbon-design-system/carbon` and on every other repository in
+`GITHUB_AI_AGENT_REPOS`.
 
 It is not optional:
 
@@ -49,14 +56,14 @@ continues.
 
 ### Fine-grained token (recommended)
 
-| Setting           | Value                                                 |
-| ----------------- | ----------------------------------------------------- |
-| Resource owner    | `carbon-design-system`                                |
-| Repository access | `carbon` — plus any repo hosting linked parent issues |
-| **Pull requests** | Read and write                                        |
-| **Issues**        | Read and write                                        |
-| **Contents**      | Read                                                  |
-| **Metadata**      | Read (mandatory, selected automatically)              |
+| Setting           | Value                                                                              |
+| ----------------- | ---------------------------------------------------------------------------------- |
+| Resource owner    | `carbon-design-system`                                                             |
+| Repository access | every repo in `GITHUB_AI_AGENT_REPOS` — plus any repo hosting linked parent issues |
+| **Pull requests** | Read and write                                                                     |
+| **Issues**        | Read and write                                                                     |
+| **Contents**      | Read                                                                               |
+| **Metadata**      | Read (mandatory, selected automatically)                                           |
 
 _Issues_ write is needed for two reasons that are easy to miss: labels are an
 issue-level concept, and the PR summary comment is posted through the issues
@@ -69,7 +76,7 @@ failing.
 
 ### Classic token
 
-`public_repo` is sufficient: the target repository is public, and that scope
+`public_repo` is sufficient: the target repositories are public, and that scope
 grants write. Use full `repo` only when pointing at a private repository.
 
 Classic tokens are coarser — `public_repo` grants write access to _every_ public

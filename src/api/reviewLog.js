@@ -20,8 +20,9 @@
  * Batches are SERIALISED (handleReviewTrigger refuses a second with 409), but
  * the reviews inside one batch run side by side, so each line is tagged with the
  * review that wrote it. An AsyncLocalStorage store set around each review
- * carries { worker, pr }; the spawned child's stream handlers are created inside
- * it and inherit it. Lines written outside any review are tagged [batch].
+ * carries { worker, repo, pr }; the spawned child's stream handlers are
+ * created inside it and inherit it. Lines written outside any review are
+ * tagged [batch].
  *
  * Output still reaches the real stdout, with the same tags, so
  * `ibmcloud ce app logs` can tell two reviews apart.
@@ -29,7 +30,7 @@
 
 const { AsyncLocalStorage } = require('node:async_hooks');
 
-/** The review writing right now: { worker, pr }, or undefined at batch level. */
+/** The review writing right now: { worker, repo, pr }, or undefined at batch level. */
 const reviewContext = new AsyncLocalStorage();
 
 /** Lines retained. Bounded: a container runs for months. */
@@ -38,7 +39,7 @@ const MAX_LINES = Number(process.env.REVIEW_LOG_MAX_LINES || 2000);
 /** Longest single line kept, so one enormous dump cannot dominate memory. */
 const MAX_LINE_CHARS = 2000;
 
-/** Ring buffer of { seq, at, stream, text, worker?, pr? }. */
+/** Ring buffer of { seq, at, stream, text, worker?, repo?, pr? }. */
 let lines = [];
 
 /**
@@ -61,13 +62,13 @@ let currentRunId = null;
  *
  * @param {string} text
  * @param {string} [stream='stdout'] - 'stdout' | 'stderr'
- * @param {{worker: number, pr: number}} [ctx] - Defaults to the current review
+ * @param {{worker: number, repo: string, pr: number}} [ctx] - Defaults to the current review
  */
 function append(text, stream = 'stdout', ctx = reviewContext.getStore()) {
   const clean = String(text).replace(/\s+$/, '');
   if (!clean) return;
 
-  const tagged = `${ctx ? `[agent ${ctx.worker} #${ctx.pr}]` : '[batch]'} ${clean}`;
+  const tagged = `${ctx ? `[agent ${ctx.worker} ${ctx.repo}#${ctx.pr}]` : '[batch]'} ${clean}`;
   lines.push({
     seq: nextSeq++,
     at: new Date().toISOString(),
@@ -76,7 +77,7 @@ function append(text, stream = 'stdout', ctx = reviewContext.getStore()) {
       tagged.length > MAX_LINE_CHARS
         ? `${tagged.slice(0, MAX_LINE_CHARS)}…`
         : tagged,
-    ...(ctx ? { worker: ctx.worker, pr: ctx.pr } : {}),
+    ...(ctx ? { worker: ctx.worker, repo: ctx.repo, pr: ctx.pr } : {}),
   });
 
   // Trim from the front. The console reads forward by seq, so dropping the
@@ -95,11 +96,12 @@ function append(text, stream = 'stdout', ctx = reviewContext.getStore()) {
  */
 const partial = new Map();
 
-const tagOf = (ctx) => (ctx ? `[agent ${ctx.worker} #${ctx.pr}] ` : '[batch] ');
+const tagOf = (ctx) =>
+  ctx ? `[agent ${ctx.worker} ${ctx.repo}#${ctx.pr}] ` : '[batch] ';
 const tagged = (line, ctx) => (line.trim() ? `${tagOf(ctx)}${line}\n` : '\n');
 
 /**
- * Run `fn` as review `ctx` ({ worker, pr }): every line it writes is tagged.
+ * Run `fn` as review `ctx` ({ worker, repo, pr }): every line it writes is tagged.
  * When it settles, a fragment the review left unfinished is emitted into that
  * review's own sequence rather than waiting for the next batch-level flush.
  */
@@ -109,7 +111,10 @@ async function runWithContext(ctx, fn) {
   } finally {
     drain(
       (held) =>
-        held.ctx && held.ctx.worker === ctx.worker && held.ctx.pr === ctx.pr
+        held.ctx &&
+        held.ctx.worker === ctx.worker &&
+        held.ctx.repo === ctx.repo &&
+        held.ctx.pr === ctx.pr
     );
   }
 }
@@ -120,7 +125,7 @@ async function runWithContext(ctx, fn) {
  */
 function ingest(chunk, stream) {
   const ctx = reviewContext.getStore();
-  const key = `${stream}:${ctx ? `${ctx.worker}:${ctx.pr}` : 'batch'}`;
+  const key = `${stream}:${ctx ? `${ctx.worker}:${ctx.repo}#${ctx.pr}` : 'batch'}`;
   const held = partial.get(key) || { text: '', ctx, stream };
   const parts = (held.text + chunk).split('\n');
   held.text = parts.pop();
@@ -207,7 +212,8 @@ function stop() {
  *
  * @param {number} [since=0] - Highest seq the caller already has
  * @param {number} [limit=500] - Most lines to return in one response
- * @param {{pr?: number, worker?: number}} [filter] - Only lines of that review
+ * @param {{repo?: string, pr?: number, worker?: number}} [filter] - Only lines of that review;
+ *        a `pr` without a `repo` matches that number in every repo
  * @returns {Object} { lines, nextSince, runId, capturing, dropped }
  */
 function read(since = 0, limit = 500, filter = {}) {
@@ -215,6 +221,7 @@ function read(since = 0, limit = 500, filter = {}) {
   const fresh = lines.filter(
     (l) =>
       l.seq > from &&
+      (!filter.repo || l.repo === filter.repo) &&
       (!filter.pr || l.pr === filter.pr) &&
       (!filter.worker || l.worker === filter.worker)
   );

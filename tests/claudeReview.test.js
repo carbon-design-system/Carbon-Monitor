@@ -242,12 +242,13 @@ async function main() {
     assert.deepStrictEqual(budgeted.digest.results, [
       {
         prNumber: 1,
+        repo: 'carbon',
         prUrl: 'https://github.com/mock/mock/pull/1',
         skipped: true,
         reason: 'Claude budget at 5% (below 10% threshold)',
       },
     ]);
-    assert.ok(has(budgeted.lines, /PR #1 skipped — Claude budget at 5%/));
+    assert.ok(has(budgeted.lines, /carbon#1 skipped — Claude budget at 5%/));
   });
   await budgeted.cleanup();
 
@@ -314,7 +315,7 @@ async function main() {
     const result = partial.digest.results.find((r) => r.prNumber === 7);
     const digest = _buildPayload({
       startedAt: Date.now(),
-      repo: 'mock/mock',
+      repos: ['mock/mock'],
       results: [result],
     })
       .blocks.map((b) => b.text?.text || '')

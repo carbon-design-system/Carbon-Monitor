@@ -281,6 +281,11 @@ timer, so the token lapses.
    max-scale 1  ──►  exactly one writer of the rotating refresh token
 ```
 
+This is also why one app reviews every repository in `GITHUB_AI_AGENT_REPOS`
+instead of one app per repository: a second app would be a second writer on the
+same IBMid refresh-token chain. The deployment is still one instance, one batch
+at a time and one budget; only the list of repositories grew.
+
 ### 4.4 The manual fallback
 
 The console also accepts a pasted bearer token and `X-MCP-Session`, kept behind
@@ -388,12 +393,15 @@ end.
         ▼
   reviewPRs()                                    src/index.js
         │
-        ├─► GitHub: select open PRs, fetch changed files and patches + linked issue
+        ├─► GitHub: select open PRs in each listed repository (list order), resolve
+        │      typed numbers to repositories (src/prResolver.js), fetch changed files
+        │      and patches + linked issue
         │
         ├─► buildReviewBundle()                  src/reviewBundle.js
         │      creates  $BOB_WORKSPACE_ROOT/<owner>__<repo>__pull-N-XXXX/
         │      writes   pr.json · files.json · diff.patch · PR_REVIEW_REQUEST.md
-        │               + the agent's rules and skill (.bob/ or CLAUDE.md and .claude/)
+        │               + the agent's rules and skill (.bob/ or CLAUDE.md and .claude/),
+        │                 and the repository's profile skill (caic: caic-pr-review)
         │
         ├─► runAgent()                           src/agentRunner.js → src/agents/<agent>.js
         │      bob run --trust --accept-license [--team-id …] "<prompt>"
@@ -666,7 +674,11 @@ behaviour — force a refresh using the stored OAuth grant.
 ```
 src/
 ├── index.js                  review orchestration (also the CLI entrypoint)
-├── constants.js              env-driven defaults: owner, repo, label, limits
+├── constants.js              env-driven defaults: owner, repos, label, limits
+├── prResolver.js             finds which listed repository holds a typed PR number
+├── profiles/
+│   ├── index.js              profile by repo name (core, caic); checkRepos against the agent
+│   └── caic/                 the caic prompt and its caic-pr-review skill (carbon-ai-chat)
 ├── loadEnv.js                dotenv bootstrap (.env wins over the shell)
 ├── agentRunner.js            spawns the selected agent's CLI, folds its event stream
 ├── agents/
@@ -706,6 +718,7 @@ client/src/
 ├── pages/Console.jsx         status panel + controls
 ├── pages/HelpGuide.jsx       in-app help guide
 ├── utils/prPhrasing.js       PR phrasing helpers
+├── utils/prRefs.js           PR refs ({ repo, number }): keys, grouping, parsing typed input
 └── components/
     ├── StatusTile.jsx        IconIndicator tile
     ├── ExpiryCountdown.jsx   live token countdown
@@ -713,6 +726,9 @@ client/src/
     ├── BobcoinsPanel.jsx     Bobcoins or dollar spend, and history
     ├── SchedulePanel.jsx     scheduled reviews settings
     ├── ReviewLog.jsx         live log tail
+    ├── PrRefList.jsx         PR refs grouped by repository
+    ├── RepoTag.jsx           repository tag
+    ├── CollisionDialog.jsx   asks which repository when a number is open in more than one
     ├── AboutAi.jsx           about the AI review
     └── ErrorBoundary.jsx     root error boundary
 ```

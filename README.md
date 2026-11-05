@@ -1,22 +1,25 @@
-<p align="center"><img src="docs/images/hero.png" width="100%" alt="Carbon Monitor: Agentic AI pull request reviews, grounded by Carbon MCP. IBM Bob, Claude, Carbon MCP, GitHub. PR reviews today, supports IBM Bob and Claude, adaptive agent harness."></p>
+<p align="center"><img src="docs/images/hero.png" width="100%" alt="Carbon Monitor: Agentic AI pull request reviews, grounded by Carbon MCP. IBM Bob, Claude, Carbon MCP, GitHub. supports IBM Bob and Claude, adapt the pattern to any repo or a different job with the bundled skill."></p>
 
 # Carbon Monitor
 
 **Agentic AI pull request reviews, grounded by Carbon MCP.**
 
-Carbon Monitor is two things. It is a working reviewer for the
-`carbon-design-system/carbon` monorepo: each open pull request goes through an AI
+Carbon Monitor is two things. It is a working reviewer for pull requests in
+`carbon-design-system/carbon` and `carbon-design-system/carbon-ai-chat` (the
+repositories in `GITHUB_AI_AGENT_REPOS`): each open pull request goes through an AI
 CLI agent (IBM Bob by default, or Claude), every Carbon-specific claim (component
 props, tokens, icons, accessibility patterns) is verified against the Carbon MCP
 server, and the result lands on the PR as one review of inline comments and a
 summary with a recommendation. A clean PR gets one short verdict comment
 instead. It is also a harness for running any agent on a schedule in IBM Cloud, with cost
 tracking, telemetry and a Slack report, that you can point at your own
-repository or your own job.
+repository or your own job. A skill adapts it for you. It asks up to ten
+questions and writes the SPEC you build from, and you keep the Cloud deploy,
+cost caps, telemetry and Slack report as they are.
 
 <p align="center">
   <a href="#quick-start"><strong>Quick start</strong></a> ·
-  <a href="#built-as-a-harness"><strong>Reuse the harness</strong></a> ·
+  <a href="#adapt-it-with-a-skill"><strong>Adapt it with a skill</strong></a> ·
   <a href="#how-a-review-works"><strong>How a review works</strong></a> ·
   <a href="#deploy"><strong>Deploy</strong></a> ·
   <a href="docs/ARCHITECTURE.md"><strong>Architecture</strong></a> ·
@@ -47,14 +50,14 @@ agent's own unit. Each agent runs in its own private configuration directory, so
 
 | Stage      | What happens                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Fetch**  | Queries GitHub for open PRs, excluding drafts, bot-authored PRs (Dependabot, Renovate), PRs older than 21 days and PRs already labelled `AIReviewed`. Up to 10 PRs per run. Both limits are configurable.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Fetch**  | Queries GitHub for open PRs, excluding drafts, bot-authored PRs (Dependabot, Renovate), PRs older than 21 days and PRs already labelled `AIReviewed`, in each repository in `GITHUB_AI_AGENT_REPOS`. Up to 10 PRs per repository per run, `carbon` first, then `carbon-ai-chat`. Both limits are configurable and apply per repository.                                                                                                                                                                                                                                                                                                                    |
 | **Bundle** | Builds a temporary workspace per PR: `PR_REVIEW_REQUEST.md` (description, changed files, the unified diff, and a list of files left out), `pr.json` / `files.json` / `diff.patch`, the agent rules (`.bob/rules/01-output.md` for Bob, `CLAUDE.md` for Claude), and the Carbon Builder skill. A `Closes #N`, `Fixes #N` or `Resolves #N` reference pulls in the linked issue (and its parent) as acceptance criteria, capped at 5,000 tokens. The diff is assembled from each file's patch as whole files fitted to the input budget, tests and docs after source, so no PR is skipped for its size; what does not fit is listed under Files Not Reviewed. |
 | **Review** | Runs the selected agent in the bundle: `bob run --trust --accept-license [--team-id …] "<prompt>"` or `claude -p … "<prompt>"`. The agent writes a visible catalogue of every suspicious item per file, classified as Category 1 (Carbon API, needs MCP) or Category 2 (visible in the diff).                                                                                                                                                                                                                                                                                                                                                              |
 | **Verify** | Resolves every catalogue item. Category 1 items are checked with the Carbon Builder skill and Carbon MCP tools (`code_search`, `docs_search`, `get_charts`, `labs_search`, `code_audit`); Category 2 items from the diff alone. The parser flags runs that skipped the catalogue or hid their resolutions.                                                                                                                                                                                                                                                                                                                                                 |
 | **Post**   | Findings of `minor` severity or above that map to a diff line go out as inline comments in one GitHub review. The rest, plus the summary and recommendation, go in one PR comment, with any nits in a collapsed list; nits are never inline. A clean PR gets one short verdict comment and no review. A partial review says so in that comment and lists the files it did not cover. If no file fits the budget, no agent runs and the PR gets a Not Reviewed comment. The `AIReviewed` label is added.                                                                                                                                                    |
 | **Report** | Scheduled runs post a digest to Slack when `SLACK_WEBHOOK_URL` is set. Review events are written to Elasticsearch for the Kibana dashboard.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
-## Built as a harness
+## Adapt it with a skill
 
 The agent is IBM Bob or Claude. Carbon Monitor is the harness around it:
 everything that runs it on a schedule in IBM Cloud, pays for it, logs it, and
@@ -150,7 +153,7 @@ the reliability checks behind the recommendation, are in
   </tr>
 </table>
 
-<p align="center"><img src="docs/images/slack-digest.webp" width="820" alt="A Slack message from the Carbon Monitor app titled Review Digest. It lists the repository, run start time and selection criteria, then five pull requests, each with a coloured status marker, a verdict such as Significant revision suggested, Minor rework suggested or Looks good, an issue count and a one-line summary. The footer reads 5 PRs reviewed and links to Configure schedule."></p>
+<p align="center"><img src="docs/images/slack-digest.webp" width="820" alt="A Slack message from the Carbon Monitor app titled Review Digest. It lists the repositories, run start time and selection criteria, then the pull requests grouped under one heading per repository, carbon first and carbon-ai-chat second. Each pull request has a coloured status marker, a verdict such as Significant revision suggested, Minor rework suggested or Looks good, an issue count and a one-line summary. The footer gives the totals and links to Configure schedule."></p>
 
 <p align="center"><em>The Slack digest posted after a scheduled run.</em></p>
 
@@ -168,17 +171,17 @@ the reliability checks behind the recommendation, are in
 > for either agent, and its token expires, so the console renews it after one
 > **Sign in with IBMid**.
 > On the GitHub side, it needs a token for the reviewing GitHub account (i.e.
-> machine user), which must hold Triage on the target repo; see [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md).
+> machine user), which must hold Triage on every repository it reviews; see [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md).
 
 ## Quick start
 
-| Prerequisite        | Notes                                                                                                                                                                                                                |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node.js 24 or later | Required by Bob Shell; the code itself runs on >= 22.15.0                                                                                                                                                            |
-| GitHub token        | For the reviewing GitHub account (i.e. machine user), which needs the **Triage role on the target repo**, plus Pull requests and Issues write and Contents read. See [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md). |
-| Bob Shell CLI       | Installed and on `PATH`, when the agent is `bob` (the default)                                                                                                                                                       |
-| Claude Code CLI     | Installed and on `PATH`, when the agent is `claude`: `npm install -g @anthropic-ai/claude-code`. Claude Code 2.1.259 or later (the image pins 2.1.302)                                                               |
-| Carbon MCP          | Configured in Bob as a streamable-HTTP connection; Claude reads the same credentials (see below)                                                                                                                     |
+| Prerequisite        | Notes                                                                                                                                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Node.js 24 or later | Required by Bob Shell; the code itself runs on >= 22.15.0                                                                                                                                                                                        |
+| GitHub token        | For the reviewing GitHub account (i.e. machine user), which needs the **Triage role on every repository in `GITHUB_AI_AGENT_REPOS`**, plus Pull requests and Issues write and Contents read. See [docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md). |
+| Bob Shell CLI       | Installed and on `PATH`, when the agent is `bob` (the default)                                                                                                                                                                                   |
+| Claude Code CLI     | Installed and on `PATH`, when the agent is `claude`: `npm install -g @anthropic-ai/claude-code`. Claude Code 2.1.259 or later (the image pins 2.1.302)                                                                                           |
+| Carbon MCP          | Configured in Bob as a streamable-HTTP connection; Claude reads the same credentials (see below)                                                                                                                                                 |
 
 ```bash
 git clone https://github.com/carbon-design-system/Carbon-Monitor.git
@@ -202,14 +205,31 @@ GITHUB_AI_AGENT_CLI=claude
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
+One app reviews a list of repositories under `GITHUB_AI_AGENT_OWNER`. The default
+list is `carbon`; to review `carbon-ai-chat` as well, set:
+
+```bash
+GITHUB_AI_AGENT_REPOS=carbon,carbon-ai-chat
+```
+
+List order is batch order, so every `carbon` PR is queued before any
+`carbon-ai-chat` PR, in scheduled runs, console runs and the budget. The profile
+that reviews a PR follows its repository: `carbon` uses the core profile,
+`carbon-ai-chat` the caic profile, which runs on Bob only. `GITHUB_AI_AGENT_REPO`
+still works as a one-repository fallback when `GITHUB_AI_AGENT_REPOS` is unset.
+
 Start the console and API, then review one PR from the CLI:
 
 ```bash
 npm run build:client && npm run api   # console + API on http://localhost:3000
 npm start -- --pr <number>            # review a single PR
+npm start -- --pr carbon-ai-chat#<number>   # name the repository when more than one is listed
 ```
 
-`npm start` with no flag reviews every PR that passes the Fetch filter.
+`npm start` with no flag reviews every PR that passes the Fetch filter, in each
+listed repository. A bare number is looked up in every listed repository; if it
+is open in more than one, or in none, the run stops before any review, and
+`repo#number` says which one you mean.
 
 <details>
 <summary>Configuration</summary>
@@ -219,14 +239,14 @@ The variables most deployments set. Every variable, with its default, is in
 
 | Variable                    | Required      | Default                | Description                                                                                                                                                               |
 | --------------------------- | ------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GITHUB_AI_AGENT_TOKEN`     | Yes           | —                      | GitHub PAT. Needs Pull requests + Issues write and Contents read, **and Triage on the repo** — see [GitHub access](docs/GITHUB_ACCESS.md)                                 |
+| `GITHUB_AI_AGENT_TOKEN`     | Yes           | —                      | GitHub PAT. Needs Pull requests + Issues write and Contents read, **and Triage on every listed repo** — see [GitHub access](docs/GITHUB_ACCESS.md)                        |
 | `GITHUB_AI_AGENT_CLI`       | No            | `bob`                  | Worker agent: `bob` or `claude`. Another CLI needs an adapter, see [Add an agent](docs/HARNESS.md#add-an-agent)                                                           |
 | `BOB_API_KEY`               | With `bob`    | —                      | Bob Shell API key. Create with Scope **Inference** in the Bob web portal — browser SSO cannot complete in a container                                                     |
 | `ANTHROPIC_API_KEY`         | With `claude` | —                      | Claude Code API key from the Claude Console. Required when `GITHUB_AI_AGENT_CLI=claude`; leave blank for Bob                                                              |
 | `GITHUB_AI_AGENT_OWNER`     | No            | `carbon-design-system` | Repository owner                                                                                                                                                          |
-| `GITHUB_AI_AGENT_REPO`      | No            | `carbon`               | Repository name                                                                                                                                                           |
-| `GITHUB_AI_AGENT_MAX_PRS`   | No            | `10`                   | Max PRs reviewed per run                                                                                                                                                  |
-| `GITHUB_AI_AGENT_DAYS_BACK` | No            | `21`                   | How far back to look for PRs (days)                                                                                                                                       |
+| `GITHUB_AI_AGENT_REPOS`     | No            | `carbon`               | Comma-separated repository names under the owner, in batch order, such as `carbon,carbon-ai-chat`. Falls back to `GITHUB_AI_AGENT_REPO` when unset                        |
+| `GITHUB_AI_AGENT_MAX_PRS`   | No            | `10`                   | Max PRs reviewed per repository per run                                                                                                                                   |
+| `GITHUB_AI_AGENT_DAYS_BACK` | No            | `21`                   | How far back to look for PRs (days), per repository                                                                                                                       |
 | `CLAUDE_MODEL`              | No            | `claude-sonnet-5-5`    | Claude model                                                                                                                                                              |
 | `CLAUDE_EFFORT`             | No            | `high`                 | Claude reasoning effort                                                                                                                                                   |
 | `CLAUDE_MAX_BUDGET_USD`     | No            | `5`                    | Per-review spend cap in USD, passed as `--max-budget-usd`. `0` disables it. Spend can pass the cap slightly                                                               |
@@ -278,8 +298,8 @@ POST /api/review/trigger          202 Accepted at once
         └─► Slack digest (scheduled runs only, when SLACK_WEBHOOK_URL is set)
 ```
 
-Only one batch runs at a time, with up to `REVIEW_CONCURRENCY` reviews (default 2)
-in flight inside it, for either agent. Two agents reviewing the same PR would post the
+Only one batch runs at a time, across all listed repositories, with up to
+`REVIEW_CONCURRENCY` reviews (default 2) in flight inside it, for either agent. Two agents reviewing the same PR would post the
 same findings twice, so a second trigger while one is in flight gets `409` with
 the running batch's details. The guard is in-process, and the Code Engine app
 is pinned to one instance, so one lock covers the deployment. A review takes
@@ -307,6 +327,30 @@ you selected: `BOB_API_KEY` for `bob`, `ANTHROPIC_API_KEY` for `claude`. Moving 
 deployment to Claude is `GITHUB_AI_AGENT_CLI=claude` plus the key, then a
 redeploy. The image holds both CLIs, so it is the same image.
 
+### Reviewing more than one repository
+
+One app, one Carbon MCP sign-in, one batch and one Bobcoins budget cover every
+repository in `GITHUB_AI_AGENT_REPOS`. To add `carbon-ai-chat`:
+
+1. Give the reviewing account Triage on the new repository, so it can add
+   `AIReviewed` there ([docs/GITHUB_ACCESS.md](docs/GITHUB_ACCESS.md)).
+2. In `.env`, set `GITHUB_AI_AGENT_REPOS=carbon,carbon-ai-chat`. Four concurrent
+   reviews want `REVIEW_CONCURRENCY=4` and `MEMORY=8G`. Before deploying, confirm
+   in the Code Engine documentation that `CPU=1` with `MEMORY=8G` is a supported
+   combination; if it is not, set `CPU=2`. The sign-in carries over.
+3. Add the `profile` field to Elasticsearch by hand, once. Events now carry the
+   review profile, and the mapping is not dynamic, so an unmapped field is stored
+   but cannot be searched. Run
+   `PUT <events index>/_mapping { "properties": { "profile": { "type": "keyword" } } }`
+   on the current index and add the same property to
+   `carbon-monitor-events-template` for future indices. `node scripts/init-index.js`
+   upserts the template with it but never changes an existing index. Only events
+   emitted after the change are searchable by `profile`.
+4. Deploy with `./deploy_ce.sh`, then run one explicit `carbon-ai-chat` PR from the
+   console and check its `[AI agent review - CAIC]` header and `AIReviewed` label.
+
+To go back, set `GITHUB_AI_AGENT_REPOS=carbon` and redeploy.
+
 ### Console sign-in
 
 Sign-in is off in code but **on in `.env.example` and in the `deploy_ce.sh`
@@ -319,13 +363,13 @@ read status and trigger a review. See
 
 ## Operate
 
-| Feature               | What it does                                                                                                                                                                                                                                                                                                                                                                           |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Operator console**  | Status tiles for the agent CLI, Carbon MCP, GitHub and Elasticsearch that say what is wrong, a Reviews panel to run the latest PRs or a named list, and a live log of the current or last run.                                                                                                                                                                                         |
-| **Scheduled reviews** | One daily run, configured in **Settings → Scheduled reviews**. Off on a fresh install. `npm start` also runs a single pass and exits, so an external scheduler can drive it.                                                                                                                                                                                                           |
-| **Slack digest**      | Set `SLACK_WEBHOOK_URL` to a Slack incoming webhook. The digest fires after scheduled runs only; runs started from the console do not post. A partial review shows as `partial review: N of M files` on its line.                                                                                                                                                                      |
-| **Kibana dashboard**  | Review metrics from Elasticsearch, when `ES_URL` is set. Setup is in [kibana/README.md](kibana/README.md).                                                                                                                                                                                                                                                                             |
-| **Cost tracking**     | Bob: the Bobcoins balance and per-review spend; scheduled reviews pause themselves, and alert Slack, when the balance falls below `BOB_CREDITS_LOW_PCT` (default 10%). Claude: per-review spend in dollars and the month so far; with `CLAUDE_MONTHLY_BUDGET_USD` set, scheduled reviews pause below `CLAUDE_BUDGET_LOW_PCT` (default 10%) of it, and without it they are not metered. |
+| Feature               | What it does                                                                                                                                                                                                                                                                                                                                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Operator console**  | Status tiles for the agent CLI, Carbon MCP, GitHub (every listed repository), profiles and Elasticsearch that say what is wrong, a Reviews panel to run the latest PRs or a named list (type PR numbers; the console finds the repository and asks only when a number is open in more than one), and a live log of the current or last run.                                                    |
+| **Scheduled reviews** | One daily run, configured in **Settings → Scheduled reviews**. Off on a fresh install. `npm start` also runs a single pass and exits, so an external scheduler can drive it.                                                                                                                                                                                                                   |
+| **Slack digest**      | Set `SLACK_WEBHOOK_URL` to a Slack incoming webhook. The digest fires after scheduled runs only; runs started from the console do not post. One digest per batch, grouped by repository in batch order; a digest over Slack's 50-block limit is split by repository, then into numbered parts, and no result is dropped. A partial review shows as `partial review: N of M files` on its line. |
+| **Kibana dashboard**  | Review metrics from Elasticsearch, when `ES_URL` is set. Setup is in [kibana/README.md](kibana/README.md).                                                                                                                                                                                                                                                                                     |
+| **Cost tracking**     | Bob: the Bobcoins balance and per-review spend; scheduled reviews pause themselves, and alert Slack, when the balance falls below `BOB_CREDITS_LOW_PCT` (default 10%). Claude: per-review spend in dollars and the month so far; with `CLAUDE_MONTHLY_BUDGET_USD` set, scheduled reviews pause below `CLAUDE_BUDGET_LOW_PCT` (default 10%) of it, and without it they are not metered.         |
 
 ### Spend caps and budgets
 

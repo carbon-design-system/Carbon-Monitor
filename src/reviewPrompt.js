@@ -218,10 +218,16 @@ function formatCoverageNote(coverage, filesUrl) {
  * @param {string} options.commitSha - Head commit SHA
  * @param {Object} options.coverage  - From the review bundle
  * @param {string} options.filesUrl  - The PR's Files changed URL
+ * @param {string} [options.headerLabel] - Override the header tag; defaults to core text
  * @returns {string}
  */
-function formatNotReviewedComment({ commitSha, coverage, filesUrl }) {
-  return `[AI agent review — Carbon grounded] · **Not Reviewed** · Commit: ${commitSha.substring(0, 7)}\n\n${formatCoverageNote(coverage, filesUrl)}\n`;
+function formatNotReviewedComment({
+  commitSha,
+  coverage,
+  filesUrl,
+  headerLabel = 'AI agent review \u2014 Carbon grounded',
+}) {
+  return `[${headerLabel}] · **Not Reviewed** · Commit: ${commitSha.substring(0, 7)}\n\n${formatCoverageNote(coverage, filesUrl)}\n`;
 }
 
 /**
@@ -236,6 +242,7 @@ function formatNotReviewedComment({ commitSha, coverage, filesUrl }) {
  * @param {Array}   [options.nitFindings]     - Findings listed in the collapsed block
  * @param {Object}  [options.coverage]        - Review coverage; a partial review adds its note
  * @param {string}  [options.filesUrl]        - The PR's Files changed URL, linked from that note
+ * @param {string}  [options.headerLabel]     - Override the header tag; defaults to core text
  * @returns {string}
  */
 function formatLooksGoodComment({
@@ -246,9 +253,10 @@ function formatLooksGoodComment({
   nitFindings = [],
   coverage = null,
   filesUrl = '',
+  headerLabel = 'AI agent review \u2014 Carbon grounded',
 }) {
   const parts = [
-    `[AI agent review — Carbon grounded] · **${RECOMMENDATION_LABELS['looks-good']}** · Reviewed by: ${agentName} · Commit: ${commitSha.substring(0, 7)}`,
+    `[${headerLabel}] · **${RECOMMENDATION_LABELS['looks-good']}** · Reviewed by: ${agentName} · Commit: ${commitSha.substring(0, 7)}`,
     escapeAtSign(summaryMarkdown),
   ];
   const coverageNote = formatCoverageNote(coverage, filesUrl);
@@ -284,6 +292,8 @@ function formatLooksGoodComment({
  * @param {Array}   [options.nitFindings]         - Nit findings, listed collapsed after the summary
  * @param {Object}  [options.coverage]            - Review coverage; a partial review adds its note
  * @param {string}  [options.filesUrl]            - The PR's Files changed URL, linked from that note
+ * @param {string}  [options.headerLabel]         - Override the header tag; defaults to core text
+ * @param {boolean} [options.showCarbonVerification] - Show the Carbon verification line; defaults to true
  * @returns {string} - Formatted summary comment
  */
 function formatSummaryComment({
@@ -302,13 +312,18 @@ function formatSummaryComment({
   nitFindings = [],
   coverage = null,
   filesUrl = '',
+  headerLabel = 'AI agent review \u2014 Carbon grounded',
+  showCarbonVerification = true,
 }) {
   const recLabel = RECOMMENDATION_LABELS[recommendation] || recommendation;
   const recAdvice = RECOMMENDATION_ADVICE[recommendation] || '';
 
-  let comment = `[AI agent review — Carbon grounded] · **${recLabel}**\n\n`;
+  let comment = `[${headerLabel}] · **${recLabel}**\n\n`;
   comment += `Reviewed by: ${agentName} · Commit: ${commitSha.substring(0, 7)}\n`;
-  comment += `Carbon verification: Carbon-specific claims verified using Carbon Builder skill (primary authority) and Carbon MCP (fallback).\n\n`;
+  if (showCarbonVerification) {
+    comment += `Carbon verification: Carbon-specific claims verified using Carbon Builder skill (primary authority) and Carbon MCP (fallback).\n`;
+  }
+  comment += `\n`;
 
   // ── Recommendation section ─────────────────────────────────────────────
   comment += `## Recommendation\n\n`;
@@ -453,9 +468,19 @@ function formatSummaryComment({
  * @param {string} options.owner - Repository owner
  * @param {string} options.repo  - Repository name
  * @param {string} [options.agent] - Adapter id; the registry default (Bob) when omitted
+ * @param {Object} [options.profile] - Active profile; omitting uses the core path unchanged
  * @returns {string} - Formatted prompt
  */
-function buildReviewPrompt({ owner, repo, agent }) {
+function buildReviewPrompt({ owner, repo, agent, profile }) {
+  // Non-core profiles supply their own prompt builder
+  if (
+    profile &&
+    profile.id !== 'core' &&
+    typeof profile.buildPrompt === 'function'
+  ) {
+    return profile.buildPrompt({ owner, repo, agent });
+  }
+
   const { noCompletion, noFileWrite, skillPath, readTool } = agents.get(
     agent || agents.DEFAULT_ID
   ).promptFragments;

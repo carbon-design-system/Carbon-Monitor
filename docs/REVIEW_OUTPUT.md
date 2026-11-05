@@ -28,6 +28,36 @@ The last line asks the reader to react or reply. GitHub keeps the reactions and 
 
 ### Summary comment (PR issue comment)
 
+The first line of the summary comment carries the header label, which identifies
+the profile that posted it. The label differs by profile:
+
+| Profile | Header label                          |
+| ------- | ------------------------------------- |
+| `core`  | `[AI agent review — Carbon grounded]` |
+| `caic`  | `[AI agent review - CAIC]`            |
+
+The `core` header uses an em dash (U+2014); the `caic` header uses a hyphen-minus.
+The "Carbon verification:" line appears in `core` reviews always; in `caic` reviews
+it appears only when the review has at least one Category 1 (Carbon API) finding.
+
+The `caic` profile rates a finding by what it costs if it merges as written, and
+maps its labels onto the severities in [Finding severities](#finding-severities):
+
+| caic label | Severity   | Costs                                                                              |
+| ---------- | ---------- | ---------------------------------------------------------------------------------- |
+| Blocker    | `blocking` | Something ships broken or a commitment breaks                                      |
+| Important  | `major`    | Nothing ships broken, but someone pays later                                       |
+| (none)     | `minor`    | A maintainability risk with evidence of functional impact; no caic rule maps to it |
+| Nit        | `nit`      | Convention or hygiene with no functional consequence                               |
+
+A convention break costs what its consequence costs, so it is not a Blocker by
+default, and a finding nobody pays for is at most a `nit`. Nits are
+collapsed and never inline for every profile; the profile changes only how a
+finding is rated. The agent's summary may end with one sentence,
+`Not verified: <path or behaviour>`, when it skipped something it needed to be
+sure of; the layout below does not change. The rules and their upstream sources
+are in `src/profiles/caic/RULES-LEDGER.md`.
+
 ```
 [AI agent review — Carbon grounded] · **Consider Revising**
 
@@ -174,6 +204,29 @@ A scheduled run's Slack digest shows `3 issues found · partial review: 120 of 4
 | `major`    | Likely to cause a visible rendering difference or runtime error                |
 | `minor`    | Maintainability risk or subtle behaviour difference — not immediately breaking |
 | `nit`      | Convention / hygiene — no functional consequence                               |
+
+### Slack digest
+
+A scheduled run posts one digest per batch when `SLACK_WEBHOOK_URL` is set. It is
+grouped by repository, in batch order (`GITHUB_AI_AGENT_REPOS` order, so `carbon`
+before `carbon-ai-chat`):
+
+- The header reads `Carbon Monitor — Review Digest`; the intro lists the repositories,
+  the run start time and the criteria (`up to N most recent PRs per repository,
+opened within the last D days`).
+- Each repository has a heading with its full name and its counts (reviewed,
+  failed, skipped), then one block per PR. A repository with no eligible PRs says
+  so. A PR skipped for budget appears as skipped, so on a low-balance day the
+  `carbon-ai-chat` PRs show as skipped rather than vanishing.
+- The footer gives the totals for the whole batch and links to **Configure schedule**.
+
+Slack accepts at most 50 blocks per message. If the combined digest fits, it is one
+message. If not, it is split by repository, in the same order; a repository that
+still does not fit is cut into consecutive chunks that keep the result order. Every
+message repeats the header, intro, repository heading and footer, and the header
+names its part (`part 2 of 3`). A heading's counts describe that repository's
+complete result set, while the footer always shows the batch totals. No result is
+dropped to fit.
 
 ---
 

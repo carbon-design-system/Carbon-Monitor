@@ -20,6 +20,7 @@ package-lock.json
 
 # Byte-exact prompt snapshot
 tests/fixtures/prompt/
+tests/fixtures/characterization/
 
 # Rendered assets and the hero's render source
 docs/images/
