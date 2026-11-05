@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Modal, RadioTile, TileGroup } from '@carbon/react';
 import RepoTag from './RepoTag';
 import { joinList, relativeTime, stateSuffix } from '../utils/prRefs';
+import { refsAfterChoice } from '../utils/listedReview';
 
 // "open in both repositories", "closed in all 3 repositories", "open in 1 of 3".
 function stateSentence(number, matches) {
@@ -19,7 +20,8 @@ function stateSentence(number, matches) {
  * than one and the open-PR rule cannot pick. No tile starts selected: a wrong
  * silent default would post a review on the wrong pull request.
  *
- * `collision` is { groups: [{ number, matches }], others, total, launcherLabel }
+ * `collision` is { groups: [{ number, matches }], others, total, entries,
+ * results, launcherLabel }
  * and stays set after the dialog closes so the fade-out keeps its content.
  * `onConfirm` receives { [number]: repo }.
  */
@@ -40,8 +42,13 @@ function CollisionDialog({
 
   const groups = collision?.groups || [];
   const others = collision?.others || 0;
-  const total = collision?.total || 0;
   const allChosen = groups.every((g) => chosen[g.number]);
+  // Once every number has a repository, count what will be sent: a choice can
+  // land on a PR that was also typed as repo#number.
+  const total =
+    collision && allChosen
+      ? refsAfterChoice(collision, chosen).length
+      : collision?.total || 0;
 
   const heading =
     groups.length === 1

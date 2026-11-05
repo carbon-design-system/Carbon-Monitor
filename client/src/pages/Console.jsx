@@ -43,12 +43,15 @@ import {
   targetWindowText,
   reviewButtonLabel,
 } from '../utils/prPhrasing';
+import { joinList, resolutionNotesFor } from '../utils/prRefs';
 import {
-  PR_REF_RE,
-  buildRefs,
-  joinList,
-  resolutionNotesFor,
-} from '../utils/prRefs';
+  parsePrNumbers,
+  planAfterLookup,
+  planBeforeLookup,
+  refsAfterChoice,
+  targetPrText,
+} from '../utils/listedReview';
+import { healthTileSpans } from '../utils/tileSpans';
 
 /** How often the status panel re-polls, in milliseconds. */
 const POLL_INTERVAL_MS = 30_000;
@@ -64,98 +67,6 @@ const REVIEW_POLL_INTERVAL_MS = 2_000;
 
 /** Reviews listed in the Bobcoins ledger. Enough to see the trend, not a log. */
 const CREDIT_HISTORY_LIMIT = 10;
-
-/**
- * Parse the comma-separated PR field, mirroring the server's rules exactly.
- *
- * Each entry is a bare number (`1204`, whose repository is looked up) or a named
- * ref (`carbon-ai-chat#1204`). Returns `{ numbers, refs, entries, error }`:
- * `numbers` are the bare ones, `refs` the named ones, and `entries` both in the
- * order typed. A blank field is valid and means auto mode — the server picks the
- * PRs. `maxTotal` may be null before GET /api/config has answered, in which case
- * the count is left to the server rather than checked against a guessed limit;
- * `repos` may be empty for the same reason, and then a named repo is not checked.
- *
- * This is a convenience so the operator learns about a typo immediately instead
- * of after a round trip; POST /api/review/trigger re-validates regardless and
- * its 400 message is the authority.
- */
-function parsePrNumbers(raw, maxTotal, repos) {
-  const failed = (error) => ({
-    numbers: [],
-    refs: [],
-    entries: [],
-    error,
-    duplicatesDropped: 0,
-  });
-  const trimmed = raw.trim();
-  if (!trimmed) return failed(null);
-
-  const entries = [];
-  const seen = new Set();
-  let duplicatesDropped = 0;
-
-  for (const entry of trimmed.split(',').map((part) => part.trim())) {
-    // An empty entry means a doubled or trailing comma. Everything else that
-    // is not a number or repo#number — decimals, negatives, "abc" — is a typo,
-    // and 0 is not a pull request number.
-    if (!entry) {
-      return failed('Separate pull request numbers with a single comma.');
-    }
-    const match = PR_REF_RE.exec(entry);
-    const number = match ? Number(match[2]) : 0;
-    if (!match || !Number.isSafeInteger(number) || number < 1) {
-      return failed(
-        `“${entry}” is not a pull request number. Use positive whole numbers, or a repository and number like ${repos?.[0] || 'carbon'}#1204, separated by commas.`
-      );
-    }
-
-    let repo = null;
-    if (match[1]) {
-      repo = repos?.length
-        ? repos.find((r) => r.toLowerCase() === match[1].toLowerCase())
-        : match[1];
-      if (!repo) {
-        return failed(
-          `“${entry}” names a repository that is not configured. The configured repositories are ${joinList(repos)}.`
-        );
-      }
-    }
-
-    // Duplicates are dropped rather than rejected, keeping first-seen order —
-    // the same thing the server does, so the count check below agrees with it.
-    // Counted so the field can flag it instead of collapsing quietly.
-    const key = `${repo ?? ''}#${number}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      entries.push({ repo, number });
-    } else duplicatesDropped++;
-  }
-
-  if (maxTotal != null && entries.length > maxTotal) {
-    return failed(
-      `Up to ${pluralPRs(maxTotal)} per run; ${entries.length} given.`
-    );
-  }
-
-  return {
-    numbers: entries.filter((e) => !e.repo).map((e) => e.number),
-    refs: entries.filter((e) => e.repo),
-    entries,
-    error: null,
-    duplicatesDropped,
-  };
-}
-
-// The target PR can be a bare number or, once it names a repo, a ref.
-function targetPrText(target) {
-  if (target && typeof target === 'object') {
-    return target.repo
-      ? `${target.repo}#${target.number}`
-      : `PR #${target.number}`;
-  }
-  return `PR #${target}`;
-}
 
 /**
  * Operator console.
@@ -463,39 +374,30 @@ function Console({ authRequired = false, onSignOut }) {
    */
   async function triggerReview() {
     if (prError || entries.length === 0) return;
-    // The lookups take a while, so do not make the operator wait for them only
-    // to meet the busy modal. The 409 handler still covers a run that starts
-    // between the last poll and this click.
-    if (review?.running) {
+    let plan = planBeforeLookup({
+      running: Boolean(review?.running),
+      entries,
+      numbers,
+      repos,
+    });
+    if (plan.kind === 'busy') {
       setBusyRun(review);
       return;
     }
     setLookupError(null);
     setTriggerError(null);
-
-    // One repository: a bare number can only mean it, so skip the lookup. The
-    // server then fetches each PR inside the batch and keeps its per-number
-    // failure handling.
-    if (repos.length <= 1) {
-      if (repos.length === 0) {
-        setTriggerError(
-          'The console has not loaded its configuration yet. Try again in a moment.'
-        );
-        return;
-      }
-      const prs = buildRefs(
-        entries.map((e) => ({ repo: e.repo ?? repos[0], number: e.number })),
-        []
+    if (plan.kind === 'not-loaded') {
+      setTriggerError(
+        'The console has not loaded its configuration yet. Try again in a moment.'
       );
-      await sendTrigger({ prs }, { clearField: true });
       return;
     }
 
-    let results = [];
-    if (numbers.length) {
+    if (plan.kind === 'resolve') {
       setResolving(true);
       try {
-        ({ results } = await api.resolvePrs(numbers));
+        const { results } = await api.resolvePrs(plan.numbers);
+        plan = planAfterLookup({ entries, results, repos });
       } catch (err) {
         if (err.status === 401) return onSignOut();
         setTriggerError(err.message);
@@ -505,40 +407,19 @@ function Console({ authRequired = false, onSignOut }) {
       }
     }
 
-    const missing = results
-      .filter((r) => r.matches.length === 0)
-      .map((r) => `#${r.number}`);
-    if (missing.length) {
-      setLookupError(
-        `No pull ${missing.length === 1 ? 'request' : 'requests'} ${joinList(missing)} in ${joinList(repos, 'or')}.`
-      );
+    if (plan.kind === 'not-found') {
+      setLookupError(plan.message);
       return;
     }
-
-    const ambiguous = results.filter((r) => !r.choice);
-    if (ambiguous.length) {
+    if (plan.kind === 'collision') {
       setCollision({
-        groups: ambiguous.map((r) => ({
-          number: r.number,
-          matches: r.matches,
-        })),
-        others: results.length - ambiguous.length,
-        total: entries.length,
-        entries,
-        results,
+        ...plan.collision,
         launcherLabel: reviewButtonLabel(entries),
       });
       setCollisionOpen(true);
       return;
     }
-
-    await sendTrigger(
-      {
-        prs: buildRefs(entries, results),
-        resolutionNotes: resolutionNotesFor(results),
-      },
-      { clearField: true }
-    );
+    await sendTrigger(plan.request, { clearField: true });
   }
 
   /** The operator picked a repository for every colliding number. */
@@ -546,7 +427,7 @@ function Console({ authRequired = false, onSignOut }) {
     setCollisionOpen(false);
     return sendTrigger(
       {
-        prs: buildRefs(collision.entries, collision.results, chosen),
+        prs: refsAfterChoice(collision, chosen),
         resolutionNotes: resolutionNotesFor(collision.results),
       },
       { clearField: true }
@@ -665,12 +546,13 @@ function Console({ authRequired = false, onSignOut }) {
           </Column>
         </Grid>
 
-        {/* B. System health — four dependencies at lg 4 apiece, which is exactly
-            16 columns and so exactly one row. Bobcoins is not among them; it is
-            reported by the tile that shows its balance, in row C. */}
+        {/* B. System health — five dependencies (agent, profiles, Carbon MCP,
+            GitHub, Elasticsearch) on one row at lg, in pairs at md. Bobcoins is
+            not among them; it is reported by the tile that shows its balance,
+            in row C. */}
         <Grid narrow withRowGap className="cm-tile-grid">
-          {healthChecks.map((check) => (
-            <Column key={check.id} sm={4} md={4} lg={4}>
+          {healthChecks.map((check, i) => (
+            <Column key={check.id} {...healthTileSpans(i, healthChecks.length)}>
               <StatusTile
                 label={check.label}
                 status={check.status}
