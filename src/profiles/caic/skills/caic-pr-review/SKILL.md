@@ -48,7 +48,8 @@ stay unsaid however small the edit:
 - **X10** Code the diff did not touch. A pre-existing problem is not this PR's
   job. A regression is: a change that breaks a caller, consumer or snippet you
   can see elsewhere in the diff (a signature changed in one hunk, the old call
-  still in another) is a Blocker.
+  still in another) is a Blocker. A caller outside the diff is one you cannot
+  see: name it in `Not verified` (W9), do not guess.
 - **X11** A defect you cannot trigger is a guess. Drop it, or file it one level
   down and say what you did not read (W5).
 - **X12** A review that surfaces nothing is finished, not failed. Report no
@@ -105,16 +106,16 @@ correct, etc.) is Important. Use CSS logical properties
 
 ---
 
-## Section L — Framework-agnostic logic (Cat 2, Important/Blocker)
+## Section L — Framework-agnostic logic and placement (Cat 2, Important)
 
 **L1 (Important):** A `+` line adding parsing, formatting, validation, state
 transitions, or geometry math _directly inside_ a component method where a
 plain module would do is Important. Logic belongs in modules without
 React/Lit imports. Flag logic you could only test by rendering.
 
-**L2 (Blocker):** A `+` line adding a new component file under
-`packages/ai-chat/src/chat/components-legacy/` is a Blocker. New UI goes in
-`components/`.
+**L2 (Important):** A `+` line adding a new component file under
+`packages/ai-chat/src/chat/components-legacy/` is Important: nothing ships
+broken, but the component has to move later. New UI goes in `components/`.
 
 ---
 
@@ -128,9 +129,9 @@ references the current PR/task/issue number, is a Nit.
 ## Section G — Generated output (Cat 2, Blocker)
 
 **G1 (Blocker):** A `+` line directly editing `dist/`, `es/`, `es-custom/`,
-`storybook-static/`, `storybook-react-static/`, `custom-elements.json`,
-`telemetry.yml` (without an accompanying source change), or the release-owned
-API docs `packages/ai-chat/docs/api/markdown/` and
+`storybook-static/`, `storybook-react-static/`, `node_modules/`,
+`custom-elements.json`, `telemetry.yml` (without an accompanying source
+change), or the release-owned API docs `packages/ai-chat/docs/api/markdown/` and
 `packages/ai-chat/docs/api/symbol-index.json` is a Blocker. The hand-written
 `packages/ai-chat/docs/api/README.md` is docs, not generated.
 
@@ -169,7 +170,7 @@ needs the reason too.
 ## Section Z — PR size (Cat 2, Important)
 
 Count additions plus deletions, and only in non-generated, non-test,
-non-snapshot, non-fixture, non-doc files. Exclude: lockfiles, `dist/`,
+non-snapshot, non-fixture, non-doc files. Exclude: lockfiles, `dist/`, `es/`,
 `es-custom/`, `custom-elements.json`, `telemetry.yml`, `versions.js`,
 `packages/ai-chat/docs/api/markdown/`, `packages/ai-chat/docs/api/symbol-index.json`,
 `.claude/skills/`, `.agents/skills/`, `.bob/skills/carbon-builder/`, `*.snap`,
@@ -203,10 +204,10 @@ attention in that order. Every file still gets its catalogue line.
   `package-lock.json` (review the `package.json` change that caused it);
   generated output (an edit is a Blocker on sight under G1; `telemetry.yml` is
   the exception under G2).
-- **Read in full:** `packages/ai-chat/src/types/**` (the public contract; a wrong
-  line ships to consumers); `packages/ai-chat/src/chat/store/**` (reducers and
-  state transitions); new files (there is no unchanged context to lean on).
-- **Read the hunks, not the file:** everything else.
+- **Read every line:** `packages/ai-chat/src/types/**` (the public contract; a
+  wrong line ships to consumers); `packages/ai-chat/src/chat/store/**` (reducers
+  and state transitions); new files (there is no unchanged context to lean on).
+- **Everything else:** the changed lines and the context around them.
 
 ---
 
@@ -216,7 +217,6 @@ Step 1 walks the checklist that matches each file. Skip the rest.
 
 **Code changes**
 
-- A new file much larger than the files beside it is a finding on its own.
 - Over-built code is `major` unless it hides a defect: single-caller
   abstractions, deep nesting, shared mutable state, dead code, unused
   flexibility, JS that re-creates what CSS, a native element or a browser API
@@ -245,7 +245,8 @@ Step 1 walks the checklist that matches each file. Skip the rest.
 - Spelling, grammar, punctuation; correct and standard technical terms.
 - Clarity, concision, consistent headings, bullets and structure.
 - The text gives the reader what they need to act. A misleading name or doc
-  (a wrong unit, a wrong default) is `major`; a style slip is a nit.
+  (a wrong unit, a unit the caller has to guess, a wrong default) is `major`;
+  a style slip is a nit.
 - Markdown that tells an agent what to do (`AGENTS.md`, `references/`, skills)
   is a specification: ask whether an agent following the changed text does the
   right thing.

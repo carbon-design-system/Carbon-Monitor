@@ -66,8 +66,8 @@ All other files require at least one catalogue entry or an explicit \`NO-FINDING
 
 **Large diffs:** When the file list is long, or you would read all of it shallowly, rank the files by risk per line before cataloguing and spend attention in that order. Every file still gets its catalogue line.
 - Glance: pure renames and moves, \`package-lock.json\` (review the \`package.json\` change that caused it), generated output (an edit is a Blocker on sight under G1; \`telemetry.yml\` is the exception under G2).
-- Read in full: \`packages/ai-chat/src/types/**\`, \`packages/ai-chat/src/chat/store/**\`, new files.
-- Read the hunks, not the file: everything else.
+- Read every line: \`packages/ai-chat/src/types/**\`, \`packages/ai-chat/src/chat/store/**\`, new files.
+- Everything else: the changed lines and the context around them.
 
 Review all files listed under "Changed Files". Do NOT review bundle files (\`dist/\`, \`dist/es/\`, \`dist/es-custom/\`).
 
@@ -76,7 +76,6 @@ For each changed file, during a SINGLE per-file pass apply the checklist for its
 ### Checklists by file type
 
 **Code changes**
-- A new file much larger than the files beside it is a finding on its own.
 - Over-built code is \`major\` unless it hides a defect: single-caller abstractions, deep nesting, shared mutable state, dead code, unused flexibility, JS that re-creates what CSS, a native element or a browser API already does.
 - Bugs and security: logic errors, injection, XSS, unsafe deserialization, secrets in code.
 - Edge cases: empty or null input, error paths, concurrency, cancellation, large input.
@@ -92,7 +91,7 @@ For each changed file, during a SINGLE per-file pass apply the checklist for its
 **Docs and text**
 - Spelling, grammar, punctuation; correct and standard technical terms.
 - Clarity, concision, consistent headings, bullets and structure.
-- The text gives the reader what they need to act. A misleading name or doc (a wrong unit, a wrong default) is \`major\`; a style slip is a nit.
+- The text gives the reader what they need to act. A misleading name or doc (a wrong unit, a unit the caller has to guess, a wrong default) is \`major\`; a style slip is a nit.
 - Markdown that tells an agent what to do (\`AGENTS.md\`, \`references/\`, skills) is a specification: ask whether an agent following the changed text does the right thing.
 
 ### Caic conventions (Cat 2 unless marked Cat 1)
@@ -107,9 +106,9 @@ For each changed file, during a SINGLE per-file pass apply the checklist for its
 
 **L1 (Important → major):** A \`+\` line adding parsing, formatting, validation, state transitions, or geometry math directly inside a Lit element method or React component — where a plain module would do — is Important.
 
-**L2 (Blocker):** A \`+\` line adding a new component file under \`packages/ai-chat/src/chat/components-legacy/\` is a Blocker. New UI goes in \`components/\`.
+**L2 (Important → major):** A \`+\` line adding a new component file under \`packages/ai-chat/src/chat/components-legacy/\` is Important: nothing ships broken, but the component has to move later. New UI goes in \`components/\`.
 
-**G1 (Blocker):** A \`+\` line directly editing \`dist/\`, \`es/\`, \`es-custom/\`, \`storybook-static/\`, \`storybook-react-static/\`, \`custom-elements.json\` (without an accompanying source change), \`telemetry.yml\` (without a source change), or the release-owned API docs \`packages/ai-chat/docs/api/markdown/\` and \`packages/ai-chat/docs/api/symbol-index.json\` is a Blocker. The hand-written \`packages/ai-chat/docs/api/README.md\` is docs, not generated.
+**G1 (Blocker):** A \`+\` line directly editing \`dist/\`, \`es/\`, \`es-custom/\`, \`storybook-static/\`, \`storybook-react-static/\`, \`node_modules/\`, \`custom-elements.json\` (without an accompanying source change), \`telemetry.yml\` (without a source change), or the release-owned API docs \`packages/ai-chat/docs/api/markdown/\` and \`packages/ai-chat/docs/api/symbol-index.json\` is a Blocker. The hand-written \`packages/ai-chat/docs/api/README.md\` is docs, not generated.
 
 **G2:** \`telemetry.yml\` accompanied by a source change that regenerates it is fine — do not flag it. Example: a diff that modifies \`src/components/Foo/Foo.ts\` and also updates \`telemetry.yml\` is a single intentional commit; the telemetry file entry alone is a non-finding. Only flag \`telemetry.yml\` when the diff contains no source change that would cause a regeneration.
 
@@ -120,7 +119,7 @@ For each changed file, during a SINGLE per-file pass apply the checklist for its
 - **T2:** \`test.skip\`, \`xit\`, \`xdescribe\`, \`.skip\` with no replacement test.
 - **T3:** A regenerated snapshot that masks a behaviour change. Regenerating is allowed and sometimes correct; ask for the reason, not for the absence of the command.
 
-**PR size (Cat 2):** Count additions plus deletions, and only in non-generated, non-test, non-snapshot, non-fixture, non-doc files. Exclude lockfiles, \`dist/\`, \`dist/es/\`, \`dist/es-custom/\`, \`custom-elements.json\`, \`telemetry.yml\`, \`versions.js\`, \`packages/ai-chat/docs/api/markdown/\`, \`packages/ai-chat/docs/api/symbol-index.json\`, \`.claude/skills/\`, \`.agents/skills/\`, \`.bob/skills/carbon-builder/\`, \`*.snap\`, \`*.test.*\`, \`*_spec.*\`, \`*.spec.*\`, fixtures, everything under \`examples/\` and \`demo/\`, \`.md\`/\`.mdx\` docs. Shared test setup (jest or playwright config, test helpers) counts.
+**PR size (Cat 2):** Count additions plus deletions, and only in non-generated, non-test, non-snapshot, non-fixture, non-doc files. Exclude lockfiles, \`dist/\`, \`es/\`, \`es-custom/\`, \`custom-elements.json\`, \`telemetry.yml\`, \`versions.js\`, \`packages/ai-chat/docs/api/markdown/\`, \`packages/ai-chat/docs/api/symbol-index.json\`, \`.claude/skills/\`, \`.agents/skills/\`, \`.bob/skills/carbon-builder/\`, \`*.snap\`, \`*.test.*\`, \`*_spec.*\`, \`*.spec.*\`, fixtures, everything under \`examples/\` and \`demo/\`, \`.md\`/\`.mdx\` docs. Shared test setup (jest or playwright config, test helpers) counts.
 - ≤ 200 counted lines: no finding.
 - 201–400: Important (\`major\`) — suggest a useful split.
 - > 400: Important (\`major\`) — split by default, unless the PR description explains why it must stay together.
@@ -167,7 +166,7 @@ A \`pending\` item may never be silently dropped.
 - A naming swap with no clarity gain, or an equivalent style alternative (\`for\` versus \`.map\`, ternary versus \`if\`).
 - "Add a comment here." The repo default is no comments; ask for one only when the diff encodes a why the code cannot show, and say what it has to record.
 - Speculative extraction ("you might want to pull this out in case…") and a route other than the one a linked issue suggests.
-- Code the diff did not touch: a pre-existing problem is not this PR's job. A regression is: a change that breaks a caller, consumer or snippet you can see elsewhere in the diff (a signature changed in one hunk, the old call still in another) is a Blocker.
+- Code the diff did not touch: a pre-existing problem is not this PR's job. A regression is: a change that breaks a caller, consumer or snippet you can see elsewhere in the diff (a signature changed in one hunk, the old call still in another) is a Blocker. A caller outside the diff is one you cannot see: name it in \`Not verified\`, do not guess.
 - A defect you cannot trigger. Drop it, or file it one level down and say what you did not read.
 - A review that surfaces nothing is finished, not failed. Return an empty findings array; never manufacture a finding.
 
@@ -192,7 +191,7 @@ Before writing any JSON, list every \`confirmed finding\` from your catalogue wi
 - If nobody pays, it is not a finding at \`minor\` or above. A nit is reported because it costs nothing to read and the report collapses it.
 - A convention break costs what its consequence costs. It is not a Blocker by default.
 
-**Finding cap:** Important + Nit at most 10. Nits at most 3. Blockers are never dropped.
+**Finding cap:** \`major\`, \`minor\` and \`nit\` findings at most 10 together. Nits at most 3. Blockers are never dropped.
 
 **Convention findings** (N1, N2, S2, S3, L1, L2, G1, T1-T3) are Cat 2 with \`verificationSource: "not-carbon-specific"\`. They are passed through the parser unconditionally.
 
