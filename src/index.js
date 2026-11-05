@@ -905,7 +905,6 @@ async function reviewPRs(options = {}) {
         if (options.triggeredBy === 'schedule') {
           await postRunDigest({
             startedAt: runStartedAt,
-            repo: runRepo,
             repos: fullNames,
             results: [],
             maxPRs: MAX_PRS_PER_REPO,
@@ -1826,7 +1825,6 @@ async function reviewPRs(options = {}) {
     if (options.triggeredBy === 'schedule') {
       await postRunDigest({
         startedAt: runStartedAt,
-        repo: runRepo,
         repos: fullNames,
         results: runResults,
         maxPRs: MAX_PRS_PER_REPO,

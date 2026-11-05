@@ -315,7 +315,7 @@ async function main() {
     const result = partial.digest.results.find((r) => r.prNumber === 7);
     const digest = _buildPayload({
       startedAt: Date.now(),
-      repo: 'mock/mock',
+      repos: ['mock/mock'],
       results: [result],
     })
       .blocks.map((b) => b.text?.text || '')

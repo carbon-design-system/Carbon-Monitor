@@ -263,139 +263,242 @@ function buildRunFailurePayload({ startedAt, repos, error }) {
 
 // ── Block Kit builder ─────────────────────────────────────────────────────────
 
+// Slack rejects a message with more blocks than this.
+const MAX_BLOCKS = 50;
+
+const shortName = (full) => String(full).split('/').pop();
+
+/** One section for one PR result. */
+function resultBlock(result) {
+  if (result.failed) {
+    // Failed PR — review could not complete
+    return {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `⚠️  *PR #${result.prNumber}* — review failed\n_${escapeAtSign(result.error || 'Unknown error')}_`,
+      },
+    };
+  }
+  if (result.skipped) {
+    // Skipped PR: left unreviewed on purpose (a low balance, or no file fits the diff budget)
+    return {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `⏭️  *<${result.prUrl}|PR #${result.prNumber}>* — Skipped\n_${escapeAtSign(result.reason || 'Skipped before the review started')}_`,
+      },
+    };
+  }
+  const { emoji, label } = flagFor(result.recommendation);
+  const issueWord = result.findingsCount === 1 ? 'issue' : 'issues';
+  const rawSummary = truncateAtWord(stripMarkdown(result.summary), 150);
+  // Ensure backtick spans are balanced after truncation — if an odd number
+  // of backticks remain the last span was cut mid-token; close it.
+  const summary = escapeAtSign(
+    rawSummary.split('`').length % 2 === 0 ? rawSummary + '`' : rawSummary
+  );
+
+  const cov = result.coverage;
+  const partial = cov?.partial
+    ? ` · partial review: ${cov.files_reviewed} of ${cov.files_total} files`
+    : '';
+
+  return {
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: [
+        `${emoji}  *<${result.prUrl}|PR #${result.prNumber}>* — ${label}`,
+        `${result.findingsCount} ${issueWord} found${partial}`,
+        summary ? `_${summary}_` : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    },
+  };
+}
+
+function countsText(results) {
+  const reviewed = results.filter((r) => !r.failed && !r.skipped).length;
+  const failed = results.filter((r) => r.failed).length;
+  const skipped = results.filter((r) => r.skipped).length;
+  const parts = [];
+  if (reviewed > 0) parts.push(`${reviewed} reviewed`);
+  if (failed > 0) parts.push(`${failed} failed`);
+  if (skipped > 0) parts.push(`${skipped} skipped`);
+  return parts;
+}
+
 /**
- * Build the Slack Block Kit payload for a completed review run.
+ * One group per configured repo in `repos` order, then one per repo name found
+ * only in the results, so a result is never dropped.
+ */
+function groupResults(repos, results) {
+  const groups = repos.map((full) => ({
+    name: shortName(full),
+    heading: full,
+    results: [],
+  }));
+  const extra = new Map();
+  for (const result of results) {
+    const key = result.repo ? shortName(result.repo) : null;
+    let group = groups.find((g) => g.name === key);
+    // Results without a repo belong to the only configured repo, if there is one.
+    if (!group && key === null && groups.length === 1) group = groups[0];
+    if (!group) {
+      const name = key || 'unknown repository';
+      if (!extra.has(name)) {
+        extra.set(name, { name, heading: name, results: [] });
+      }
+      group = extra.get(name);
+    }
+    group.results.push(result);
+  }
+  return [...groups, ...extra.values()];
+}
+
+/**
+ * Build the combined Slack Block Kit digest for a completed review run: every
+ * repository in one message, which may exceed Slack's block limit. Use
+ * buildPayloads for what is sent.
  *
  * @param {Object} opts
  * @param {number}   opts.startedAt  - epoch ms when the run kicked off
- * @param {string}   opts.repo       - "owner/repo"
- * @param {Array}    opts.results    - per-PR result objects (see postRunDigest)
+ * @param {string[]} opts.repos      - "owner/repo" for every configured repository, in batch order
+ * @param {Array}    opts.results    - per-PR result objects (see postRunDigest), each with `repo` (short name)
  * @param {number}   [opts.maxPRs]   - selection cap (MAX_PRS_PER_REPO); shown as "Criteria" when paired with daysBack
  * @param {number}   [opts.daysBack] - age window in days (N_DAYS_SINCE_PR_CREATED); shown as "Criteria" when paired with maxPRs
  * @returns {Object} - Slack API blocks payload
  */
-function buildPayload({ startedAt, repo, results, maxPRs, daysBack }) {
-  const timeStr = formatEasternTime(startedAt);
-  const blocks = [];
+function buildPayload({ startedAt, repos, results, maxPRs, daysBack }) {
+  const groups = groupResults(repos, results);
+  return {
+    blocks: assemble(
+      { startedAt, repos, results, maxPRs, daysBack },
+      groups.map((g) => ({
+        group: g,
+        items: g.results,
+      })),
+      null
+    ),
+  };
+}
 
-  // ── Header ──────────────────────────────────────────────────────────────────
+/**
+ * Blocks for one message: header, intro, then each part's repo heading and
+ * results, and a footer with totals for the whole run.
+ *
+ * @param {Array<{ group: Object, items: Array }>} parts - the results to show, per group
+ * @param {{ n: number, of: number }|null} part - part number when the digest is split
+ */
+function assemble(
+  { startedAt, repos, results, maxPRs, daysBack },
+  parts,
+  part
+) {
+  const blocks = [];
+  const partLabel = part ? ` (part ${part.n} of ${part.of})` : '';
+
   blocks.push({
     type: 'header',
     text: {
       type: 'plain_text',
-      text: '📋  Carbon Monitor — Review Digest',
+      text: `📋  Carbon Monitor — Review Digest${partLabel}`,
       emoji: true,
     },
   });
 
   // Criteria only renders when both config values are supplied — callers that
-  // omit them (e.g. unit tests) still get a valid Repo/Run-started section
-  // rather than an "undefined most recent PRs" line.
-  const introLines = [`*Repo:* ${repo}`, `*Run started:* ${timeStr}`];
+  // omit them (e.g. unit tests) still get a valid intro section rather than an
+  // "undefined most recent PRs" line.
+  const introLines = [
+    `*Repos:* ${repos.map(shortName).join(', ')}`,
+    `*Run started:* ${formatEasternTime(startedAt)}`,
+  ];
   if (Number.isFinite(maxPRs) && Number.isFinite(daysBack)) {
     introLines.push(
-      `*Criteria:* ${maxPRs} most recent PRs opened within the last ${daysBack} days`
+      `*Criteria:* up to ${maxPRs} most recent PRs per repository, opened within the last ${daysBack} days`
     );
   }
-
   blocks.push({
     type: 'section',
-    text: {
-      type: 'mrkdwn',
-      text: introLines.join('\n'),
-    },
+    text: { type: 'mrkdwn', text: introLines.join('\n') },
   });
 
-  blocks.push({ type: 'divider' });
-
-  // ── Per-PR results ───────────────────────────────────────────────────────────
-  if (results.length === 0) {
-    // No-PR-found path — run fired but nothing was eligible
+  for (const { group, items } of parts) {
+    blocks.push({ type: 'divider' });
+    const heading = [`*${group.heading}*`, ...countsText(group.results)];
     blocks.push({
       type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: '_No eligible PRs found for this run._',
-      },
+      text: { type: 'mrkdwn', text: heading.join(' · ') },
     });
-  } else {
-    for (const result of results) {
-      if (result.failed) {
-        // Failed PR — review could not complete
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `⚠️  *PR #${result.prNumber}* — review failed\n_${escapeAtSign(result.error || 'Unknown error')}_`,
-          },
-        });
-      } else if (result.skipped) {
-        // Skipped PR: left unreviewed on purpose (a low balance, or no file fits the diff budget)
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `⏭️  *<${result.prUrl}|PR #${result.prNumber}>* — Skipped\n_${escapeAtSign(result.reason || 'Skipped before the review started')}_`,
-          },
-        });
-      } else {
-        const { emoji, label } = flagFor(result.recommendation);
-        const issueWord = result.findingsCount === 1 ? 'issue' : 'issues';
-        const rawSummary = truncateAtWord(stripMarkdown(result.summary), 150);
-        // Ensure backtick spans are balanced after truncation — if an odd number
-        // of backticks remain the last span was cut mid-token; close it.
-        const summary = escapeAtSign(
-          rawSummary.split('`').length % 2 === 0 ? rawSummary + '`' : rawSummary
-        );
-
-        const cov = result.coverage;
-        const partial = cov?.partial
-          ? ` · partial review: ${cov.files_reviewed} of ${cov.files_total} files`
-          : '';
-
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: [
-              `${emoji}  *<${result.prUrl}|PR #${result.prNumber}>* — ${label}`,
-              `${result.findingsCount} ${issueWord} found${partial}`,
-              summary ? `_${summary}_` : '',
-            ]
-              .filter(Boolean)
-              .join('\n'),
-          },
-        });
-      }
-
-      blocks.push({ type: 'divider' });
+    if (group.results.length === 0) {
+      blocks.push({
+        type: 'section',
+        text: { type: 'mrkdwn', text: '_No eligible PRs._' },
+      });
     }
+    for (const result of items) blocks.push(resultBlock(result));
   }
 
   // ── Footer ───────────────────────────────────────────────────────────────────
   const reviewedCount = results.filter((r) => !r.failed && !r.skipped).length;
   const failedCount = results.filter((r) => r.failed).length;
   const skippedCount = results.filter((r) => r.skipped).length;
-  const parts = [];
+  const footer = [];
   if (reviewedCount > 0)
-    parts.push(`${reviewedCount} PR${reviewedCount !== 1 ? 's' : ''} reviewed`);
-  if (failedCount > 0) parts.push(`${failedCount} failed`);
-  if (skippedCount > 0) parts.push(`${skippedCount} skipped`);
-  if (parts.length === 0) parts.push('Run complete');
+    footer.push(
+      `${reviewedCount} PR${reviewedCount !== 1 ? 's' : ''} reviewed`
+    );
+  if (failedCount > 0) footer.push(`${failedCount} failed`);
+  if (skippedCount > 0) footer.push(`${skippedCount} skipped`);
+  if (footer.length === 0) footer.push('Run complete');
   const baseUrl = (process.env.BASE_URL || '').trim();
-  if (baseUrl) parts.push(`<${baseUrl}|⚙️ Configure schedule>`);
+  if (baseUrl) footer.push(`<${baseUrl}|⚙️ Configure schedule>`);
 
+  blocks.push({ type: 'divider' });
   blocks.push({
     type: 'context',
-    elements: [
-      {
-        type: 'mrkdwn',
-        text: parts.join(' · '),
-      },
-    ],
+    elements: [{ type: 'mrkdwn', text: footer.join(' · ') }],
   });
 
-  return { blocks };
+  return blocks;
+}
+
+/**
+ * The messages to send for a run: the combined digest when it fits Slack's
+ * block limit; otherwise one message per repository, and a repository with
+ * too many results is cut into consecutive chunks. Every message repeats the
+ * header, intro, repository heading and footer, and names its part.
+ *
+ * @param {Object} opts - as buildPayload
+ * @returns {Object[]} Slack API blocks payloads, each at most 50 blocks
+ */
+function buildPayloads(opts) {
+  const combined = buildPayload(opts);
+  if (combined.blocks.length <= MAX_BLOCKS) return [combined];
+
+  const groups = groupResults(opts.repos, opts.results);
+  const chunks = [];
+  for (const group of groups) {
+    // Room left for results once the repeated blocks and the heading are counted.
+    const overhead = assemble(opts, [{ group, items: [] }], {
+      n: 99,
+      of: 99,
+    }).length;
+    const room = Math.max(1, MAX_BLOCKS - overhead);
+    const total = Math.max(1, Math.ceil(group.results.length / room));
+    for (let i = 0; i < total; i++) {
+      chunks.push({
+        group,
+        items: group.results.slice(i * room, (i + 1) * room),
+      });
+    }
+  }
+  return chunks.map((chunk, i) => ({
+    blocks: assemble(opts, [chunk], { n: i + 1, of: chunks.length }),
+  }));
 }
 
 // ── HTTP POST ─────────────────────────────────────────────────────────────────
@@ -452,16 +555,17 @@ function postToSlack(payload) {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Post a run digest to Slack. No-ops silently when SLACK_WEBHOOK_URL is unset.
+ * Post a run digest to Slack, as one message or as several when it would pass
+ * Slack's block limit. No-ops silently when SLACK_WEBHOOK_URL is unset.
  * Never throws — a Slack failure must never affect review output.
  *
  * @param {Object} opts
- * @param {number}  opts.startedAt     - epoch ms when the run started (from runStartedAt in index.js)
- * @param {string}  opts.repo          - "owner/repo" string
- * @param {Array}   opts.results       - Array of per-PR result objects:
- *   Success shape: { prNumber, prUrl, findingsCount, summary, recommendation, coverage }
- *   Failure shape: { prNumber, failed: true, error }
- *   Skipped shape: { prNumber, prUrl, skipped: true, reason }
+ * @param {number}   opts.startedAt     - epoch ms when the run started (from runStartedAt in index.js)
+ * @param {string[]} opts.repos         - "owner/repo" for every configured repository, in batch order
+ * @param {Array}    opts.results       - Array of per-PR result objects, each with `repo` (short name):
+ *   Success shape: { prNumber, repo, prUrl, findingsCount, summary, recommendation, coverage }
+ *   Failure shape: { prNumber, repo, failed: true, error }
+ *   Skipped shape: { prNumber, repo, prUrl, skipped: true, reason }
  * @param {number}   [opts.maxPRs]     - selection cap (MAX_PRS_PER_REPO), shown in the Criteria line
  * @param {number}   [opts.daysBack]   - age window in days (N_DAYS_SINCE_PR_CREATED), shown in the Criteria line
  * @param {Function} [opts.emitEvent]  - optional emitEvent fn for ES observability
@@ -469,7 +573,7 @@ function postToSlack(payload) {
  */
 async function postRunDigest({
   startedAt,
-  repo,
+  repos,
   results,
   maxPRs,
   daysBack,
@@ -477,17 +581,26 @@ async function postRunDigest({
 }) {
   if (!_enabled) return;
 
-  const payload = buildPayload({ startedAt, repo, results, maxPRs, daysBack });
+  const repo = repos.join(',');
+  const payloads = buildPayloads({
+    startedAt,
+    repos,
+    results,
+    maxPRs,
+    daysBack,
+  });
 
   try {
-    await postToSlack(payload);
-    console.log(`[slack] digest posted — ${results.length} PR(s)`);
+    for (const payload of payloads) await postToSlack(payload);
+    console.log(
+      `[slack] digest posted — ${results.length} PR(s) in ${payloads.length} message(s)`
+    );
 
     if (emitEvent) {
       await emitEvent({
         event_type: 'slack_digest_sent',
         repo,
-        payload: { prs_count: results.length },
+        payload: { prs_count: results.length, messages: payloads.length },
       }).catch(() => {
         // ES failure must not re-surface here
       });
@@ -606,6 +719,7 @@ module.exports = {
   postLowTokenAlert,
   // Exported for testing only
   _buildPayload: buildPayload,
+  _buildPayloads: buildPayloads,
   _buildLowTokenPayload: buildLowTokenPayload,
   _buildRunFailurePayload: buildRunFailurePayload,
   _stripMarkdown: stripMarkdown,

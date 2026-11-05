@@ -1151,7 +1151,7 @@ async function main() {
       [`${CARBON}#11`, `${CARBON}#12`, `${CAIC}#21`, `${CAIC}#22`],
       'ledger'
     );
-    assertEqual(auto.digest.repo, joined, 'digest repo');
+    assert(!('repo' in auto.digest), 'digest takes repos, not repo');
     assertList(auto.digest.repos, [CARBON, CAIC], 'digest repos');
     assertList(
       auto.digest.results.map((r) => [r.repo, r.prNumber]),
