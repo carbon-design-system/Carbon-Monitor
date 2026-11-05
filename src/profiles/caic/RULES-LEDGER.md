@@ -22,7 +22,7 @@ Paths below are relative to the upstream repo root.
 
 1. Download the files in **Docs read** at the new commit and at the pin; diff them.
 2. Record every new, changed or removed rule under **Drift**, with file and section, and say whether it was adopted.
-3. Update the rules in `SKILL.md` and `prompt.js` together, then this ledger, then the pin in all three places: this file, the two comments at the top of `SKILL.md`, and `upstreamCommit` in `evals/caic/manifest.json`.
+3. Update the rules in `SKILL.md` and `prompt.js` together, then this ledger, then the pin in all three places: this file, the `upstream commit pinned` comment at the top of `SKILL.md`, and `upstreamCommit` in `evals/caic/manifest.json`.
 4. Run `node tests/caicSummary.test.js`, `node tests/caicBundle.test.js`, `node tests/caicParser.test.js`, `node tests/profile.test.js` and `npm run test:all`.
 5. Add an eval to `evals/caic/manifest.json` for each new rule a PR can show. Do not run the evals without the maintainer's go-ahead.
 
