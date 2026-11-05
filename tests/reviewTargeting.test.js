@@ -1101,6 +1101,13 @@ async function main() {
     ]) {
       assertEqual(auto.comments(key).length, 1, `summary on ${key}`);
       assertEqual(auto.labels(key).length, 1, `label on ${key}`);
+      // The done marker goes on last, in the PR's own repo.
+      const at = (w) => auto.writes.indexOf(w);
+      assert(
+        at(auto.labels(key)[0]) > at(auto.comments(key)[0]) &&
+          at(auto.labels(key)[0]) > at(auto.reviews(key)[0]),
+        `label after write-back on ${key}`
+      );
     }
     for (const key of ['carbon#13', 'carbon-ai-chat#23']) {
       assertEqual(auto.comments(key).length, 0, `${key} is over the cap`);
@@ -1119,6 +1126,21 @@ async function main() {
     const body = (key) => auto.comments(key)[0].body.body;
     assert(body('carbon-ai-chat#21').includes('AI agent review - CAIC'));
     assert(!body('carbon#11').includes('CAIC'), 'core header unchanged');
+    assert(
+      body('carbon-ai-chat#21').startsWith('[AI agent review - CAIC] · '),
+      'caic header'
+    );
+    assert(
+      body('carbon#11').startsWith('[AI agent review — Carbon grounded] · '),
+      'core header'
+    );
+    // The caic skill is bundled for the caic PR only.
+    const skill = (key) =>
+      fs.existsSync(
+        path.join(auto.bundles[key].dir, '.bob/skills/caic-pr-review/SKILL.md')
+      );
+    assert(skill('carbon-ai-chat#21'), 'caic skill in the caic bundle');
+    assert(!skill('carbon#11'), 'no caic skill in the carbon bundle');
     const profileOf = (repo, n) =>
       auto.events.find(
         (e) =>
@@ -1178,6 +1200,38 @@ async function main() {
     assertEqual(nothing.writes.length, 0, 'nothing posted');
   });
   await nothing.cleanup();
+
+  // The balance turns low after the first review's budget check. Cost snapshots
+  // pass { force: true }; the budget check, adapter.credits(), does not.
+  let budgetChecks = 0;
+  const lowLater = await harness.runBatch({
+    concurrency: 1,
+    open: { carbon: [31, 32], 'carbon-ai-chat': [41] },
+    fixtures: fx(31, 32, 41),
+    balance: (o) => {
+      if (!o?.force) budgetChecks++;
+      const pct = budgetChecks <= 1 ? 80 : 5;
+      return { available: true, percentRemaining: pct, remaining: pct };
+    },
+  });
+
+  await test('a scheduled batch checks the budget before every review, and caic is skipped last', () => {
+    assertEqual(budgetChecks, 3, 'one budget check per review');
+    assertList(
+      lowLater.digest.results.map((r) => `${r.repo}#${r.prNumber}`),
+      ['carbon#31', 'carbon#32', 'carbon-ai-chat#41'],
+      'digest order'
+    );
+    assertList(
+      lowLater.digest.results.map((r) => Boolean(r.skipped)),
+      [false, true, true],
+      'skipped once the balance is low'
+    );
+    assertEqual(lowLater.comments('carbon#31').length, 1, 'reviewed');
+    assertEqual(lowLater.writes.length, 3, 'only carbon#31 was written to');
+    assertEqual(lowLater.bobRuns.length, 1, 'Bob ran once');
+  });
+  await lowLater.cleanup();
 
   const ordered = await harness.runBatch({
     concurrency: 1,
