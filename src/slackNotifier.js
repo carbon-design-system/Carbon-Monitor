@@ -446,14 +446,22 @@ function assemble(
   const reviewedCount = results.filter((r) => !r.failed && !r.skipped).length;
   const failedCount = results.filter((r) => r.failed).length;
   const skippedCount = results.filter((r) => r.skipped).length;
-  const footer = [];
+  const totals = [];
   if (reviewedCount > 0)
-    footer.push(
+    totals.push(
       `${reviewedCount} PR${reviewedCount !== 1 ? 's' : ''} reviewed`
     );
-  if (failedCount > 0) footer.push(`${failedCount} failed`);
-  if (skippedCount > 0) footer.push(`${skippedCount} skipped`);
-  if (footer.length === 0) footer.push('Run complete');
+  if (failedCount > 0) totals.push(`${failedCount} failed`);
+  if (skippedCount > 0) totals.push(`${skippedCount} skipped`);
+  if (totals.length === 0) totals.push('Run complete');
+  // A part's own counts must not read as the run's: name both on a split digest.
+  const shown = parts.flatMap((p) => p.items);
+  const footer = part
+    ? [
+        `This part: ${countsText(shown).join(', ') || 'no PRs'}`,
+        `Whole run: ${totals.join(', ')}`,
+      ]
+    : totals;
   const baseUrl = (process.env.BASE_URL || '').trim();
   if (baseUrl) footer.push(`<${baseUrl}|⚙️ Configure schedule>`);
 

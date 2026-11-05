@@ -404,6 +404,7 @@ async function main() {
   };
   const expectedKeys = (repo, n, start = 1) =>
     Array.from({ length: n }, (_, i) => `${repo}#${start + i}`);
+  const footerOf = (p) => p.blocks[p.blocks.length - 1].elements[0].text;
   const assertWhole = (payloads, expected, label) => {
     for (const [i, p] of payloads.entries()) {
       assert.ok(
@@ -534,10 +535,41 @@ async function main() {
           t.includes('*Repos:* carbon, carbon-ai-chat'),
           'intro repeats'
         );
-        assert.ok(t.includes(`${n} PRs reviewed`), 'footer repeats');
+        assert.ok(
+          footerOf(p).includes(`Whole run: ${n} PRs reviewed`),
+          'footer repeats the run totals'
+        );
       });
+      // Each part's footer counts only what that message shows.
+      const partCounts = payloads.map((p) => {
+        const m = /^This part: (?:(\d+) reviewed|no PRs)/.exec(footerOf(p));
+        assert.ok(m, `part footer: ${footerOf(p)}`);
+        return Number(m[1] || 0);
+      });
+      payloads.forEach((p, i) =>
+        assert.strictEqual(
+          partCounts[i],
+          placed([p]).length,
+          `part ${i + 1} counts its own results`
+        )
+      );
+      assert.strictEqual(
+        partCounts.reduce((a, b) => a + b, 0),
+        n,
+        'the parts add up to the run'
+      );
     });
   }
+
+  await test('an unsplit digest footer gives the run totals alone', () => {
+    const payloads = _buildPayloads({
+      ...base,
+      repos: [CARBON, CAIC],
+      results: [...make('carbon', 2), ...make('carbon-ai-chat', 1, 101)],
+    });
+    assert.strictEqual(payloads.length, 1);
+    assert.strictEqual(footerOf(payloads[0]), '3 PRs reviewed');
+  });
 
   await test('uneven repos needing several chunks keep repo order and every result once', () => {
     const results = [
