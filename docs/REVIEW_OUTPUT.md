@@ -36,6 +36,24 @@ The `core` header uses an em dash (U+2014); the `caic` header uses a hyphen-minu
 The "Carbon verification:" line appears in `core` reviews always; in `caic` reviews
 it appears only when the review has at least one Category 1 (Carbon API) finding.
 
+The `caic` profile rates a finding by what it costs if it merges as written, and
+maps its labels onto the severities in [Finding severities](#finding-severities):
+
+| caic label | Severity   | Costs                                                                              |
+| ---------- | ---------- | ---------------------------------------------------------------------------------- |
+| Blocker    | `blocking` | Something ships broken or a commitment breaks                                      |
+| Important  | `major`    | Nothing ships broken, but someone pays later                                       |
+| (none)     | `minor`    | A maintainability risk with evidence of functional impact; no caic rule maps to it |
+| Nit        | `nit`      | Convention or hygiene with no functional consequence                               |
+
+A convention break costs what its consequence costs, so it is not a Blocker by
+default, and a finding nobody pays for is at most a `nit`. Nits are
+collapsed and never inline for every profile; the profile changes only how a
+finding is rated. The agent's summary may end with one sentence,
+`Not verified: <path or behaviour>`, when it skipped something it needed to be
+sure of; the layout below does not change. The rules and their upstream sources
+are in `src/profiles/caic/RULES-LEDGER.md`.
+
 ```
 [AI agent review — Carbon grounded] · **Consider Revising**
 

@@ -114,8 +114,10 @@ The profile is chosen from the repository name in code, not in `.env`:
 | any other        | `core`  | `[AI agent review — Carbon grounded]` | Bob or Claude |
 
 The `caic` profile has its own prompt and its own `caic-pr-review` skill, which
-ships in `src/profiles/caic/`. It runs on Bob only. With `carbon-ai-chat` listed
-and `GITHUB_AI_AGENT_CLI=claude`, the run refuses to start before it touches any
+ships in `src/profiles/caic/`. The rules are distilled from the carbon-ai-chat
+`caic-review` skill; `src/profiles/caic/RULES-LEDGER.md` records the upstream
+commit pinned, each rule's source and how to re-distill. It runs on Bob only.
+With `carbon-ai-chat` listed and `GITHUB_AI_AGENT_CLI=claude`, the run refuses to start before it touches any
 PR: the console shows why, a scheduled run posts a failure notice to Slack, and the
 `profiles` health tile turns red.
 
