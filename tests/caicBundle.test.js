@@ -139,6 +139,49 @@ test('the caic prompt carries every severity mapping line from the skill word fo
   }
 });
 
+test('the rules ledger and docs/REVIEW_OUTPUT.md state the same mapping', () => {
+  const ledger = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'profiles', 'caic', 'RULES-LEDGER.md'),
+    'utf8'
+  );
+  const rows = [...ledger.matchAll(/^\| V\d +\| (.+?) +\|/gm)].map((m) => m[1]);
+  assert.strictEqual(rows.length, MAPPING_BULLETS.length);
+  MAPPING_BULLETS.forEach((bullet, i) => {
+    assert.ok(rows[i].startsWith(bullet.slice(2)), `ledger V${i + 1}`);
+  });
+  const doc = fs.readFileSync(
+    path.join(__dirname, '..', 'docs', 'REVIEW_OUTPUT.md'),
+    'utf8'
+  );
+  for (const row of [
+    /^\| Blocker +\| `blocking` +\|/m,
+    /^\| Important +\| `major` +\|/m,
+    /^\| \(none\) +\| `minor` +\| A maintainability risk with evidence of functional impact/m,
+    /^\| Nit +\| `nit` +\|/m,
+  ]) {
+    assert.ok(row.test(doc), `docs/REVIEW_OUTPUT.md lacks ${row}`);
+  }
+});
+
+test('the finding shape is required for minor and above, in both files', () => {
+  assert.ok(
+    skillText.includes(
+      'A `minor`-or-above finding body reads in this order, on one line:'
+    )
+  );
+  assert.ok(
+    caicPrompt.includes(
+      'For `minor`, `major`, or `blocking` findings, the body reads in this order, on one line:'
+    )
+  );
+});
+
+test('L2 is Important in both files: a convention break with no named consequence', () => {
+  assert.ok(skillText.includes('**L2 (Important):**'));
+  assert.ok(caicPrompt.includes('**L2 (Important → major):**'));
+  assert.ok(!/L2 \(Blocker/.test(skillText + caicPrompt));
+});
+
 test('neither file still says minor is unused, or grades size and weakened proofs as flat Blockers', () => {
   for (const [name, text] of [
     ['SKILL.md', skillText],
