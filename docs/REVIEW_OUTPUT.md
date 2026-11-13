@@ -54,17 +54,35 @@ finding is rated. The agent's summary may end with one sentence,
 sure of; the layout below does not change. The rules and their upstream sources
 are in `src/profiles/caic/RULES-LEDGER.md`.
 
-```
+````
 [AI agent review — Carbon grounded] · **Consider Revising**
 
 Reviewed by: IBM Bob · Commit: a1b2c3d
 Carbon verification: Carbon-specific claims verified using Carbon Builder skill (primary authority) and Carbon MCP (fallback).
 
-## Recommendation
+## Recommendations and Resolution SPEC.md
 
 1 blocking finding: "Missing aria-label on time picker select"
 
 There are issues in this PR that should be addressed before merging. ...
+
+<details>
+<summary>Resolution SPEC.md — copy into your IDE agent</summary>
+
+```markdown
+# Resolution SPEC for carbon-design-system/carbon#12345 (commit a1b2c3d)
+
+...fixed instructions for IDE agents (Bob, Claude, Cursor, etc.)...
+
+## Findings
+
+### 1. [blocking] Missing aria-label on time picker select
+- File: src/components/TimePicker/TimePicker.js:42
+- Category: 2 (from the diff)
+- Add aria-label attribute to select element.
+````
+
+</details>
 
 <details>
 <summary>Findings (2)</summary>
@@ -74,10 +92,10 @@ There are issues in this PR that should be addressed before merging. ...
 - **Cat 1** — a Carbon-specific claim (does this component accept this prop, attribute or variant?), verified against the Carbon Builder skill or Carbon MCP.
 - **Cat 2** — generic correctness, accessibility or duplication, established from the diff alone.
 
-| Area | Category | Severity | Finding | File |
-|------|----------|----------|---------|------|
-| General | Cat 2 | blocking | Missing aria-label on time picker select | src/components/... |
-| Carbon API | Cat 1 | minor | menu-alignment on wrong element | src/components/... |
+| Area       | Category | Severity | Finding                                  | File               |
+| ---------- | -------- | -------- | ---------------------------------------- | ------------------ |
+| General    | Cat 2    | blocking | Missing aria-label on time picker select | src/components/... |
+| Carbon API | Cat 1    | minor    | menu-alignment on wrong element          | src/components/... |
 
 </details>
 
@@ -100,6 +118,7 @@ This PR updates the time picker Figma Code Connect mappings. 1 blocking finding:
 (findings that could not be placed on a diff line, if any)
 
 Review artifacts:
+
 - PR: #12345
 - Commit: a1b2c3d
 - Agent: IBM Bob
@@ -109,6 +128,7 @@ Review artifacts:
 ---
 
 **Token Usage:**
+
 - Input tokens: 8,400
 - Output tokens: 2,100
 - Total tokens: 10,500
@@ -117,8 +137,11 @@ Review artifacts:
 
 ---
 
-*An AI agent generated this review. Human review is advised before acting on any findings.*
+_An AI agent generated this review. Human review is advised before acting on any findings._
+
 ```
+
+The Resolution SPEC block appears whenever there is at least one non-nit finding (`blocking`, `major`, or `minor`). It renders a ready-to-copy Markdown SPEC with instructions for IDE agents and an enumerated list of findings ordered by severity (`blocking` → `major` → `minor`), inline findings first. If the comment exceeds 60,000 characters (approaching GitHub's 65,536 limit), the `Evidence:` lines in the SPEC are omitted first; if still over, the SPEC body is replaced with an omission notice.
 
 The nit list shows only when the review has nits. It gives each nit's title and `file:line`, not its body. Nits are not counted in the review artifacts.
 
@@ -131,6 +154,7 @@ The token section shows exact counts from the agent's result record. When a run 
 A PR whose findings are all nits, or that has none, gets this comment in place of the summary comment above. It has no inline comments, recommendation section, findings table, review artifacts or token usage.
 
 ```
+
 [AI agent review — Carbon grounded] · **Looks Good** · Reviewed by: Claude · Commit: a1b2c3d
 
 This PR renames two stories and updates their snapshots.
