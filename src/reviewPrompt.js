@@ -267,54 +267,191 @@ function formatLooksGoodComment({
 }
 
 // ---------------------------------------------------------------------------
+// RESOLUTION_SPEC_PROMPT / renderResolutionSpec
+// ---------------------------------------------------------------------------
+
+const RESOLUTION_SPEC_PROMPT = `You are working in a checkout of this repository on the pull request's branch.
+Below is an enumerated list of findings from an automated review of this PR,
+grounded in Carbon Design System context: Category 1 findings were verified
+against the Carbon Builder skill or Carbon MCP and carry the quoted evidence;
+Category 2 findings were established from the diff alone. Severities: blocking
+(ships broken), major (someone pays later), minor (maintainability risk with
+evidence).
+
+## Step 1 — Adversarial review, before you change anything
+
+Read the actual code on this branch, not the finding's description of it. For
+each finding, decide whether it is real as stated and whether the proposed fix
+is the best one. If a finding's evidence quote is missing or does not support
+the claim, say so. Prefer the \`carbon-builder\` skill or Carbon MCP over memory
+for any Carbon API question.
+
+Report in one table, in finding order:
+
+| # | Finding | Agree / Disagree / Partly | Justification (cite the file:line you read) | Fix (as proposed, or your amendment) | Implementation risk (low / medium / high, and why) |
+
+Under the table, list anything the review missed that this diff should have
+caught, and anything in the findings that would widen the PR beyond its stated
+scope.
+
+## Step 2 — Stop and ask
+
+Ask whether I have questions or concerns about any row. Do not change code
+until I answer. If I answer with no concerns, go to Step 3.
+
+## Step 3 — Implement
+
+For every row marked Agree or Partly (using the amended fix):
+- Make the smallest change that resolves it; do not refactor around it.
+- Never hand-edit generated output (dist/, custom-elements.json, telemetry.yml,
+  generated API docs); regenerate it with the repository's own command when a
+  source change requires it.
+- Add or extend a test when the finding is about behaviour; keep every existing
+  assertion as strong as it was.
+- Run this repository's own checks (lint, tests, format) before you finish and
+  paste the commands with their exit codes.
+- One commit per finding, message \`fix: <finding title> (review finding N)\`,
+  authored as me. Do not push, and do not comment on the pull request.
+
+Finish with a short table: finding, commit, and the test or command that proves
+it.`;
+
+/**
+ * Escapes backtick fences at the start of a line to ~~~ so that code blocks
+ * in findings do not close the outer ```markdown fence.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function escapeCodeFences(text) {
+  if (!text) return '';
+  return String(text)
+    .split('\n')
+    .map((line) =>
+      line.startsWith('```') ? line.replace(/^```/, '~~~') : line
+    )
+    .join('\n');
+}
+
+/**
+ * Sorts findings for the Resolution SPEC:
+ * blocking -> major -> minor.
+ * Within a severity, inline findings first, then summary-only findings,
+ * each preserving their original encounter order.
+ *
+ * @param {Array} inlineFindings
+ * @param {Array} summaryFindings
+ * @returns {Array}
+ */
+function sortSpecFindings(inlineFindings = [], summaryFindings = []) {
+  const severities = ['blocking', 'major', 'minor'];
+  const result = [];
+  for (const sev of severities) {
+    for (const f of inlineFindings) {
+      if (f.severity === sev) result.push(f);
+    }
+    for (const f of summaryFindings) {
+      if (f.severity === sev) result.push(f);
+    }
+  }
+  // Any non-standard severities, if any
+  for (const f of inlineFindings) {
+    if (!severities.includes(f.severity)) result.push(f);
+  }
+  for (const f of summaryFindings) {
+    if (!severities.includes(f.severity)) result.push(f);
+  }
+  return result;
+}
+
+/**
+ * Renders the markdown content of the Resolution SPEC.md document.
+ *
+ * @param {Array} findings - Ordered findings list (non-nit)
+ * @param {Object} [meta]
+ * @param {number} [meta.prNumber]
+ * @param {string} [meta.commitSha]
+ * @param {string} [meta.owner]
+ * @param {string} [meta.repo]
+ * @param {boolean} [meta.dropEvidence]
+ * @returns {string}
+ */
+function renderResolutionSpec(
+  findings = [],
+  { prNumber, commitSha, owner, repo, dropEvidence = false } = {}
+) {
+  const target =
+    owner && repo ? `${owner}/${repo}#${prNumber}` : `#${prNumber}`;
+  const sha = (commitSha || '').substring(0, 7);
+
+  let spec = `# Resolution SPEC for ${target} (commit ${sha})\n\n`;
+  spec += `${RESOLUTION_SPEC_PROMPT}\n\n`;
+  spec += `## Findings\n\n`;
+
+  findings.forEach((finding, idx) => {
+    const num = idx + 1;
+    const sev = finding.severity || 'minor';
+    const title = escapeAtSign(finding.title || '');
+    spec += `### ${num}. [${sev}] ${title}\n`;
+
+    const file = finding.file || '';
+    const line =
+      finding.line != null && finding.line !== '' ? `:${finding.line}` : '';
+    spec += `- File: ${file}${line}\n`;
+
+    let catText = 'Category: 2 (from the diff)';
+    if (finding.verificationSource === 'carbon-builder') {
+      catText = 'Category: 1 (verified via Carbon Builder skill)';
+    } else if (finding.verificationSource === 'carbon-mcp') {
+      catText = 'Category: 1 (verified via Carbon MCP)';
+    }
+    spec += `- ${catText}\n`;
+
+    const isCat1 =
+      finding.verificationSource === 'carbon-builder' ||
+      finding.verificationSource === 'carbon-mcp';
+    if (isCat1 && !dropEvidence && finding.mcpEvidence) {
+      spec += `- Evidence: "${escapeAtSign(escapeCodeFences(finding.mcpEvidence))}"\n`;
+    }
+
+    const bodyText = escapeAtSign(escapeCodeFences(finding.body || ''));
+    spec += `- ${bodyText}\n\n`;
+  });
+
+  return spec.trim();
+}
+
+// ---------------------------------------------------------------------------
 // formatSummaryComment
 // ---------------------------------------------------------------------------
 
 /**
- * Format summary comment with spec-compliant template.
- *
- * All new parameters have safe defaults so existing call sites continue to
- * work without modification — no silent undefined in rendered output.
- *
- * @param {Object}  options
- * @param {string}  options.agent                - Agent id (an id from src/agents)
- * @param {string}  [options.agentName]           - Name shown in the comment; defaults to the id
- * @param {string}  options.summaryMarkdown       - Agent's 1-2 sentence summary (never mutated)
- * @param {number}  options.prNumber              - PR number
- * @param {string}  options.commitSha             - Head commit SHA
- * @param {Array}   [options.inlineFindings]      - Findings posted as inline comments
- * @param {Array}   [options.summaryFindings]     - Findings included in summary
- * @param {Object}  [options.tokenUsage]          - Token usage { input, output, total }
- * @param {string}  [options.recommendation]      - 'consider-revising'|'suggested-improvements'|'looks-good'
- * @param {string}  [options.recommendationRationale] - One sentence from computeRecommendation
- * @param {string|null} [options.catalogueWarning] - Non-null when agent skipped Step 1 catalogue
- * @param {Array}   [options.findingsTable]       - Typed array from parser: [{area,category,severity,title,file}]
- * @param {Array}   [options.nitFindings]         - Nit findings, listed collapsed after the summary
- * @param {Object}  [options.coverage]            - Review coverage; a partial review adds its note
- * @param {string}  [options.filesUrl]            - The PR's Files changed URL, linked from that note
- * @param {string}  [options.headerLabel]         - Override the header tag; defaults to core text
- * @param {boolean} [options.showCarbonVerification] - Show the Carbon verification line; defaults to true
- * @returns {string} - Formatted summary comment
+ * Assemble summary comment without size checks.
  */
-function formatSummaryComment({
-  agent,
-  agentName = agent,
-  summaryMarkdown,
-  prNumber,
-  commitSha,
-  inlineFindings = [],
-  summaryFindings = [],
-  tokenUsage = null,
-  recommendation = 'looks-good',
-  recommendationRationale = '',
-  catalogueWarning = null,
-  findingsTable = [],
-  nitFindings = [],
-  coverage = null,
-  filesUrl = '',
-  headerLabel = 'AI agent review \u2014 Carbon grounded',
-  showCarbonVerification = true,
-}) {
+function assembleSummaryComment(
+  {
+    agent,
+    agentName = agent,
+    summaryMarkdown,
+    prNumber,
+    commitSha,
+    owner,
+    repo,
+    inlineFindings = [],
+    summaryFindings = [],
+    tokenUsage = null,
+    recommendation = 'looks-good',
+    recommendationRationale = '',
+    catalogueWarning = null,
+    findingsTable = [],
+    nitFindings = [],
+    coverage = null,
+    filesUrl = '',
+    headerLabel = 'AI agent review \u2014 Carbon grounded',
+    showCarbonVerification = true,
+  },
+  { dropEvidence = false, omitSpec = false } = {}
+) {
   const recLabel = RECOMMENDATION_LABELS[recommendation] || recommendation;
   const recAdvice = RECOMMENDATION_ADVICE[recommendation] || '';
 
@@ -326,7 +463,7 @@ function formatSummaryComment({
   comment += `\n`;
 
   // ── Recommendation section ─────────────────────────────────────────────
-  comment += `## Recommendation\n\n`;
+  comment += `## Recommendations and Resolution SPEC.md\n\n`;
   if (recommendationRationale) {
     comment += `${recommendationRationale}\n\n`;
   }
@@ -338,6 +475,28 @@ function formatSummaryComment({
   // ── Catalogue reliability warning (rendered separately — never in summaryMarkdown) ──
   if (catalogueWarning) {
     comment += `> ⚠️ **Review Reliability Note:** ${catalogueWarning}\n\n`;
+  }
+
+  // ── Resolution SPEC block (when findings above nit exist) ─────────────────
+  const nonNitFindings = (inlineFindings || []).concat(summaryFindings || []);
+  if (nonNitFindings.length > 0) {
+    if (omitSpec) {
+      comment += `<details>\n<summary>Resolution SPEC.md — copy into your IDE agent</summary>\n\n`;
+      comment += `_Resolution SPEC omitted: comment would exceed GitHub's size limit (${nonNitFindings.length} findings)._\n\n`;
+      comment += `</details>\n\n`;
+    } else {
+      const sortedFindings = sortSpecFindings(inlineFindings, summaryFindings);
+      const specContent = renderResolutionSpec(sortedFindings, {
+        prNumber,
+        commitSha,
+        owner,
+        repo,
+        dropEvidence,
+      });
+      comment += `<details>\n<summary>Resolution SPEC.md — copy into your IDE agent</summary>\n\n`;
+      comment += `\`\`\`markdown\n${specContent}\n\`\`\`\n\n`;
+      comment += `</details>\n\n`;
+    }
   }
 
   // ── Findings table (rendered from typed array — no Markdown in agent JSON) ──
@@ -454,6 +613,56 @@ function formatSummaryComment({
   comment += `\n---\n\n`;
   comment += `*An AI agent generated this review. Human review is advised before acting on any findings.*\n`;
 
+  return comment;
+}
+
+const GITHUB_COMMENT_SIZE_LIMIT = 60000;
+
+/**
+ * Format summary comment with spec-compliant template and size guard.
+ *
+ * All new parameters have safe defaults so existing call sites continue to
+ * work without modification — no silent undefined in rendered output.
+ *
+ * @param {Object}  options
+ * @param {string}  options.agent                - Agent id (an id from src/agents)
+ * @param {string}  [options.agentName]           - Name shown in the comment; defaults to the id
+ * @param {string}  options.summaryMarkdown       - Agent's 1-2 sentence summary (never mutated)
+ * @param {number}  options.prNumber              - PR number
+ * @param {string}  options.commitSha             - Head commit SHA
+ * @param {string}  [options.owner]               - Repository owner
+ * @param {string}  [options.repo]                - Repository short name
+ * @param {Array}   [options.inlineFindings]      - Findings posted as inline comments
+ * @param {Array}   [options.summaryFindings]     - Findings included in summary
+ * @param {Object}  [options.tokenUsage]          - Token usage { input, output, total }
+ * @param {string}  [options.recommendation]      - 'consider-revising'|'suggested-improvements'|'looks-good'
+ * @param {string}  [options.recommendationRationale] - One sentence from computeRecommendation
+ * @param {string|null} [options.catalogueWarning] - Non-null when agent skipped Step 1 catalogue
+ * @param {Array}   [options.findingsTable]       - Typed array from parser: [{area,category,severity,title,file}]
+ * @param {Array}   [options.nitFindings]         - Nit findings, listed collapsed after the summary
+ * @param {Object}  [options.coverage]            - Review coverage; a partial review adds its note
+ * @param {string}  [options.filesUrl]            - The PR's Files changed URL, linked from that note
+ * @param {string}  [options.headerLabel]         - Override the header tag; defaults to core text
+ * @param {boolean} [options.showCarbonVerification] - Show the Carbon verification line; defaults to true
+ * @returns {string} - Formatted summary comment
+ */
+function formatSummaryComment(options) {
+  let comment = assembleSummaryComment(options, {
+    dropEvidence: false,
+    omitSpec: false,
+  });
+  if (comment.length > GITHUB_COMMENT_SIZE_LIMIT) {
+    comment = assembleSummaryComment(options, {
+      dropEvidence: true,
+      omitSpec: false,
+    });
+    if (comment.length > GITHUB_COMMENT_SIZE_LIMIT) {
+      comment = assembleSummaryComment(options, {
+        dropEvidence: true,
+        omitSpec: true,
+      });
+    }
+  }
   return comment;
 }
 
@@ -823,4 +1032,6 @@ module.exports = {
   buildReviewPrompt,
   estimateTokenUsage,
   escapeAtSign,
+  RESOLUTION_SPEC_PROMPT,
+  renderResolutionSpec,
 };

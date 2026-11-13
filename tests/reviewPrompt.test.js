@@ -28,6 +28,8 @@ const {
   formatLooksGoodComment,
   formatNotReviewedComment,
   buildReviewPrompt,
+  RESOLUTION_SPEC_PROMPT,
+  renderResolutionSpec,
 } = require('../src/reviewPrompt');
 const agents = require('../src/agents');
 
@@ -318,7 +320,7 @@ async function main() {
   await test('a yellow review with nits keeps the full layout', () => {
     const result = formatSummaryComment(summaryArgs);
     for (const present of [
-      '## Recommendation',
+      '## Recommendations and Resolution SPEC.md',
       'Reviewed by: IBM Bob',
       'Review artifacts:',
       'An AI agent generated this review.',
@@ -493,6 +495,296 @@ async function main() {
     assert.strictEqual(claudeLines.length, bobLines.length);
     const changed = bobLines.filter((l, i) => l !== claudeLines[i]);
     assert.strictEqual(changed.length, 5);
+  });
+
+  // ── 12. Resolution SPEC.md in formatSummaryComment ──────────────────────────
+  console.log('\n── 12. Resolution SPEC.md ──────────────────────────────────');
+
+  await test('formatSummaryComment uses heading "## Recommendations and Resolution SPEC.md"', () => {
+    const result = formatSummaryComment({
+      agent: 'bob',
+      summaryMarkdown: 'No findings.',
+      prNumber: 1,
+      commitSha: 'abcdef123456',
+      recommendation: 'looks-good',
+    });
+    assert.ok(result.includes('## Recommendations and Resolution SPEC.md'));
+  });
+
+  await test('SPEC block is absent when there are no findings above nit', () => {
+    const result = formatSummaryComment({
+      agent: 'bob',
+      summaryMarkdown: 'Only nits.',
+      prNumber: 1,
+      commitSha: 'abcdef123456',
+      nitFindings: [nit('Nit title', 'src/a.js', 10)],
+    });
+    assert.ok(!result.includes('<summary>Resolution SPEC.md'));
+    assert.ok(!result.includes('```markdown\n# Resolution SPEC'));
+  });
+
+  await test('SPEC block is present with one major finding', () => {
+    const result = formatSummaryComment({
+      agent: 'bob',
+      summaryMarkdown: 'One issue.',
+      prNumber: 42,
+      commitSha: 'abcdef123456',
+      owner: 'carbon-design-system',
+      repo: 'carbon',
+      inlineFindings: [
+        {
+          title: 'Incorrect prop name',
+          severity: 'major',
+          file: 'packages/react/src/components/Button/Button.js',
+          line: 42,
+          body: 'Use kind instead of variant.',
+          verificationSource: 'carbon-builder',
+          mcpEvidence: 'Button prop kind accepts primary, secondary',
+        },
+      ],
+    });
+
+    assert.ok(
+      result.includes(
+        '<details>\n<summary>Resolution SPEC.md — copy into your IDE agent</summary>'
+      )
+    );
+    assert.ok(
+      result.includes(
+        '# Resolution SPEC for carbon-design-system/carbon#42 (commit abcdef1)'
+      )
+    );
+    assert.ok(result.includes('### 1. [major] Incorrect prop name'));
+    assert.ok(
+      result.includes(
+        '- File: packages/react/src/components/Button/Button.js:42'
+      )
+    );
+    assert.ok(
+      result.includes('- Category: 1 (verified via Carbon Builder skill)')
+    );
+    assert.ok(
+      result.includes(
+        '- Evidence: "Button prop kind accepts primary, secondary"'
+      )
+    );
+    assert.ok(result.includes('- Use kind instead of variant.'));
+  });
+
+  await test('SPEC ordering: blocking -> major -> minor; inline before summary-only within severity', () => {
+    const inlineFindings = [
+      {
+        title: 'Minor inline',
+        severity: 'minor',
+        file: 'src/minor-inline.js',
+        line: 1,
+        body: 'Minor inline body',
+      },
+      {
+        title: 'Blocking inline',
+        severity: 'blocking',
+        file: 'src/block-inline.js',
+        line: 2,
+        body: 'Block inline body',
+      },
+    ];
+    const summaryFindings = [
+      {
+        title: 'Major summary',
+        severity: 'major',
+        file: 'src/major-summary.js',
+        body: 'Major summary body',
+      },
+      {
+        title: 'Blocking summary',
+        severity: 'blocking',
+        file: 'src/block-summary.js',
+        body: 'Block summary body',
+      },
+    ];
+
+    const result = formatSummaryComment({
+      agent: 'bob',
+      summaryMarkdown: 'Four findings.',
+      prNumber: 10,
+      commitSha: '1234567890ab',
+      inlineFindings,
+      summaryFindings,
+    });
+
+    const f1 = result.indexOf('### 1. [blocking] Blocking inline');
+    const f2 = result.indexOf('### 2. [blocking] Blocking summary');
+    const f3 = result.indexOf('### 3. [major] Major summary');
+    const f4 = result.indexOf('### 4. [minor] Minor inline');
+
+    assert.ok(f1 >= 0, 'f1 found');
+    assert.ok(f2 > f1, 'f2 after f1');
+    assert.ok(f3 > f2, 'f3 after f2');
+    assert.ok(f4 > f3, 'f4 after f3');
+
+    // Check file formatting when line is missing
+    assert.ok(result.includes('- File: src/major-summary.js\n'));
+    assert.ok(result.includes('- File: src/block-inline.js:2\n'));
+  });
+
+  await test('SPEC verificationSource handling: carbon-builder vs carbon-mcp vs Category 2', () => {
+    const result = formatSummaryComment({
+      agent: 'bob',
+      summaryMarkdown: 'Check categories.',
+      prNumber: 99,
+      commitSha: '999999999999',
+      summaryFindings: [
+        {
+          title: 'Skill verified',
+          severity: 'major',
+          file: 'src/a.js',
+          verificationSource: 'carbon-builder',
+          mcpEvidence: 'Evidence from builder',
+          body: 'Fix a.',
+        },
+        {
+          title: 'MCP verified',
+          severity: 'major',
+          file: 'src/b.js',
+          verificationSource: 'carbon-mcp',
+          mcpEvidence: 'Evidence from MCP',
+          body: 'Fix b.',
+        },
+        {
+          title: 'Diff finding',
+          severity: 'major',
+          file: 'src/c.js',
+          verificationSource: 'not-carbon-specific',
+          mcpEvidence: 'Ignored evidence',
+          body: 'Fix c.',
+        },
+      ],
+    });
+
+    assert.ok(
+      result.includes(
+        '### 1. [major] Skill verified\n- File: src/a.js\n- Category: 1 (verified via Carbon Builder skill)\n- Evidence: "Evidence from builder"\n- Fix a.'
+      )
+    );
+    assert.ok(
+      result.includes(
+        '### 2. [major] MCP verified\n- File: src/b.js\n- Category: 1 (verified via Carbon MCP)\n- Evidence: "Evidence from MCP"\n- Fix b.'
+      )
+    );
+    assert.ok(
+      result.includes(
+        '### 3. [major] Diff finding\n- File: src/c.js\n- Category: 2 (from the diff)\n- Fix c.'
+      )
+    );
+    assert.ok(!result.includes('Ignored evidence'));
+  });
+
+  await test('SPEC escapes backtick lines and @word in title and body', () => {
+    const result = formatSummaryComment({
+      agent: 'bob',
+      summaryMarkdown: 'Escaping test.',
+      prNumber: 5,
+      commitSha: '555555555555',
+      summaryFindings: [
+        {
+          title: 'The @mixin problem',
+          severity: 'minor',
+          file: 'src/mix.scss',
+          body: 'Check this code:\n```scss\n@include reset;\n```\nDone.',
+        },
+      ],
+    });
+
+    assert.ok(result.includes(`### 1. [minor] The @${ZWS}mixin problem`));
+    // The ```scss and ``` lines are replaced by ~~~scss and ~~~ so they do not close the markdown fence
+    assert.ok(result.includes('~~~scss\n'));
+    assert.ok(result.includes(`@${ZWS}include reset;\n~~~`));
+    // Must not have unescaped ``` inside the finding
+    const specBlock = result.substring(
+      result.indexOf('```markdown'),
+      result.indexOf('```\n\n</details>')
+    );
+    assert.ok(!specBlock.includes('\n```scss'));
+  });
+
+  await test('SPEC title line falls back to #prNumber when owner or repo is omitted', () => {
+    const result = formatSummaryComment({
+      agent: 'bob',
+      summaryMarkdown: 'No owner/repo.',
+      prNumber: 77,
+      commitSha: '777777777777',
+      summaryFindings: [
+        {
+          title: 'Finding',
+          severity: 'minor',
+          file: 'a.js',
+          body: 'Fix.',
+        },
+      ],
+    });
+    assert.ok(result.includes('# Resolution SPEC for #77 (commit 7777777)'));
+  });
+
+  await test('Size guard step 1: drops Evidence when comment exceeds 60,000 characters', () => {
+    // Construct findings with large evidence such that with evidence > 60k, without evidence < 60k
+    const longEvidence = 'E'.repeat(2000);
+    const findings = [];
+    for (let i = 0; i < 20; i++) {
+      findings.push({
+        title: `Finding ${i}`,
+        severity: 'major',
+        file: `src/file${i}.js`,
+        verificationSource: 'carbon-builder',
+        mcpEvidence: longEvidence,
+        body: 'Short body.',
+      });
+    }
+
+    const result = formatSummaryComment({
+      agent: 'bob',
+      summaryMarkdown: 'M'.repeat(25000),
+      prNumber: 1,
+      commitSha: '111111111111',
+      summaryFindings: findings,
+    });
+
+    assert.ok(
+      result.length <= 60000,
+      `Result length should be <= 60000, got ${result.length}`
+    );
+    assert.ok(result.includes('<summary>Resolution SPEC.md'));
+    assert.ok(result.includes('### 1. [major] Finding 0'));
+    // Evidence lines dropped
+    assert.ok(!result.includes('- Evidence:'));
+  });
+
+  await test('Size guard step 2: replaces SPEC with omission notice when still exceeding 60,000 characters', () => {
+    // Construct huge bodies so comment > 60k even without evidence
+    const longBody = 'B'.repeat(4000);
+    const findings = [];
+    for (let i = 0; i < 20; i++) {
+      findings.push({
+        title: `Finding ${i}`,
+        severity: 'major',
+        file: `src/file${i}.js`,
+        body: longBody,
+      });
+    }
+
+    const result = formatSummaryComment({
+      agent: 'bob',
+      summaryMarkdown: 'Summary',
+      prNumber: 1,
+      commitSha: '111111111111',
+      summaryFindings: findings,
+    });
+
+    assert.ok(
+      result.includes(
+        "<details>\n<summary>Resolution SPEC.md — copy into your IDE agent</summary>\n\n_Resolution SPEC omitted: comment would exceed GitHub's size limit (20 findings)._\n\n</details>"
+      )
+    );
+    assert.ok(!result.includes('```markdown'));
   });
 
   // ── Summary ──────────────────────────────────────────────────────────────────

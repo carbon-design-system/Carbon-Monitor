@@ -3,7 +3,7 @@
 Reviewed by: IBM Bob · Commit: abc1234
 Carbon verification: Carbon-specific claims verified using Carbon Builder skill (primary authority) and Carbon MCP (fallback).
 
-## Recommendation
+## Recommendations and Resolution SPEC.md
 
 No issues found.
 
