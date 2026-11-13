@@ -13,6 +13,8 @@ No blocking or major issues were found. Any nit-level notes below are entirely o
 
 Everything looks good.
 
+_Was this PR summary helpful? React with 👍 / 👎, or reply with feedback._
+
 
 <details>
 <summary>Details</summary>

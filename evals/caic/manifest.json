@@ -634,6 +634,19 @@
           "content": "export interface MessageInput {\n  text: string;\n  maxLength?: number;\n}\n\nconst DEFAULT_MAX_LENGTH = 500;\n\n/**\n * Format a message for display.\n * @param maxLength - the maximum size in bytes (defaults to 500)\n */\nexport function formatMessage({ text, maxLength = DEFAULT_MAX_LENGTH }: MessageInput): string {\n  const trimmed = text.trim();\n  if (trimmed.length <= maxLength) {\n    return trimmed;\n  }\n  return `${trimmed.slice(0, maxLength - 1)}\\u2026`;\n}\n"
         }
       ]
+    },
+    {
+      "id": "E8",
+      "branch": "eval/e8-copy-button-slot",
+      "title": "E8: cds-copy-button with slotted tooltip text",
+      "description": "Renders a Carbon copy button whose default slot carries the tooltip label, which is how cds-copy-button forwards its default slot (slot=\"tooltip-content\"). A claim about a cds-* element's slot or rendering is Cat 1 and needs MCP evidence; with none, it is discarded, never filed as Cat 2.",
+      "defect": null,
+      "changes": [
+        {
+          "path": "packages/ai-chat-components/src/components/toolbar/src/toolbar.ts",
+          "content": "import { LitElement, html } from 'lit';\nimport { customElement, property } from 'lit/decorators.js';\nimport '@carbon/web-components/es/components/copy-button/index.js';\n\nexport interface Action {\n  text: string;\n  feedback?: string;\n  onClick: () => void;\n}\n\n@customElement('cds-aichat-toolbar')\nexport class CDSAIChatToolbar extends LitElement {\n  @property({ attribute: false })\n  actions: Action[] = [];\n\n  render() {\n    return html`${this.actions.map((action) =>\n      action.feedback !== undefined\n        ? html`<cds-copy-button feedback=${action.feedback} kind=\"ghost\" @click=${action.onClick}>${action.text}</cds-copy-button>`\n        : html`<cds-icon-button @click=${action.onClick}><span slot=\"tooltip-content\">${action.text}</span></cds-icon-button>`\n    )}`;\n  }\n}\n"
+        }
+      ]
     }
   ]
 }

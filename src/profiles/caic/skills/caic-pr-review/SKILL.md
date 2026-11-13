@@ -34,8 +34,18 @@ stay unsaid however small the edit:
   route other than the one the linked issue suggests. Example: a PR uses
   `ResizeObserver` where `getBoundingClientRect()` would also work. A route that
   is defective is still a finding, on its own merits.
-- **X5** A `cds-*` attribute name → Cat 1; must verify via Carbon MCP before
-  filing. Never flag from model knowledge alone.
+- **X5** The category follows what the claim depends on, not how it is worded.
+  If being right depends on how a `cds-*` element or a `@carbon/*` API behaves
+  (an attribute or property, what a slot renders as, a default, a variant, an
+  event, a style hook, its accessibility behaviour), the claim is Cat 1: verify
+  it through `carbon-builder` or Carbon MCP and quote the evidence, or it is
+  not a finding. Never file it from model knowledge, never relabel it Cat 2 to
+  get past the evidence rule, and never file it one level down (that step is
+  for Cat 2 reasoning you did not finish). When MCP answers but has nothing for
+  the element (0 variants, no docs), discard it as not indexed in MCP. If the
+  uncertainty matters to the author, name it in `Not verified` (W9). Example: a
+  guess that `cds-copy-button` shows its default slot as visible text, when the
+  component forwards that slot to its tooltip.
 - **X6** A tool already decided it: formatting, quote style, import order, line
   length. The commit hooks run prettier, eslint, stylelint and commitlint.
 - **X7** A naming swap with no clarity gain (`data` → `payload`), or an
