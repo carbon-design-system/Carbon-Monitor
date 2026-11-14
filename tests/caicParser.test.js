@@ -233,7 +233,7 @@ test('a body in orientation, defect, cost, fix order reaches the review verbatim
 
 test('a summary ending in Not verified is kept verbatim', () => {
   const summary =
-    'This PR adds a queue. 1 major finding. Not verified: the retry branch of the upload queue.';
+    'This PR adds a queue. Not verified: the retry branch of the upload queue.';
   const json = JSON.stringify({
     summaryMarkdown: summary,
     findings: [],
@@ -245,6 +245,19 @@ test('a summary ending in Not verified is kept verbatim', () => {
     PARSE_OPTS
   );
   assert.strictEqual(review.summaryMarkdown, summary);
+});
+
+test('a blocking finding keeps its fix lines for the SPEC', () => {
+  const finding = convention('blocking', 'Listener leaks', ORIENTED_BODY);
+  finding.fix = ['  this.dispose();', '  return;'];
+  const review = parseReviewOutput(
+    makeAgentOutput({ findings: [finding] }),
+    PARSE_OPTS
+  );
+  assert.deepStrictEqual(review.findings[0].fix, [
+    '  this.dispose();',
+    '  return;',
+  ]);
 });
 
 test('nits only is Looks Good; the nit is kept for the collapsed list', () => {

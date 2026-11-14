@@ -677,12 +677,17 @@ These files belong to PR #7 but are not in this review. Do not catalogue them, a
         files,
         bundle.mdDiffStartLine
       );
-    assert.deepStrictEqual(at(42), { path: 'Button.stories.js', position: 3 });
+    assert.deepStrictEqual(at(42), {
+      path: 'Button.stories.js',
+      position: 3,
+      line: 42,
+    });
     // The agent counting lines of PR_REVIEW_REQUEST.md lands on the same line.
     const hunkLine = bundle.diff.split('\n').indexOf('@@ -40,2 +40,3 @@') + 1;
     assert.deepStrictEqual(at(bundle.mdDiffStartLine + hunkLine + 42), {
       path: 'Button.stories.js',
       position: 3,
+      line: 42,
     });
     await bundle.cleanup();
   });

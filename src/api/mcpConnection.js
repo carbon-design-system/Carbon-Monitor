@@ -958,7 +958,7 @@ async function probe() {
         params: {
           protocolVersion: '2025-03-26',
           capabilities: {},
-          clientInfo: { name: 'carbon-monitor-probe', version: '1.5.0' },
+          clientInfo: { name: 'carbon-monitor-probe', version: '1.6.0' },
         },
       }),
     });

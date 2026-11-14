@@ -7,6 +7,7 @@ const { CHARS_PER_TOKEN } = constants;
 const { MAX_LISTED_FILES } = require('./reviewCoverage');
 const { escapeAtSign } = require('./textUtils');
 const agents = require('./agents');
+const { SHARED_OUTPUT_CONTRACT } = require('./promptContract');
 
 /**
  * Estimate token usage for a PR review
@@ -66,6 +67,73 @@ const INLINE_FEEDBACK_PROMPT =
   '_Rate this finding 👍 / 👎. Replies help us improve._';
 const SUMMARY_FEEDBACK_PROMPT =
   '_Was this PR summary helpful? React with 👍 / 👎, or reply with feedback._';
+
+// ---------------------------------------------------------------------------
+// Code snippets: current code and suggested fix
+// ---------------------------------------------------------------------------
+
+function fixLines(finding) {
+  const fix = finding.fix;
+  return Array.isArray(fix) &&
+    fix.length > 0 &&
+    fix.every((l) => typeof l === 'string')
+    ? fix
+    : null;
+}
+
+// The mapped path and line win over the model's report: they are what the diff shows
+function findingLocation(finding) {
+  const mapped = finding.diffPosition || {};
+  return {
+    file: mapped.path || finding.file || '',
+    line: mapped.line != null ? mapped.line : finding.line,
+  };
+}
+
+// A one-line fix takes the indentation of the line it replaces, so it pastes in place
+function indentLikeCurrent(fixLine, finding) {
+  const ctx = finding.codeContext;
+  const line = finding.diffPosition && finding.diffPosition.line;
+  if (fixLine === '' || /^\s/.test(fixLine) || !ctx || line == null) {
+    return fixLine;
+  }
+  const current = (ctx.lines || [])[line - ctx.startLine];
+  return (current ? current.match(/^\s*/)[0] : '') + fixLine;
+}
+
+const SPEC_WIDTH = 80;
+
+// Matches the hand-wrapped prompt text; breaks on spaces only, so a long token keeps its own line
+function wrapListItem(prefix, text, width = SPEC_WIDTH) {
+  const out = [];
+  String(text)
+    .split('\n')
+    .forEach((source, i) => {
+      let line = i === 0 ? prefix : '  ';
+      let empty = true;
+      for (const word of source.split(' ')) {
+        if (empty) {
+          line += word;
+          empty = word === '';
+        } else if (line.length + 1 + word.length <= width) {
+          line += ' ' + word;
+        } else if (word !== '') {
+          out.push(line.trimEnd());
+          line = '  ' + word;
+        }
+      }
+      out.push(line.trimEnd());
+    });
+  return out.join('\n') + '\n';
+}
+
+// An indented code block has no fence lines to show raw inside the copied SPEC
+function specCode(lines) {
+  const code = lines
+    .map((l) => (String(l).trim() ? `      ${l}` : ''))
+    .join('\n');
+  return `\n${code}\n\n`;
+}
 
 // ---------------------------------------------------------------------------
 // formatInlineComment
@@ -316,9 +384,15 @@ For every row marked Agree or Partly (using the amended fix):
 Finish with a short table: finding, commit, and the test or command that proves
 it.`;
 
+const SPEC_SUMMARY =
+  '🛠️ Resolution SPEC.md — open this branch in Bob, Claude Code or any agentic IDE, then paste this in to fix the findings';
+const SPEC_LEAD =
+  "Open this PR's branch in your agent IDE, save the block below as SPEC.md in the checkout, and tell your agent to work through it. It reviews each finding against the real code first, asks you before changing anything, and never pushes.";
+
 /**
  * Escapes backtick fences at the start of a line to ~~~ so that code blocks
- * in findings do not close the outer ```markdown fence.
+ * in findings do not close the outer ```markdown fence. Leading spaces count,
+ * because a wrapped continuation line starts with two.
  *
  * @param {string} text
  * @returns {string}
@@ -327,10 +401,16 @@ function escapeCodeFences(text) {
   if (!text) return '';
   return String(text)
     .split('\n')
-    .map((line) =>
-      line.startsWith('```') ? line.replace(/^```/, '~~~') : line
-    )
+    .map((line) => line.replace(/^(\s*)```/, '$1~~~'))
     .join('\n');
+}
+
+// Fences go first so escapeAtSign does not read ``` as a code span, and again after
+// the wrap, which can start a line with one
+function specText(prefix, text) {
+  return escapeCodeFences(
+    wrapListItem(prefix, escapeAtSign(escapeCodeFences(text)))
+  );
 }
 
 /**
@@ -394,10 +474,9 @@ function renderResolutionSpec(
     const title = escapeAtSign(finding.title || '');
     spec += `### ${num}. [${sev}] ${title}\n`;
 
-    const file = finding.file || '';
-    const line =
-      finding.line != null && finding.line !== '' ? `:${finding.line}` : '';
-    spec += `- File: ${file}${line}\n`;
+    const { file, line } = findingLocation(finding);
+    const hasLine = line != null && line !== '';
+    spec += `- File: ${file}${hasLine ? `:${line}` : ''}\n`;
 
     let catText = 'Category: 2 (from the diff)';
     if (finding.verificationSource === 'carbon-builder') {
@@ -411,11 +490,31 @@ function renderResolutionSpec(
       finding.verificationSource === 'carbon-builder' ||
       finding.verificationSource === 'carbon-mcp';
     if (isCat1 && !dropEvidence && finding.mcpEvidence) {
-      spec += `- Evidence: "${escapeAtSign(escapeCodeFences(finding.mcpEvidence))}"\n`;
+      spec += specText('- Evidence: ', `"${finding.mcpEvidence}"`);
     }
 
-    const bodyText = escapeAtSign(escapeCodeFences(finding.body || ''));
-    spec += `- ${bodyText}\n\n`;
+    spec += specText('- Issue: ', finding.body || '');
+
+    const ctx = finding.codeContext;
+    if (ctx && Array.isArray(ctx.lines) && ctx.lines.length > 0) {
+      const range =
+        ctx.startLine === ctx.endLine
+          ? `line ${ctx.startLine}`
+          : `lines ${ctx.startLine} to ${ctx.endLine}`;
+      spec += `- Current code (${range}):\n`;
+      spec += specCode(ctx.lines);
+    } else {
+      spec += `- Current code: not in the diff hunk; read the file at the line above.\n`;
+    }
+
+    const fix = fixLines(finding);
+    if (fix) {
+      spec += `- Suggested fix${hasLine ? ` (at line ${line})` : ''}:\n`;
+      const fixText =
+        fix.length === 1 ? [indentLikeCurrent(fix[0], finding)] : fix;
+      spec += specCode(fixText);
+    }
+    if (!spec.endsWith('\n\n')) spec += '\n';
   });
 
   return spec.trim();
@@ -463,7 +562,7 @@ function assembleSummaryComment(
   comment += `\n`;
 
   // ── Recommendation section ─────────────────────────────────────────────
-  comment += `## Recommendations and Resolution SPEC.md\n\n`;
+  comment += `## Findings and Resolution SPEC.md\n\n`;
   if (recommendationRationale) {
     comment += `${recommendationRationale}\n\n`;
   }
@@ -477,33 +576,11 @@ function assembleSummaryComment(
     comment += `> ⚠️ **Review Reliability Note:** ${catalogueWarning}\n\n`;
   }
 
-  // ── Resolution SPEC block (when findings above nit exist) ─────────────────
-  const nonNitFindings = (inlineFindings || []).concat(summaryFindings || []);
-  if (nonNitFindings.length > 0) {
-    if (omitSpec) {
-      comment += `<details>\n<summary>Resolution SPEC.md — copy into your IDE agent</summary>\n\n`;
-      comment += `_Resolution SPEC omitted: comment would exceed GitHub's size limit (${nonNitFindings.length} findings)._\n\n`;
-      comment += `</details>\n\n`;
-    } else {
-      const sortedFindings = sortSpecFindings(inlineFindings, summaryFindings);
-      const specContent = renderResolutionSpec(sortedFindings, {
-        prNumber,
-        commitSha,
-        owner,
-        repo,
-        dropEvidence,
-      });
-      comment += `<details>\n<summary>Resolution SPEC.md — copy into your IDE agent</summary>\n\n`;
-      comment += `\`\`\`markdown\n${specContent}\n\`\`\`\n\n`;
-      comment += `</details>\n\n`;
-    }
-  }
-
   // ── Findings table (rendered from typed array — no Markdown in agent JSON) ──
   // Nits are listed once, in the collapsed nit list
   const rows = (findingsTable || []).filter((r) => r.severity !== 'nit');
   if (rows.length > 0) {
-    comment += `<details>\n<summary>Findings (${rows.length})</summary>\n\n`;
+    comment += `<details>\n<summary>📓 Findings (${rows.length})</summary>\n\n`;
 
     // Legend for the Category column.
     //
@@ -534,6 +611,29 @@ function assembleSummaryComment(
     comment += '\n</details>\n\n';
   }
 
+  // ── Resolution SPEC block (when findings above nit exist) ─────────────────
+  const nonNitFindings = (inlineFindings || []).concat(summaryFindings || []);
+  if (nonNitFindings.length > 0) {
+    if (omitSpec) {
+      comment += `<details>\n<summary>${SPEC_SUMMARY}</summary>\n\n`;
+      comment += `_Resolution SPEC omitted: comment would exceed GitHub's size limit (${nonNitFindings.length} findings)._\n\n`;
+      comment += `</details>\n\n`;
+    } else {
+      const sortedFindings = sortSpecFindings(inlineFindings, summaryFindings);
+      const specContent = renderResolutionSpec(sortedFindings, {
+        prNumber,
+        commitSha,
+        owner,
+        repo,
+        dropEvidence,
+      });
+      comment += `<details>\n<summary>${SPEC_SUMMARY}</summary>\n\n`;
+      comment += `${SPEC_LEAD}\n\n`;
+      comment += `\`\`\`markdown\n${specContent}\n\`\`\`\n\n`;
+      comment += `</details>\n\n`;
+    }
+  }
+
   // ── Agent summary (verbatim — this field is never mutated after parse) ──
   comment += `## Summary\n\n`;
   comment += escapeAtSign(summaryMarkdown) + '\n\n';
@@ -541,11 +641,8 @@ function assembleSummaryComment(
   const nitList = renderNitList(nitFindings);
   if (nitList) comment += nitList + '\n\n';
 
-  // Outside Details so it shows without expanding anything
-  comment += SUMMARY_FEEDBACK_PROMPT + '\n\n';
-
   // ── Details dropdown — open (unconditional) ─────────────────────────────
-  comment += '\n<details>\n<summary>Details</summary>\n\n';
+  comment += '\n<details>\n<summary>📊 Details</summary>\n\n';
 
   // ── Additional findings that couldn't be posted inline ─────────────────
   if (summaryFindings && summaryFindings.length > 0) {
@@ -611,7 +708,8 @@ function assembleSummaryComment(
 
   // ── AI disclaimer ────────────────────────────────────────────────────────
   comment += `\n---\n\n`;
-  comment += `*An AI agent generated this review. Human review is advised before acting on any findings.*\n`;
+  comment += `*An AI agent generated this review. Human review is advised before acting on any findings.*\n\n`;
+  comment += SUMMARY_FEEDBACK_PROMPT + '\n';
 
   return comment;
 }
@@ -701,6 +799,7 @@ function buildReviewPrompt({ owner, repo, agent, profile }) {
 3. Do not end your response without the JSON block, even when findings is an empty array.
 4. After resolving each pending catalogue item, write a new visible line — either \`confirmed finding — [title]\` or \`discarded: [reason]\` — immediately after it. Do not rely on <thinking> to resolve pending items. A run where pending items appear in the catalogue but no resolution lines appear will be flagged as unreliable.
 5. ${noFileWrite} at any point. Writing to a file does not satisfy the output contract — the JSON block must appear in your visible response text.
+6. ${SHARED_OUTPUT_CONTRACT.noFilesystem}
 
 ## Step 1 — Read and catalogue the diff (do this before forming any opinion)
 
@@ -963,27 +1062,30 @@ Vague summaries like "Verified via code_search" or empty strings will cause the 
 Good: "…Scope this selector to \`.--data-table--sticky-header\`, or add a comment confirming the broader scope is intentional for all expandable table variants."
 Bad: "…The selector was broadened without a scoping modifier."
 
+${SHARED_OUTPUT_CONTRACT.fixFieldRule}
+
 Severity reminder: token hygiene, comment style, and opportunity improvements are always \`nit\`. A concern requires evidence of functional impact to reach \`minor\`.
 
 **summaryMarkdown** must contain only:
 1. One or two sentences describing what the PR does
-2. A single line stating the count and severity of findings
-3. (Optional) One sentence noting Carbon MCP unavailability — include this ONLY if Carbon-specific findings were omitted because MCP was unavailable
+2. (Optional) One sentence noting Carbon MCP unavailability — include this ONLY if Carbon-specific findings were omitted because MCP was unavailable
 
 Must NOT contain checkmark lists, MCP verification claims, broad alignment statements, headings, recommendations, or emoji. The recommendation is computed by the system — do not include it here.
+${SHARED_OUTPUT_CONTRACT.noFindingCount}
 
-Correct: "This PR suppresses invalid/warn states on TextArea when disabled or readonly. 1 minor finding: readonly/disabled precedence behaviour may need a clarifying comment."
+Correct: "This PR suppresses invalid/warn states on TextArea when disabled or readonly."
+Incorrect: "This PR suppresses invalid/warn states on TextArea when disabled or readonly. 1 minor finding: readonly/disabled precedence behaviour may need a clarifying comment."
 Incorrect: "✅ TextArea API confirmed via code_search. ✅ Implementation aligns with Carbon guidelines."
 
 **findingsTable** must be populated with one entry per confirmed finding — the same findings that appear in the \`findings\` array. Each entry is a plain object with five string fields. Do NOT include rows for clean areas. Do NOT use pipe characters, newlines, or backslashes in any field value — these are plain text labels only.
 
-**Emit strict, parseable JSON.** Every string value (\`summaryMarkdown\`, \`title\`, \`body\`, \`mcpEvidence\`) must be valid JSON: escape any embedded double-quote as \\" and write any literal backslash as two backslashes. A lone backslash — from a regex (\\d, \\s), a Windows path, or escaped markdown (\\_, \\*) — makes the block unparseable and causes the ENTIRE review to be discarded. Keep each string value on a single line with no raw line breaks.
+**Emit strict, parseable JSON.** Every string value (\`summaryMarkdown\`, \`title\`, \`body\`, \`mcpEvidence\`, each \`fix\` line) must be valid JSON: escape any embedded double-quote as \\" and write any literal backslash as two backslashes. A lone backslash — from a regex (\\d, \\s), a Windows path, or escaped markdown (\\_, \\*) — makes the block unparseable and causes the ENTIRE review to be discarded. Keep each string value on a single line with no raw line breaks.
 
 Return exactly this JSON between markers — this is mandatory, do not end your response without it:
 
 BEGIN_REVIEW_JSON
 {
-  "summaryMarkdown": "string — 1 to 3 sentences max, no headings, no emoji, no recommendations",
+  "summaryMarkdown": "string — 1 to 3 sentences max, no headings, no emoji, no recommendations, no finding counts",
   "findings": [
     {
       "severity": "nit=convention only | minor=maintainability risk | major=likely runtime impact | blocking=breaks behaviour or a11y",
@@ -993,7 +1095,8 @@ BEGIN_REVIEW_JSON
       "body": "observation + concrete suggestion (minor/major/blocking must end with an imperative sentence: what the submitter should do)",
       "carbonVerified": true,
       "verificationSource": "carbon-builder|carbon-mcp|not-carbon-specific",
-      "mcpEvidence": "direct quote from MCP tool response (required when verificationSource is carbon-builder or carbon-mcp, omit otherwise)"
+      "mcpEvidence": "direct quote from MCP tool response (required when verificationSource is carbon-builder or carbon-mcp, omit otherwise)",
+      ${SHARED_OUTPUT_CONTRACT.fixSchemaLine}
     }
   ],
   "findingsTable": [

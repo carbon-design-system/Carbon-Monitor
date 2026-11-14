@@ -285,6 +285,61 @@ if (
 }
 console.log('✅ Test 5 passed (GitHub-confirmed positions)\n');
 
+// Test 6: a mapped finding carries the new-side lines around its line,
+// 3 before and 3 after, clipped to its hunk; an unmapped one carries none.
+console.log('Test 6: code context from the hunk around the mapped line');
+const twoHunkPath = twoHunkFiles[0].filename;
+const contextOf = (finding, mdStart = 0) => {
+  const split = splitFindings([finding], twoHunkDiff, twoHunkFiles, mdStart);
+  return split.inlineFindings[0] || split.summaryFindings[0];
+};
+const assertContext = (label, got, startLine, endLine, firstText) => {
+  const ctx = got && got.codeContext;
+  if (
+    !ctx ||
+    ctx.startLine !== startLine ||
+    ctx.endLine !== endLine ||
+    ctx.lines.length !== endLine - startLine + 1 ||
+    (firstText !== undefined && ctx.lines[0] !== firstText)
+  ) {
+    console.error(
+      `❌ Test 6 failed (${label}): expected lines ${startLine} to ${endLine}, got ${JSON.stringify(ctx)}`
+    );
+    process.exit(1);
+  }
+};
+// Line 49 sits mid hunk 2 (new lines 46 to 55).
+const midHunk = contextOf({ file: twoHunkPath, line: 49 });
+assertContext('mid hunk', midHunk, 46, 52, "        '16px': 'lg',");
+if (midHunk.codeContext.lines[3] !== '<<<<<<< HEAD') {
+  console.error('❌ Test 6 failed: the mapped line is not at its offset');
+  process.exit(1);
+}
+// Clipped at the start of hunk 1 (new lines 26 to 32) and the end of hunk 2.
+assertContext('hunk start', contextOf({ file: twoHunkPath, line: 26 }), 26, 29);
+assertContext('hunk end', contextOf({ file: twoHunkPath, line: 54 }), 51, 55);
+// Deleted lines are not on the new side: line 29 is the added example.
+const added = contextOf({ file: twoHunkPath, line: 29 });
+assertContext('added line', added, 26, 32);
+if (!added.codeContext.lines[3].includes("aiText={'Text translation'}")) {
+  console.error('❌ Test 6 failed: a deleted line leaked into the context');
+  process.exit(1);
+}
+// Secondary lookup: the context follows the mapped line, not the reported one.
+const reported = 100 + 5 + 29;
+const secondary = contextOf({ file: twoHunkPath, line: reported }, 100);
+assertContext('secondary lookup', secondary, 26, 32);
+if (secondary.diffPosition.line !== 29 || secondary.line !== reported) {
+  console.error('❌ Test 6 failed: secondary lookup line');
+  process.exit(1);
+}
+const unmapped = contextOf({ file: twoHunkPath, line: 5 });
+if (unmapped.diffPosition || unmapped.codeContext) {
+  console.error('❌ Test 6 failed: an unmapped finding carries a snippet');
+  process.exit(1);
+}
+console.log('✅ Test 6 passed (code context)\n');
+
 // Validation
 const expectedInline = 2; // Lines 13 and 29 should be mappable
 const expectedSummary = 2; // Line 100 and different file should not be mappable
