@@ -513,6 +513,9 @@ function renderResolutionSpec(
       const fixText =
         fix.length === 1 ? [indentLikeCurrent(fix[0], finding)] : fix;
       spec += specCode(fixText);
+    } else if (sev === 'blocking' || sev === 'major') {
+      // A fix was asked for at these severities; its absence is a decision, not a truncation
+      spec += `- Suggested fix: none, this needs a decision rather than a code change\n`;
     }
     if (!spec.endsWith('\n\n')) spec += '\n';
   });
