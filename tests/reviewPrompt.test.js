@@ -914,11 +914,28 @@ async function main() {
     assert.ok(!/ +\n/.test(result.substring(result.indexOf('## Findings'))));
   });
 
-  await test('the SPEC omits Suggested fix when there is none', () => {
-    const result = specOf([mapped()]);
+  await test('a minor finding without a fix has no Suggested fix item', () => {
+    const result = specOf([mapped({ severity: 'minor' })]);
     assert.ok(result.includes('- Current code (lines 39 to 45):'));
     assert.ok(!result.includes('- Suggested fix'));
     assert.ok(result.includes('          </div>\n        );\n      }\n```'));
+  });
+
+  await test('a blocking or major finding without a fix says so, and nothing else changes', () => {
+    const none =
+      '- Suggested fix: none, this needs a decision rather than a code change\n';
+    for (const severity of ['blocking', 'major']) {
+      const result = specOf([mapped({ severity })]);
+      assert.ok(result.includes('- Current code (lines 39 to 45):\n'));
+      assert.ok(result.includes(`      }\n\n${none}`), result);
+      assert.strictEqual(result.split('- Suggested fix').length - 1, 1);
+    }
+    for (const severity of ['minor', 'nit']) {
+      assert.ok(!specOf([mapped({ severity })]).includes(none));
+    }
+    assert.ok(!specOf([mapped({ fix: ['x'] })]).includes(none));
+    const inline = formatInlineComment(mapped());
+    assert.ok(!inline.includes('Suggested fix'));
   });
 
   await test('an unmapped finding says the code is not in the diff hunk, and keeps its fix', () => {
@@ -1063,10 +1080,17 @@ async function main() {
     }
   });
 
-  await test('a fix that is not an array of strings prints nothing in the SPEC', () => {
+  await test('a fix that is not an array of strings is treated as absent in the SPEC', () => {
     for (const fix of [undefined, 'x = 1', [], [1], null]) {
+      const result = specOf([mapped({ fix })]);
       assert.ok(
-        !specOf([mapped({ fix })]).includes('- Suggested fix'),
+        result.includes(
+          '- Suggested fix: none, this needs a decision rather than a code change\n'
+        ),
+        JSON.stringify(fix)
+      );
+      assert.ok(
+        !result.includes('- Suggested fix (at line'),
         JSON.stringify(fix)
       );
     }
