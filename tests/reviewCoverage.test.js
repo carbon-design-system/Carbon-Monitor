@@ -780,7 +780,9 @@ These files belong to PR #7 but are not in this review. Do not catalogue them, a
     });
     const at = (s) => body.indexOf(s);
     assert.ok(body.includes(`${NOTE}\n\n`), body);
-    assert.ok(at('## Recommendation') < at('**Partial review:**'));
+    assert.ok(
+      at('## Findings and Resolution SPEC.md') < at('**Partial review:**')
+    );
     assert.ok(at('**Partial review:**') < at('**Review Reliability Note:**'));
     assert.ok(at('**Partial review:**') < at('## Summary'));
     const whole = formatSummaryComment({

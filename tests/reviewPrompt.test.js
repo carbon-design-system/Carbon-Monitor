@@ -252,7 +252,7 @@ async function main() {
         '- Rename the story — `src/b.stories.js:40`\n\n</details>\n'
     );
     for (const absent of [
-      '## Recommendation',
+      '## Findings and Resolution SPEC.md',
       '| Area',
       'Token',
       'Review artifacts',

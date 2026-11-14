@@ -60,7 +60,7 @@ async function main() {
       )
     );
     for (const absent of [
-      '## Recommendation',
+      '## Findings and Resolution SPEC.md',
       '| Area',
       'Token',
       'Review artifacts',
@@ -90,7 +90,7 @@ async function main() {
     assert.strictEqual(batch.comments(2).length, 1);
     const body = batch.comments(2)[0].body.body;
     assert.ok(body.includes('**Suggested Improvements**'), body);
-    assert.ok(body.includes('## Recommendation'));
+    assert.ok(body.includes('## Findings and Resolution SPEC.md'));
     assert.ok(body.includes('- Inline comments: 1\n'));
     assert.strictEqual(batch.labels(2).length, 1);
   });
@@ -123,7 +123,7 @@ async function main() {
     assert.strictEqual(batch.comments(4).length, 1);
     const body = batch.comments(4)[0].body.body;
     assert.ok(body.includes('**Review Reliability Note:**'), body);
-    assert.ok(body.includes('## Recommendation'), body);
+    assert.ok(body.includes('## Findings and Resolution SPEC.md'), body);
     assert.ok(
       !body.startsWith(
         '[AI agent review — Carbon grounded] · **Looks Good** · Reviewed by'
