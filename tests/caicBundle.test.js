@@ -228,6 +228,55 @@ test('core prompt has none of the caic rubric', () => {
   }
 });
 
+test('the caic prompt carries the fix field rule and drops the finding count', () => {
+  assert.ok(
+    caicPrompt.includes(
+      "Write a surgical fix that is the smallest change that resolves the finding, at the lines quoted. Don't make unecesseary changes, or add prose."
+    )
+  );
+  assert.ok(
+    caicPrompt.includes(
+      'Do not state how many findings there are or list them by severity; the harness renders that.'
+    )
+  );
+  assert.ok(caicPrompt.includes('"fix": ['));
+  assert.ok(caicPrompt.includes('each `fix` line included'));
+  assert.ok(caicPrompt.includes('no recommendations, no finding counts;'));
+  assert.ok(!caicPrompt.includes('count and severity of findings'));
+  // The fix rule sits after the caic body rule it refers back to
+  assert.ok(
+    caicPrompt.indexOf('**body field rule:**') <
+      caicPrompt.indexOf('**fix field rule:**')
+  );
+});
+
+test('every profile prompt carries the shared output contract verbatim', () => {
+  const { SHARED_OUTPUT_CONTRACT } = require('../src/promptContract');
+  const profiles = require('../src/profiles');
+  const prompts = [
+    ['core (bob)', buildReviewPrompt({ owner: 'o', repo: 'r', agent: 'bob' })],
+    [
+      'core (claude)',
+      buildReviewPrompt({ owner: 'o', repo: 'r', agent: 'claude' }),
+    ],
+  ];
+  for (const profile of new Set(Object.values(profiles.BY_REPO))) {
+    prompts.push([
+      profile.id,
+      buildReviewPrompt({ owner: 'o', repo: 'r', agent: 'bob', profile }),
+    ]);
+  }
+  assert.ok(
+    prompts.some(([id]) => id === 'caic'),
+    'caic was not checked'
+  );
+  for (const [id, prompt] of prompts) {
+    for (const [key, text] of Object.entries(SHARED_OUTPUT_CONTRACT)) {
+      assert.ok(prompt.includes(text), `${id} prompt is missing ${key}`);
+    }
+  }
+});
+
 test('X rules: the telemetry rule appears once, and X1 to X12 run without a gap', () => {
   const x = sectionOf(skillText, '## What is NOT a finding (X rules)');
   const ids = [...x.matchAll(/- \*\*X(\d+)\*\*/g)].map((m) => Number(m[1]));

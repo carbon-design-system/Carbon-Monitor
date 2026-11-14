@@ -88,7 +88,8 @@ The mapper:
 2. Looks up the finding's line number in that map
 3. Falls back to treating the reported line as a `PR_REVIEW_REQUEST.md` line
    number and converting it through the hunk offsets
-4. Returns the position for GitHub's API, or routes the finding to the summary
+4. Returns the position for GitHub's API and the new-file line it resolved, or routes the finding to the summary
+5. For a mapped finding, attaches `codeContext`: the new-side lines of its hunk, 3 before and 3 after the resolved line, clipped to the hunk, which the Resolution SPEC prints as the current code
 
 Each file's `diff --git`, mode and `---`/`+++` lines are rebuilt from the file's name and status, because `patch` starts at the first `@@`. They are not counted, so positions are the same as in GitHub's own diff. A renamed file gets `a/<old name>` and `b/<new name>` and no `rename from`, `rename to` or `similarity` line; the mapper keys on the `b/` path. A `patch` that already starts with `diff --git` (test PRs made by `scripts/create-test-pr.js`) is used as it is.
 
@@ -98,7 +99,7 @@ diff was rejected with a 422 ("position could not be resolved").
 
 ### Comment Format
 
-Inline comments use the [`formatInlineComment()`](../src/reviewPrompt.js) function: the finding's title in bold, a quoted line with its severity and guidance, the explanation, and, for a Carbon-specific finding, a line saying which source verified it. See [Example Output](#example-output) below.
+Inline comments use the [`formatInlineComment()`](../src/reviewPrompt.js) function: the finding's title in bold, a quoted line with its severity and guidance, the explanation, and, for a Carbon-specific finding, a line saying which source verified it. The suggested fix is not posted inline; it is in the Resolution SPEC (see [Current code and suggested fix](REVIEW_OUTPUT.md#current-code-and-suggested-fix)). See [Example Output](#example-output) below.
 
 ### API Integration
 

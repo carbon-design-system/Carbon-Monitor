@@ -1648,6 +1648,8 @@ async function reviewPRs(options = {}) {
                   summaryMarkdown: review.summaryMarkdown,
                   prNumber: pr.number,
                   commitSha: pr.head.sha,
+                  owner,
+                  repo,
                   inlineFindings,
                   summaryFindings,
                   tokenUsage,

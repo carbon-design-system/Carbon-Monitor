@@ -121,6 +121,13 @@ With `carbon-ai-chat` listed and `GITHUB_AI_AGENT_CLI=claude`, the run refuses t
 PR: the console shows why, a scheduled run posts a failure notice to Slack, and the
 `profiles` health tile turns red.
 
+A profile prompt replaces the review rules, not the output contract. The rule
+against reading outside the bundle, the `fix` field and the rule that the summary
+states no finding count are shared text,
+`SHARED_OUTPUT_CONTRACT` in `src/promptContract.js`, which the core and `caic`
+prompts include verbatim; a new profile's prompt includes it too, and
+`tests/caicBundle.test.js` checks every profile in `BY_REPO` for it.
+
 `GITHUB_AI_AGENT_MAX_PRS` and `GITHUB_AI_AGENT_DAYS_BACK` apply to each repository,
 so `MAX_PRS=10` over two repositories reviews up to 20 PRs a run. Plan memory
 per review, not per run: `REVIEW_CONCURRENCY` reviews are in flight at once

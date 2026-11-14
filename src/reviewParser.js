@@ -874,6 +874,17 @@ function parseReviewOutput(agentOutput, options = {}) {
             f.verificationSource === 'carbon-mcp' ||
             f.verificationSource === 'carbon-builder';
         }
+        // fix is optional; anything but a non-empty array of strings would break the code fences
+        if (
+          'fix' in f &&
+          !(
+            Array.isArray(f.fix) &&
+            f.fix.length > 0 &&
+            f.fix.every((l) => typeof l === 'string')
+          )
+        ) {
+          delete f.fix;
+        }
       }
     }
     // ── End schema normalisation ────────────────────────────────────────────
@@ -1074,10 +1085,13 @@ function computeRecommendation(
 
   // Rule 3 — any blocking finding
   if (counts.blocking >= 1) {
-    const ex = findings.find((f) => f.severity === 'blocking');
+    const titles = findings
+      .filter((f) => f.severity === 'blocking')
+      .map((f) => `"${f.title}"`)
+      .join(', ');
     return {
       recommendation: 'consider-revising',
-      recommendationRationale: `${counts.blocking} blocking finding${counts.blocking > 1 ? 's' : ''}: "${ex ? ex.title : 'see findings below'}"`,
+      recommendationRationale: `${counts.blocking} blocking finding${counts.blocking > 1 ? 's' : ''}: ${titles}`,
     };
   }
 

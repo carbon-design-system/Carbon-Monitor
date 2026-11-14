@@ -104,9 +104,11 @@ swap notes and two finished example SPECs are in [docs/adapt-harness](docs/adapt
 
 ## What a review looks like
 
-<p align="center"><img src="docs/images/pr-review-comment.png" width="720" alt="A GitHub pull request comment from carbon-monitor-agent headed 'AI agent review, Carbon grounded: Consider Revising'. It names the commit reviewed, states that Carbon claims were verified with the Carbon Builder skill and Carbon MCP, gives a recommendation citing two major findings, a collapsed Findings (3) section, a summary of the PR, and a note that human review is advised. Below it, the agent has added the AIReviewed label."></p>
+<p align="center"><img src="docs/images/pr-review-comment.png" width="720" alt="A GitHub pull request comment from carbon-monitor-agent headed 'AI agent review, Carbon grounded: Consider Revising'. It names the commit reviewed by IBM Bob, states that Carbon claims were verified with the Carbon Builder skill and Carbon MCP, and gives a recommendation citing one blocking finding. Below are three collapsed sections: Findings (19); Resolution SPEC.md, to open this branch in Bob, Claude Code or any agentic IDE and paste in; and 2 optional nits. A summary of the PR, a collapsed Details section, a note that human review is advised and a feedback prompt follow."></p>
 
-<p align="center"><em>The summary comment on a reviewed PR, followed by the AIReviewed label.</em></p>
+<p align="center"><em>The summary comment on a reviewed PR: recommendation, the collapsed Resolution SPEC.md, the findings table and the summary.</em></p>
+
+Every review with findings above nit includes a Resolution SPEC.md, collapsed under the recommendation. Paste it into Bob, Claude Code or any agentic IDE: the agent reviews each finding against the real code, asks before changing anything, then fixes and commits one finding at a time without pushing. Each finding carries the issue in prose and the current code from the diff; blocking and major findings get a suggested fix, so a human can resolve it by hand just as easily.
 
 A PR with nothing above `nit` gets a much shorter comment: a verdict line, the
 agent's summary and, when there are nits, a collapsed list of them with title and
