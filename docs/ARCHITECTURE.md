@@ -689,6 +689,7 @@ src/
 ├── reviewBundle.js           builds the agent workspace  [getWorkspaceRoot]
 ├── reviewCoverage.js         assembles the diff from patches; picks the files that fit
 ├── reviewPrompt.js           review prompt; the comment texts (inline, summary, Looks Good)
+├── promptContract.js         output contract text every profile prompt includes (no filesystem, fix, no counts)
 ├── githubClient.js           PRs, files with patches, comments, labels
 ├── reviewParser.js           parses agent output into findings
 ├── diffMapper.js             maps findings to diff line numbers

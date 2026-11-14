@@ -24,6 +24,8 @@ accessible label. Add aria-label="Time zone" (or equivalent) to the element.
 _Rate this finding 👍 / 👎. Replies help us improve._
 ```
 
+An inline comment carries no code: the current code and the suggested fix are in the Resolution SPEC in the summary comment (see [Current code and suggested fix](#current-code-and-suggested-fix)).
+
 The last line asks the reader to react or reply. GitHub keeps the reactions and replies on the comment, so Carbon Monitor does not collect them.
 
 ### Summary comment (PR issue comment)
@@ -64,32 +66,14 @@ are in `src/profiles/caic/RULES-LEDGER.md`.
 Reviewed by: IBM Bob · Commit: a1b2c3d
 Carbon verification: Carbon-specific claims verified using Carbon Builder skill (primary authority) and Carbon MCP (fallback).
 
-## Recommendations and Resolution SPEC.md
+## Findings and Resolution SPEC.md
 
 1 blocking finding: "Missing aria-label on time picker select"
 
 There are issues in this PR that should be addressed before merging. ...
 
 <details>
-<summary>Resolution SPEC.md — copy into your IDE agent</summary>
-
-```markdown
-# Resolution SPEC for carbon-design-system/carbon#12345 (commit a1b2c3d)
-
-...fixed instructions for IDE agents (Bob, Claude, Cursor, etc.)...
-
-## Findings
-
-### 1. [blocking] Missing aria-label on time picker select
-- File: src/components/TimePicker/TimePicker.js:42
-- Category: 2 (from the diff)
-- Add aria-label attribute to select element.
-````
-
-</details>
-
-<details>
-<summary>Findings (2)</summary>
+<summary>📓 Findings (2)</summary>
 
 **Category** — how each finding was established:
 
@@ -103,9 +87,50 @@ There are issues in this PR that should be addressed before merging. ...
 
 </details>
 
+<details>
+<summary>🛠️ Resolution SPEC.md — open this branch in Bob, Claude Code or any agentic IDE, then paste this in to fix the findings</summary>
+
+Open this PR's branch in your agent IDE, save the block below as SPEC.md in the checkout, and tell your agent to work through it. It reviews each finding against the real code first, asks you before changing anything, and never pushes.
+
+```markdown
+# Resolution SPEC for carbon-design-system/carbon#12345 (commit a1b2c3d)
+
+...fixed instructions for IDE agents (Bob, Claude, Cursor, etc.)...
+
+## Findings
+
+### 1. [blocking] Missing aria-label on time picker select
+- File: src/components/TimePicker/TimePicker.js:42
+- Category: 2 (from the diff)
+- Issue: <cds-time-picker-select> added in this diff has no aria-label
+  attribute. Add aria-label="Time zone" (or equivalent) to the element.
+- Current code (lines 39 to 45):
+
+      export const Default = () => html`
+        <cds-time-picker label-text="Select a time">
+          <cds-time-picker-select id="period" aria-label="Period"></cds-time-picker-select>
+          <cds-time-picker-select id="time-zone">
+            <cds-select-item value="UTC">UTC</cds-select-item>
+          </cds-time-picker-select>
+        </cds-time-picker>
+
+- Suggested fix (at line 42):
+
+          <cds-time-picker-select id="time-zone" aria-label="Time zone">
+
+### 2. [minor] menu-alignment on wrong element
+- File: src/components/TimePicker/TimePicker.stories.js:88
+- Category: 1 (verified via Carbon MCP)
+- Evidence: "..."
+- Issue: ...
+- Current code: not in the diff hunk; read the file at the line above.
+```
+
+</details>
+
 ## Summary
 
-This PR updates the time picker Figma Code Connect mappings. 1 blocking finding: ...
+This PR updates the time picker Figma Code Connect mappings.
 
 <details>
 <summary>1 optional nit</summary>
@@ -114,10 +139,8 @@ This PR updates the time picker Figma Code Connect mappings. 1 blocking finding:
 
 </details>
 
-_Was this PR summary helpful? React with 👍 / 👎, or reply with feedback._
-
 <details>
-<summary>Details</summary>
+<summary>📊 Details</summary>
 
 ## Additional Findings
 
@@ -145,13 +168,30 @@ Review artifacts:
 
 _An AI agent generated this review. Human review is advised before acting on any findings._
 
-```
+_Was this PR summary helpful? React with 👍 / 👎, or reply with feedback._
+````
 
-The nit list shows only when the review has nits. It gives each nit's title and `file:line`, not its body. Nits are not counted in the review artifacts. The feedback line sits outside the Details block, so it shows without expanding anything.
+The line under the heading is the recommendation rationale. For blocking findings it lists every blocking title, each in quotes, separated by commas: `2 blocking findings: "First title", "Second title"`. The summary under `## Summary` is the agent's own, and it does not count findings: the rationale, the findings table and the SPEC carry the counts.
+
+The SPEC sits in a three-backtick `markdown` fence, so GitHub shows it raw and a reader can copy it whole. Nothing inside it is a fence line: code snippets are indented code blocks, and a backtick fence at the start of a line in a finding's text becomes `~~~`, so nothing can close the outer fence early. If the comment would pass GitHub's size limit, the SPEC drops its `Evidence:` lines first, then is replaced by a one-line notice.
+
+The nit list shows only when the review has nits. It gives each nit's title and `file:line`, not its body. Nits are not counted in the review artifacts. The feedback line is the last line of the comment, below the AI disclaimer.
 
 The agent is named by its display name, `IBM Bob` or `Claude`, on the `Reviewed by:` line and the `Agent:` line.
 
 The token section shows exact counts from the agent's result record. When a run has no result record, it is titled **Estimated Token Usage:**, the numbers carry a `~`, and a note says they come from character count (see [TOKEN_USAGE_TRACKING.md](TOKEN_USAGE_TRACKING.md)).
+
+### Current code and suggested fix
+
+Each finding in the SPEC carries what a developer, or a small model, needs to fix it without opening the diff:
+
+- **Issue** is the finding's `body`: the observation and an imperative sentence.
+- **Current code** comes from the diff, not the agent, so it costs no tokens. For a finding that maps to a diff line, `src/diffMapper.js` slices the new-side lines of that hunk around the mapped line, 3 before and 3 after, clipped to the hunk, and attaches them as `codeContext` (`{ startLine, endLine, lines }`). The mapped line wins over the line the agent reported, here and on the `File:` line, because the agent sometimes counts lines in its request file. A finding that does not map gets `- Current code: not in the diff hunk; read the file at the line above.`
+- **Suggested fix** comes from the agent's optional `fix` field: a JSON array of strings, one code line per element, asked for on `blocking` and `major` findings only. It is a drop-in replacement for the code at the finding's line; anything outside the diff, such as an import, stays in the body. The parser keeps a non-empty array of strings as given and drops any other value silently. A finding without `fix` has no Suggested fix item. The field, and the rule that the summary states no finding count, are shared text that every profile prompt includes (`SHARED_OUTPUT_CONTRACT` in `src/promptContract.js`), so this applies to the `caic` profile and to any profile added later.
+
+Both snippets are markdown indented code blocks, which have no fence lines to show as literal backticks inside the copied SPEC: a blank line, each code line indented six spaces (the list item's two-space content indent plus the four an indented code block needs), then a blank line before the next item. An empty or blank code line is left empty, with no trailing spaces. There is no language label. Code is printed as written, without the `@` escaping applied to prose; an indented block is literal, so a code line that looks like a fence stays as it is. When a one-line fix has no leading whitespace, it takes the indentation of the current line it replaces, so it pastes in place.
+
+The `Issue:` and `Evidence:` text is wrapped at 80 columns, like the instructions above the findings, with continuation lines indented two spaces. It breaks on spaces only, so a word is never split and a token longer than 80 columns keeps a line to itself. Both keep the `@` escaping applied to prose.
 
 ### Looks Good comment (PR issue comment)
 

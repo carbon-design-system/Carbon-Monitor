@@ -258,6 +258,22 @@ These apply to all findings in the caic prompt. A `minor`-or-above body reads: o
 
 ---
 
+## Carbon Monitor output contract
+
+Not distilled from carbon-ai-chat, and not in `SKILL.md`: these three come from the
+harness and keep the agent inside the bundle and shape the JSON, not the review. They live once in
+`src/promptContract.js` `SHARED_OUTPUT_CONTRACT`, and every profile prompt, core
+included, carries them verbatim. `tests/caicBundle.test.js` fails if a prompt drops one.
+A re-distill leaves them alone.
+
+| Rule ID | Rule                                                                                                                                                                                                             | Source                                                                   |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| O1      | `fix` on `blocking` and `major` findings: a JSON array of code lines, the smallest drop-in replacement for the code at `line`. Omitted for `minor` and `nit`.                                                    | Carbon Monitor (`docs/REVIEW_OUTPUT.md` §Current code and suggested fix) |
+| O2      | `summaryMarkdown` states no finding count and no list by severity; the summary comment renders them. Replaces the caic summary item "A single line stating the count and severity of findings".                  | Carbon Monitor (`docs/REVIEW_OUTPUT.md` §Summary comment)                |
+| O3      | No filesystem search and no file read outside the bundle directory; the bundle is not a checkout, so a missing repository path does not exist for the review. Everything else the agent does today is unchanged. | Carbon Monitor (`docs/HARNESS.md` §One batch over many repositories)     |
+
+---
+
 ## Evals
 
 `evals/caic/manifest.json` holds one entry per rule a PR can show. Never run them without the maintainer's go-ahead.

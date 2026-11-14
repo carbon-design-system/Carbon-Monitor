@@ -182,7 +182,7 @@ console.log(
 );
 
 const NOT_VERIFIED = 'Not verified: the retry branch of the upload queue.';
-const BASE_SUMMARY = 'This PR adds a new Lit component. 1 major finding.';
+const BASE_SUMMARY = 'This PR adds a new Lit component.';
 const NIT = {
   severity: 'nit',
   title: 'Rename the story',
@@ -267,6 +267,34 @@ test('nits stay collapsed and out of the findings table for the caic header', ()
   assert.ok(comment.includes('<summary>1 optional nit</summary>'));
   assert.ok(
     comment.includes('- Rename the story \u2014 `src/a.stories.js:40`')
+  );
+});
+
+test('a caic finding with a fix gets the Suggested fix item in the SPEC', () => {
+  const comment = formatSummaryComment({
+    ...makeSummaryArgs({ summaryMarkdown: BASE_SUMMARY }),
+    owner: 'carbon-design-system',
+    repo: 'carbon-ai-chat',
+    headerLabel: CAIC_HEADER,
+    showCarbonVerification: false,
+    recommendation: 'consider-revising',
+    inlineFindings: [
+      {
+        severity: 'blocking',
+        file: 'packages/ai-chat/src/a.ts',
+        line: 12,
+        title: 'Listener leaks',
+        body: '**Context:** the guard skips teardown. Call `dispose()` first.',
+        carbonVerified: false,
+        verificationSource: 'not-carbon-specific',
+        fix: ['  this.dispose();', '  return;'],
+      },
+    ],
+  });
+  assert.ok(
+    comment.includes(
+      '- Suggested fix (at line 12):\n\n        this.dispose();\n        return;\n'
+    )
   );
 });
 

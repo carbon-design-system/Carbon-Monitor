@@ -74,7 +74,7 @@ async function main() {
     assert.strictEqual(batch.comments(1).length, 1);
     const body = batch.comments(1)[0].body.body;
     assert.ok(body.startsWith('[AI agent review - CAIC] · '), body);
-    assert.ok(body.includes('<summary>Findings (1)</summary>'), body);
+    assert.ok(body.includes('<summary>📓 Findings (1)</summary>'), body);
     assert.ok(
       body.includes(
         '| General | Cat 2 | major | Listener leaks on every close |'

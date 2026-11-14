@@ -14,6 +14,8 @@
  *  9. The Looks Good comment: exact text with and without nits
  * 10. formatSummaryComment lists nits between Summary and Details, never in Additional Findings
  * 11. The agent prompt is byte-identical per agent
+ * 12. Resolution SPEC.md in the summary comment
+ * 13. Current code and suggested fix in the SPEC; none in inline comments
  */
 
 'use strict';
@@ -37,6 +39,10 @@ const ZWS = '\u200B'; // zero-width space inserted by escapeAtSign
 const INLINE_PROMPT = '_Rate this finding 👍 / 👎. Replies help us improve._';
 const SUMMARY_PROMPT =
   '_Was this PR summary helpful? React with 👍 / 👎, or reply with feedback._';
+const SPEC_SUMMARY =
+  '🛠️ Resolution SPEC.md — open this branch in Bob, Claude Code or any agentic IDE, then paste this in to fix the findings';
+const SPEC_LEAD =
+  "Open this PR's branch in your agent IDE, save the block below as SPEC.md in the checkout, and tell your agent to work through it. It reviews each finding against the real code first, asks you before changing anything, and never pushes.";
 
 let passed = 0;
 let failed = 0;
@@ -246,7 +252,7 @@ async function main() {
         '- Rename the story — `src/b.stories.js:40`\n\n</details>\n'
     );
     for (const absent of [
-      '## Recommendation',
+      '## Findings and Resolution SPEC.md',
       '| Area',
       'Token',
       'Review artifacts',
@@ -303,7 +309,7 @@ async function main() {
     const result = formatSummaryComment(summaryArgs);
     const summaryAt = result.indexOf('## Summary');
     const nitAt = result.indexOf('<summary>1 optional nit</summary>');
-    const detailsAt = result.indexOf('<summary>Details</summary>');
+    const detailsAt = result.indexOf('<summary>📊 Details</summary>');
     assert.ok(summaryAt >= 0 && nitAt > summaryAt, 'nit block after Summary');
     assert.ok(detailsAt > nitAt, 'nit block before the Details block');
     assert.ok(result.includes('- Rename the story — `src/b.stories.js:40`'));
@@ -320,7 +326,7 @@ async function main() {
   await test('a yellow review with nits keeps the full layout', () => {
     const result = formatSummaryComment(summaryArgs);
     for (const present of [
-      '## Recommendations and Resolution SPEC.md',
+      '## Findings and Resolution SPEC.md',
       'Reviewed by: IBM Bob',
       'Review artifacts:',
       'An AI agent generated this review.',
@@ -349,7 +355,7 @@ async function main() {
         },
       ],
     });
-    assert.ok(result.includes('<summary>Findings (1)</summary>'));
+    assert.ok(result.includes('<summary>📓 Findings (1)</summary>'));
     assert.strictEqual(result.split('Rename the story').length - 1, 1);
 
     const onlyNits = formatSummaryComment({
@@ -378,19 +384,36 @@ async function main() {
     const { nitFindings, ...rest } = summaryArgs;
     const result = formatSummaryComment(rest);
     assert.ok(!result.includes('optional nit'));
-    assert.ok(
-      result.includes(
-        `One finding and a nit.\n\n${SUMMARY_PROMPT}\n\n\n<details>`
-      )
-    );
+    assert.ok(result.includes(`One finding and a nit.\n\n\n<details>`));
   });
 
-  await test('the summary feedback line sits before Details, so it shows collapsed', () => {
+  await test('the summary feedback line is the last line, below the AI disclaimer', () => {
     const result = formatSummaryComment(summaryArgs);
-    const at = result.indexOf(SUMMARY_PROMPT);
-    assert.ok(at > result.indexOf('## Summary'));
-    assert.ok(at < result.indexOf('<summary>Details</summary>'));
+    const disclaimer = result.indexOf('*An AI agent generated this review.');
+    assert.ok(disclaimer > 0);
+    assert.ok(
+      result.endsWith(`before acting on any findings.*\n\n${SUMMARY_PROMPT}\n`)
+    );
     assert.strictEqual(result.split(SUMMARY_PROMPT).length - 1, 1);
+  });
+
+  await test('the Resolution SPEC accordion follows the Findings accordion', () => {
+    const result = formatSummaryComment({
+      ...summaryArgs,
+      findingsTable: [
+        {
+          area: 'General',
+          category: 'Cat 2',
+          severity: 'minor',
+          title: 'Unmapped finding',
+          file: 'a.scss',
+        },
+      ],
+    });
+    const findings = result.indexOf('<summary>📓 Findings (');
+    const spec = result.indexOf(`<summary>${SPEC_SUMMARY}</summary>`);
+    assert.ok(findings > 0 && spec > findings);
+    assert.ok(spec < result.indexOf('## Summary'));
   });
 
   await test('an inline comment ends with the feedback line, after the verification badge', () => {
@@ -434,7 +457,7 @@ async function main() {
 
   // ── 11. Prompt per agent ─────────────────────────────────────────────────────
   const target = { owner: 'carbon-design-system', repo: 'carbon' };
-  // Generated from the code at commit d17acc5, before the fragments existed.
+  // Generated at d17acc5, before the fragments existed; regenerated for the fix field, the summary count rule and the allowed-context rule.
   const snapshot = fs.readFileSync(
     path.join(__dirname, 'fixtures', 'prompt', 'bob-review-prompt.md'),
     'utf8'
@@ -500,7 +523,7 @@ async function main() {
   // ── 12. Resolution SPEC.md in formatSummaryComment ──────────────────────────
   console.log('\n── 12. Resolution SPEC.md ──────────────────────────────────');
 
-  await test('formatSummaryComment uses heading "## Recommendations and Resolution SPEC.md"', () => {
+  await test('formatSummaryComment uses heading "## Findings and Resolution SPEC.md"', () => {
     const result = formatSummaryComment({
       agent: 'bob',
       summaryMarkdown: 'No findings.',
@@ -508,7 +531,7 @@ async function main() {
       commitSha: 'abcdef123456',
       recommendation: 'looks-good',
     });
-    assert.ok(result.includes('## Recommendations and Resolution SPEC.md'));
+    assert.ok(result.includes('## Findings and Resolution SPEC.md'));
   });
 
   await test('SPEC block is absent when there are no findings above nit', () => {
@@ -519,7 +542,7 @@ async function main() {
       commitSha: 'abcdef123456',
       nitFindings: [nit('Nit title', 'src/a.js', 10)],
     });
-    assert.ok(!result.includes('<summary>Resolution SPEC.md'));
+    assert.ok(!result.includes('Resolution SPEC.md —'));
     assert.ok(!result.includes('```markdown\n# Resolution SPEC'));
   });
 
@@ -546,7 +569,7 @@ async function main() {
 
     assert.ok(
       result.includes(
-        '<details>\n<summary>Resolution SPEC.md — copy into your IDE agent</summary>'
+        `<details>\n<summary>${SPEC_SUMMARY}</summary>\n\n${SPEC_LEAD}\n\n\`\`\`markdown\n# Resolution SPEC`
       )
     );
     assert.ok(
@@ -568,7 +591,8 @@ async function main() {
         '- Evidence: "Button prop kind accepts primary, secondary"'
       )
     );
-    assert.ok(result.includes('- Use kind instead of variant.'));
+    assert.ok(result.includes('- Issue: Use kind instead of variant.\n'));
+    assert.ok(result.includes('\n```\n\n</details>'));
   });
 
   await test('SPEC ordering: blocking -> major -> minor; inline before summary-only within severity', () => {
@@ -663,17 +687,17 @@ async function main() {
 
     assert.ok(
       result.includes(
-        '### 1. [major] Skill verified\n- File: src/a.js\n- Category: 1 (verified via Carbon Builder skill)\n- Evidence: "Evidence from builder"\n- Fix a.'
+        '### 1. [major] Skill verified\n- File: src/a.js\n- Category: 1 (verified via Carbon Builder skill)\n- Evidence: "Evidence from builder"\n- Issue: Fix a.\n- Current code: not in the diff hunk; read the file at the line above.\n'
       )
     );
     assert.ok(
       result.includes(
-        '### 2. [major] MCP verified\n- File: src/b.js\n- Category: 1 (verified via Carbon MCP)\n- Evidence: "Evidence from MCP"\n- Fix b.'
+        '### 2. [major] MCP verified\n- File: src/b.js\n- Category: 1 (verified via Carbon MCP)\n- Evidence: "Evidence from MCP"\n- Issue: Fix b.\n- Current code: not in the diff hunk; read the file at the line above.\n'
       )
     );
     assert.ok(
       result.includes(
-        '### 3. [major] Diff finding\n- File: src/c.js\n- Category: 2 (from the diff)\n- Fix c.'
+        '### 3. [major] Diff finding\n- File: src/c.js\n- Category: 2 (from the diff)\n- Issue: Fix c.\n- Current code: not in the diff hunk; read the file at the line above.\n'
       )
     );
     assert.ok(!result.includes('Ignored evidence'));
@@ -698,11 +722,11 @@ async function main() {
     assert.ok(result.includes(`### 1. [minor] The @${ZWS}mixin problem`));
     // The ```scss and ``` lines are replaced by ~~~scss and ~~~ so they do not close the markdown fence
     assert.ok(result.includes('~~~scss\n'));
-    assert.ok(result.includes(`@${ZWS}include reset;\n~~~`));
+    assert.ok(result.includes(`@${ZWS}include reset;\n  ~~~\n  Done.\n`));
     // Must not have unescaped ``` inside the finding
     const specBlock = result.substring(
       result.indexOf('```markdown'),
-      result.indexOf('```\n\n</details>')
+      result.indexOf('\n```\n\n</details>')
     );
     assert.ok(!specBlock.includes('\n```scss'));
   });
@@ -752,7 +776,7 @@ async function main() {
       result.length <= 60000,
       `Result length should be <= 60000, got ${result.length}`
     );
-    assert.ok(result.includes('<summary>Resolution SPEC.md'));
+    assert.ok(result.includes(`<summary>${SPEC_SUMMARY}</summary>`));
     assert.ok(result.includes('### 1. [major] Finding 0'));
     // Evidence lines dropped
     assert.ok(!result.includes('- Evidence:'));
@@ -781,10 +805,291 @@ async function main() {
 
     assert.ok(
       result.includes(
-        "<details>\n<summary>Resolution SPEC.md — copy into your IDE agent</summary>\n\n_Resolution SPEC omitted: comment would exceed GitHub's size limit (20 findings)._\n\n</details>"
+        `<details>\n<summary>${SPEC_SUMMARY}</summary>\n\n_Resolution SPEC omitted: comment would exceed GitHub's size limit (20 findings)._\n\n</details>`
       )
     );
     assert.ok(!result.includes('```markdown'));
+    assert.ok(!result.includes(SPEC_LEAD));
+  });
+
+  // ── 13. Current code and suggested fix ──────────────────────────────────────
+  console.log('\n── 13. Current code and suggested fix ──────────────────────');
+
+  // As splitFindings leaves a mapped finding: the model reported line 41, the diff resolved line 42
+  const mapped = (extra = {}) => ({
+    title: 'Wrong prop',
+    severity: 'major',
+    file: 'Button.tsx',
+    line: 41,
+    body: 'The prop is wrong. Use kind instead.',
+    verificationSource: 'not-carbon-specific',
+    diffPosition: {
+      path: 'packages/react/src/Button.tsx',
+      position: 7,
+      line: 42,
+    },
+    codeContext: {
+      startLine: 39,
+      endLine: 45,
+      lines: [
+        'export function A() {',
+        '  return (',
+        '    <div>',
+        '      <Button variant="primary" />',
+        '    </div>',
+        '  );',
+        '}',
+      ],
+    },
+    ...extra,
+  });
+  const specOf = (findings) =>
+    formatSummaryComment({
+      agent: 'bob',
+      summaryMarkdown: 'Fix test.',
+      prNumber: 3,
+      commitSha: '333333333333',
+      inlineFindings: findings,
+    });
+
+  await test('the SPEC carries current code and the fix as indented code, at the mapped line', () => {
+    const result = specOf([
+      mapped({ fix: ['      <Button kind="primary" />'] }),
+    ]);
+    assert.ok(
+      result.includes(
+        [
+          '### 1. [major] Wrong prop',
+          '- File: packages/react/src/Button.tsx:42',
+          '- Category: 2 (from the diff)',
+          '- Issue: The prop is wrong. Use kind instead.',
+          '- Current code (lines 39 to 45):',
+          '',
+          '      export function A() {',
+          '        return (',
+          '          <div>',
+          '            <Button variant="primary" />',
+          '          </div>',
+          '        );',
+          '      }',
+          '',
+          '- Suggested fix (at line 42):',
+          '',
+          '            <Button kind="primary" />',
+          '```',
+        ].join('\n')
+      )
+    );
+  });
+
+  await test('a snippet is followed by one blank line before the next finding', () => {
+    const result = specOf([
+      mapped({ fix: ['x'] }),
+      mapped({ title: 'Second', fix: ['y'] }),
+    ]);
+    assert.ok(
+      result.includes('- Suggested fix (at line 42):\n\n            y\n```')
+    );
+    assert.ok(
+      result.includes(
+        '- Suggested fix (at line 42):\n\n            x\n\n### 2. [major] Second\n'
+      )
+    );
+  });
+
+  await test('an empty or blank code line stays empty, with no trailing spaces', () => {
+    const result = specOf([
+      mapped({
+        codeContext: {
+          startLine: 41,
+          endLine: 43,
+          lines: ['a();', '', 'b();'],
+        },
+        diffPosition: { path: 'src/a.js', position: 2, line: 42 },
+        fix: ['c();', '   ', 'd();'],
+      }),
+    ]);
+    assert.ok(result.includes('\n\n      a();\n\n      b();\n\n'));
+    assert.ok(result.includes('\n\n      c();\n\n      d();\n```'));
+    assert.ok(!/ +\n/.test(result.substring(result.indexOf('## Findings'))));
+  });
+
+  await test('the SPEC omits Suggested fix when there is none', () => {
+    const result = specOf([mapped()]);
+    assert.ok(result.includes('- Current code (lines 39 to 45):'));
+    assert.ok(!result.includes('- Suggested fix'));
+    assert.ok(result.includes('          </div>\n        );\n      }\n```'));
+  });
+
+  await test('an unmapped finding says the code is not in the diff hunk, and keeps its fix', () => {
+    const result = formatSummaryComment({
+      agent: 'bob',
+      summaryMarkdown: 'Unmapped.',
+      prNumber: 3,
+      commitSha: '333333333333',
+      summaryFindings: [
+        {
+          title: 'Outside the hunk',
+          severity: 'blocking',
+          file: 'src/styles.scss',
+          line: 300,
+          body: 'Restore the token. Use $spacing-05.',
+          fix: ['  margin: $spacing-05;'],
+        },
+      ],
+    });
+    assert.ok(
+      result.includes(
+        '- Issue: Restore the token. Use $spacing-05.\n- Current code: not in the diff hunk; read the file at the line above.\n- Suggested fix (at line 300):\n\n        margin: $spacing-05;\n```'
+      )
+    );
+  });
+
+  await test('the SPEC has no fence lines inside a three-backtick outer fence', () => {
+    const result = specOf([
+      mapped({
+        file: 'README.md',
+        diffPosition: { path: 'README.md', position: 2, line: 2 },
+        codeContext: {
+          startLine: 1,
+          endLine: 3,
+          lines: ['```js', 'run();', '```'],
+        },
+        fix: ['a', 'b'],
+      }),
+    ]);
+    const open = result.indexOf('\n```markdown\n# Resolution SPEC');
+    const close = result.indexOf('\n```\n\n</details>');
+    assert.ok(open >= 0 && close > open);
+    assert.ok(!result.includes('````'));
+    const inner = result.substring(open + '\n```markdown\n'.length, close);
+    // Indented four or more spaces, a backtick line is code, not a fence
+    for (const l of inner.split('\n')) {
+      if (/^ {0,3}(`{3,}|~{3,})/.test(l)) assert.fail(`fence line: ${l}`);
+    }
+    assert.ok(inner.includes('\n      ```js\n      run();\n      ```\n'));
+  });
+
+  await test('snippet code is printed as written: no @ escaping', () => {
+    const result = specOf([mapped({ fix: ['@include reset;'] })]);
+    assert.ok(result.includes('\n            @include reset;\n'));
+    assert.ok(!result.includes(`@${ZWS}include reset`));
+  });
+
+  await test('a one-line fix that has its own indentation keeps it', () => {
+    const result = specOf([mapped({ fix: ['\t<Button kind="primary" />'] })]);
+    assert.ok(result.includes('\n      \t<Button kind="primary" />\n'));
+  });
+
+  await test('a multi-line fix is printed line for line', () => {
+    const result = specOf([
+      mapped({ fix: ['      <Button', '        kind="primary"', '      />'] }),
+    ]);
+    assert.ok(
+      result.includes(
+        '- Suggested fix (at line 42):\n\n            <Button\n              kind="primary"\n            />\n```'
+      )
+    );
+  });
+
+  await test('Issue and Evidence wrap at 80 columns with a two-space continuation', () => {
+    const body =
+      'The AILabel story renders the default kind, which the Carbon docs reserve for standalone use, so this example teaches the wrong pattern. Pass kind="inline".';
+    const evidence =
+      'AILabel kind: "default" | "inline". Use inline when the label sits next to text in a line of copy, such as a table cell or a form field label.';
+    const result = specOf([
+      mapped({
+        body,
+        verificationSource: 'carbon-mcp',
+        mcpEvidence: evidence,
+      }),
+    ]);
+    const issue = result.substring(
+      result.indexOf('- Issue: '),
+      result.indexOf('- Current code')
+    );
+    const ev = result.substring(
+      result.indexOf('- Evidence: '),
+      result.indexOf('- Issue: ')
+    );
+    for (const [block, text] of [
+      [issue, body],
+      [ev, `"${evidence}"`],
+    ]) {
+      const lines = block.trimEnd().split('\n');
+      assert.ok(lines.length > 1, block);
+      for (const l of lines) assert.ok(l.length <= 80, `too long: ${l}`);
+      for (const l of lines.slice(1)) assert.ok(/^ {2}\S/.test(l), l);
+      const joined = lines
+        .map((l, i) => (i === 0 ? l.replace(/^- \w+: /, '') : l.trim()))
+        .join(' ');
+      assert.strictEqual(joined, text);
+    }
+    assert.ok(
+      issue.startsWith(
+        '- Issue: The AILabel story renders the default kind, which the Carbon docs\n  reserve'
+      )
+    );
+  });
+
+  await test('a token longer than the width keeps its own line, unbroken', () => {
+    const long = 'x'.repeat(90);
+    const result = specOf([mapped({ body: `See ${long} here.` })]);
+    assert.ok(result.includes(`- Issue: See\n  ${long}\n  here.\n`));
+  });
+
+  await test('a fence that lands at the start of a wrapped line is escaped', () => {
+    const body = `${'word '.repeat(13)}see \`\`\` here`;
+    const result = specOf([mapped({ body })]);
+    const issue = result.substring(
+      result.indexOf('- Issue: '),
+      result.indexOf('- Current code')
+    );
+    assert.ok(issue.includes('\n  ~~~ here\n'), issue);
+  });
+
+  await test('an inline comment carries no code block, even when the finding has a fix', () => {
+    for (const fix of [['<Button kind="primary" />'], ['a', 'b'], undefined]) {
+      const result = formatInlineComment(mapped({ fix }));
+      assert.ok(!result.includes('```'), JSON.stringify(fix));
+      assert.ok(!result.includes('Suggested fix'));
+      assert.ok(!result.includes('kind="primary" />'));
+      assert.strictEqual(
+        result,
+        '**Wrong prop**\n\n> **[major]** Worth addressing before merge.\n\nThe prop is wrong. Use kind instead.\n\n\n' +
+          INLINE_PROMPT +
+          '\n'
+      );
+    }
+  });
+
+  await test('a fix that is not an array of strings prints nothing in the SPEC', () => {
+    for (const fix of [undefined, 'x = 1', [], [1], null]) {
+      assert.ok(
+        !specOf([mapped({ fix })]).includes('- Suggested fix'),
+        JSON.stringify(fix)
+      );
+    }
+  });
+
+  await test('the prompt asks for a surgical fix on blocking and major, and no count in the summary', () => {
+    const prompt = buildReviewPrompt({ ...target, agent: 'bob' });
+    assert.ok(
+      prompt.includes(
+        "Write a surgical fix that is the smallest change that resolves the finding, at the lines quoted. Don't make unecesseary changes, or add prose."
+      )
+    );
+    assert.ok(prompt.includes('"fix": ['));
+    assert.ok(
+      prompt.includes(
+        'Do not state how many findings there are or list them by severity; the harness renders that.'
+      )
+    );
+    assert.ok(
+      prompt.includes(
+        'Correct: "This PR suppresses invalid/warn states on TextArea when disabled or readonly."\n'
+      )
+    );
   });
 
   // ── Summary ──────────────────────────────────────────────────────────────────

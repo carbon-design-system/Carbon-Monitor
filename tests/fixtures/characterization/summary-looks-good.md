@@ -3,7 +3,7 @@
 Reviewed by: IBM Bob · Commit: abc1234
 Carbon verification: Carbon-specific claims verified using Carbon Builder skill (primary authority) and Carbon MCP (fallback).
 
-## Recommendations and Resolution SPEC.md
+## Findings and Resolution SPEC.md
 
 No issues found.
 
@@ -13,11 +13,9 @@ No blocking or major issues were found. Any nit-level notes below are entirely o
 
 Everything looks good.
 
-_Was this PR summary helpful? React with 👍 / 👎, or reply with feedback._
-
 
 <details>
-<summary>Details</summary>
+<summary>📊 Details</summary>
 
 Review artifacts:
 - PR: #42
@@ -29,3 +27,5 @@ Review artifacts:
 ---
 
 *An AI agent generated this review. Human review is advised before acting on any findings.*
+
+_Was this PR summary helpful? React with 👍 / 👎, or reply with feedback._

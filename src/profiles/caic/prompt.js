@@ -5,6 +5,7 @@
 // core rules with caic-specific ones.
 
 const agents = require('../../agents');
+const { SHARED_OUTPUT_CONTRACT } = require('../../promptContract');
 
 /**
  * Build the caic review prompt.
@@ -28,6 +29,7 @@ function buildCaicPrompt({ owner, repo, agent }) {
 3. Do not end your response without the JSON block, even when findings is an empty array.
 4. After resolving each pending catalogue item, write a new visible line — either \`confirmed finding — [title]\` or \`discarded: [reason]\` — immediately after it. Do not rely on <thinking> to resolve pending items. A run where pending items appear in the catalogue but no resolution lines appear will be flagged as unreliable.
 5. ${noFileWrite} at any point. Writing to a file does not satisfy the output contract — the JSON block must appear in your visible response text.
+6. ${SHARED_OUTPUT_CONTRACT.noFilesystem}
 
 ## Step 1 — Read and catalogue the diff (do this before forming any opinion)
 
@@ -235,23 +237,25 @@ Category 2 — Non-Carbon finding: convention, correctness, accessibility, test 
 
 No hedging, no throat-clearing ("just", "simply"), no praise inside a finding. Keep the wrong-and-cost part to three sentences. A \`nit\` body is one line; only its title and file:line are posted.
 
+${SHARED_OUTPUT_CONTRACT.fixFieldRule}
+
 **summaryMarkdown** must contain only:
 1. One or two sentences describing what the PR does.
-2. A single line stating the count and severity of findings.
-3. (Optional) One sentence noting Carbon MCP unavailability.
-4. (Optional) One last sentence \`Not verified: <path or behavior>\`, only when you skipped or skimmed something you would have needed to be sure of. Omit it otherwise; never write "Not verified: nothing".
+2. (Optional) One sentence noting Carbon MCP unavailability.
+3. (Optional) One last sentence \`Not verified: <path or behavior>\`, only when you skipped or skimmed something you would have needed to be sure of. Omit it otherwise; never write "Not verified: nothing".
 
 Must NOT contain checkmark lists, MCP verification claims, alignment statements, headings, recommendations, or emoji.
+${SHARED_OUTPUT_CONTRACT.noFindingCount}
 
 **findingsTable** must be populated with one entry per confirmed finding. Each entry has five plain-text string fields. Do NOT include pipes, newlines, or backslashes.
 
-**Emit strict, parseable JSON.** Every string value must be valid JSON: escape embedded double-quotes as \\" and literal backslashes as two backslashes. Keep each string value on a single line with no raw line breaks.
+**Emit strict, parseable JSON.** Every string value, each \`fix\` line included, must be valid JSON: escape embedded double-quotes as \\" and literal backslashes as two backslashes. Keep each string value on a single line with no raw line breaks.
 
 Return exactly this JSON between markers — this is mandatory, do not end your response without it:
 
 BEGIN_REVIEW_JSON
 {
-  "summaryMarkdown": "string — 1 to 4 sentences max, no headings, no emoji, no recommendations; the last may be 'Not verified: ...'",
+  "summaryMarkdown": "string — 1 to 4 sentences max, no headings, no emoji, no recommendations, no finding counts; the last may be 'Not verified: ...'",
   "findings": [
     {
       "severity": "nit=convention or hygiene | minor=maintainability risk with functional impact | major=someone pays later | blocking=ships broken or a commitment breaks",
@@ -261,7 +265,8 @@ BEGIN_REVIEW_JSON
       "body": "orientation, what is wrong, what it costs, then the fix (minor/major/blocking must end with an imperative sentence)",
       "carbonVerified": true,
       "verificationSource": "carbon-builder|carbon-mcp|not-carbon-specific",
-      "mcpEvidence": "direct quote from MCP tool response (required when verificationSource is carbon-builder or carbon-mcp, omit otherwise)"
+      "mcpEvidence": "direct quote from MCP tool response (required when verificationSource is carbon-builder or carbon-mcp, omit otherwise)",
+      ${SHARED_OUTPUT_CONTRACT.fixSchemaLine}
     }
   ],
   "findingsTable": [

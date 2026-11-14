@@ -8,10 +8,12 @@
  *
  * Returns a Map of file paths to two sub-maps:
  *   lineMap     — new-file line number → GitHub diff position
- *   hunkLines   — ordered list of {diffLine, newFileStart} for each @@ hunk,
- *                 where diffLine is the 1-based line index within the diff string.
+ *   hunkLines   — ordered list of {diffLine, newFileStart, lines} for each @@ hunk,
+ *                 where diffLine is the 1-based line index within the diff string
+ *                 and lines is the hunk's new side as [{line, text}].
  *                 Used by the secondary lookup to convert agent-reported
- *                 PR_REVIEW_REQUEST.md absolute line numbers back to new-file lines.
+ *                 PR_REVIEW_REQUEST.md absolute line numbers back to new-file lines,
+ *                 and by codeContextFor to quote the code around a finding.
  *
  * @param {string} diff - Unified diff text
  * @returns {Map} Map of file paths to { lineMap, hunkLines }
@@ -21,6 +23,7 @@ function parseDiffLinePositions(diff) {
 
   const lines = diff.split('\n');
   let currentFile = null;
+  let currentHunk = null;
   let position = 0;
   let oldLine = 0;
   let newLine = 0;
@@ -38,6 +41,7 @@ function parseDiffLinePositions(diff) {
       if (match) {
         currentFile = match[1];
         fileMap.set(currentFile, { lineMap: new Map(), hunkLines: [] });
+        currentHunk = null;
         position = 0;
       }
       continue;
@@ -68,7 +72,8 @@ function parseDiffLinePositions(diff) {
         const entry = fileMap.get(currentFile);
         if (entry.hunkLines.length > 0) position++;
         // Record this hunk's position within the diff string for secondary lookup.
-        entry.hunkLines.push({ diffLine, newFileStart: newLine });
+        currentHunk = { diffLine, newFileStart: newLine, lines: [] };
+        entry.hunkLines.push(currentHunk);
       }
       continue;
     }
@@ -81,12 +86,14 @@ function parseDiffLinePositions(diff) {
     // Context line (unchanged)
     if (line.startsWith(' ')) {
       fileMap.get(currentFile).lineMap.set(newLine, position);
+      currentHunk?.lines.push({ line: newLine, text: line.slice(1) });
       oldLine++;
       newLine++;
     }
     // Addition line
     else if (line.startsWith('+')) {
       fileMap.get(currentFile).lineMap.set(newLine, position);
+      currentHunk?.lines.push({ line: newLine, text: line.slice(1) });
       newLine++;
     }
     // Deletion line
@@ -117,7 +124,8 @@ function parseDiffLinePositions(diff) {
  * @param {Array}  files         - Array of changed file objects from GitHub
  * @param {number} [mdDiffStartLine=0] - 1-based line of the ```diff fence in
  *                                       PR_REVIEW_REQUEST.md; 0 disables secondary lookup
- * @returns {Object|null} - { path, position } or null if not mappable
+ * @returns {Object|null} - { path, position, line } or null if not mappable;
+ *                          line is the new-file line the position resolves to
  */
 function mapFindingToDiffPosition(finding, diff, files, mdDiffStartLine = 0) {
   // Validate finding has required fields
@@ -181,7 +189,11 @@ function mapFindingToDiffPosition(finding, diff, files, mdDiffStartLine = 0) {
   // Primary lookup: finding.line as new-file line number (correct per prompt spec)
   const primaryPosition = lineMap.get(finding.line);
   if (primaryPosition) {
-    return { path: matchedFilename, position: primaryPosition };
+    return {
+      path: matchedFilename,
+      position: primaryPosition,
+      line: finding.line,
+    };
   }
 
   // Secondary lookup: agent reported PR_REVIEW_REQUEST.md absolute line number.
@@ -193,12 +205,43 @@ function mapFindingToDiffPosition(finding, diff, files, mdDiffStartLine = 0) {
       if (newFileLine > 0) {
         const secondaryPosition = lineMap.get(newFileLine);
         if (secondaryPosition) {
-          return { path: matchedFilename, position: secondaryPosition };
+          return {
+            path: matchedFilename,
+            position: secondaryPosition,
+            line: newFileLine,
+          };
         }
       }
     }
   }
 
+  return null;
+}
+
+const CONTEXT_RADIUS = 3;
+
+/**
+ * The new-side lines of the hunk around a mapped line, clipped to the hunk.
+ *
+ * @param {Object} entry - A file entry from parseDiffLinePositions
+ * @param {number} line  - Mapped new-file line
+ * @returns {Object|null} - { startLine, endLine, lines } or null
+ */
+function codeContextFor(entry, line) {
+  if (!entry) return null;
+  for (const hunk of entry.hunkLines) {
+    const at = hunk.lines.findIndex((l) => l.line === line);
+    if (at === -1) continue;
+    const slice = hunk.lines.slice(
+      Math.max(0, at - CONTEXT_RADIUS),
+      at + CONTEXT_RADIUS + 1
+    );
+    return {
+      startLine: slice[0].line,
+      endLine: slice[slice.length - 1].line,
+      lines: slice.map((l) => l.text),
+    };
+  }
   return null;
 }
 
@@ -208,11 +251,13 @@ function mapFindingToDiffPosition(finding, diff, files, mdDiffStartLine = 0) {
  * @param {string} diff             - Unified diff text
  * @param {Array}  files            - Array of changed file objects
  * @param {number} [mdDiffStartLine=0] - Passed through to mapFindingToDiffPosition
- * @returns {Object} - { inlineFindings, summaryFindings }
+ * @returns {Object} - { inlineFindings, summaryFindings }; a mapped finding
+ *                     carries diffPosition and codeContext
  */
 function splitFindings(findings, diff, files, mdDiffStartLine = 0) {
   const inlineFindings = [];
   const summaryFindings = [];
+  const fileMap = parseDiffLinePositions(diff);
 
   for (const finding of findings) {
     const position = mapFindingToDiffPosition(
@@ -223,9 +268,14 @@ function splitFindings(findings, diff, files, mdDiffStartLine = 0) {
     );
 
     if (position) {
+      const codeContext = codeContextFor(
+        fileMap.get(position.path),
+        position.line
+      );
       inlineFindings.push({
         ...finding,
         diffPosition: position,
+        ...(codeContext && { codeContext }),
       });
     } else {
       summaryFindings.push(finding);
@@ -239,4 +289,5 @@ module.exports = {
   parseDiffLinePositions,
   mapFindingToDiffPosition,
   splitFindings,
+  codeContextFor,
 };
