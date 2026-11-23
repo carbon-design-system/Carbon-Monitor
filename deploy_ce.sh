@@ -17,7 +17,7 @@ export NODE_ENV=production
 
 : "${APP:=carbon-monitor}"
 : "${IMAGE_NAME:=carbon-monitor}"
-: "${VERSION:=1.6.0}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
+: "${VERSION:=1.7.0}"     # override per release, or VERSION=$(date +%Y%m%d%H%M%S)
 
 # Secret holding this app's credentials. 
 : "${SECRET_NAME:=carbon-monitor-secrets}"
@@ -94,14 +94,13 @@ need npm
 
 # -------- Preflight: Bob Shell must be reachable from the build --------
 #
-# The image installs Bob Shell from IBM Cloud Object Storage. That host is not
-# on the public npm registry and is not mirrored, so if it is unreachable the
-# build fails several minutes in, after the client build and the base-image pull.
-# Checking first costs a fraction of a second.
+# The image installs Bob Shell (@ibm/bob) from the public npm registry, so if it
+# is unreachable the build fails several minutes in, after the client build and
+# the base-image pull. Checking first costs a fraction of a second.
 verify_bob_source() {
-  local base="https://s3.us-south.cloud-object-storage.appdomain.cloud/bob-shell"
+  local base="https://registry.npmjs.org/@ibm/bob"
   local version
-  version=$(curl -fsS --max-time 20 "${base}/bobshell2-version.txt" 2>/dev/null | tr -d '\r\n' || true)
+  version=$(curl -fsS --max-time 20 "${base}/latest" 2>/dev/null | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{try{process.stdout.write(String(JSON.parse(s).version||""))}catch{}})' || true)
   if [ -z "${version:-}" ]; then
     warn "Could not reach the Bob Shell download host:"
     warn "  ${base}"
@@ -117,7 +116,7 @@ verify_bob_source() {
   pinned=$(awk -F= '/^ARG BOB_VERSION=/{print $2; exit}' Dockerfile | tr -d ' \r')
   if [ -n "${pinned:-}" ] && [ "${pinned}" != "${version}" ]; then
     warn "Dockerfile pins Bob Shell ${pinned}; ${version} is now published."
-    warn "To move: update BOB_VERSION and BOB_SHA256 (from ${base}/bobshell-${version}.tgz.sha256)."
+    warn "To move: update BOB_VERSION and BOB_SHA256 (sha256sum of ${base}/-/bob-${version}.tgz)."
   fi
 }
 verify_bob_source

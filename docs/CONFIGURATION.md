@@ -150,8 +150,9 @@ The Carbon MCP and Carbon Builder steps below apply to either.
 
 #### Bob Shell
 
-Install Bob Shell with the official script (IBM network or VPN), then trust
-the directories it needs for MCP tool access:
+The image pins Bob Shell 2.1.0, installed from the `@ibm/bob` package on the
+public npm registry. Install Bob Shell locally with the official script (IBM
+network or VPN), then trust the directories it needs for MCP tool access:
 
 ```bash
 curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash
@@ -160,6 +161,13 @@ bob --version
 bob trust /private/tmp
 bob trust /path/to/Carbon-Monitor
 ```
+
+**Auto-update.** An interactive `bob` session checks the npm registry on startup
+and installs a newer release when `bobShell.autoUpdate` is true, which is the
+default. Your local install can therefore move past the version the image pins.
+Reviews run `bob run`, which does not make that check, so a running container
+keeps the pinned version. Turn it off locally with **Enable auto-updates** in
+`/settings`.
 
 **What Bob can see of the environment.** The child process gets an allowlist, not
 the harness's environment: `PATH`, `HOME`, `TMPDIR`, `LANG`, `LC_ALL`, `TERM`,

@@ -102,7 +102,7 @@ Bob's own `dist/vscode-policy-watcher.node` is likewise a glibc x86-64 ELF.
 
 `node:24-bookworm-slim` provides glibc 2.36. Node 24 is also a hard floor —
 Bob Shell's install page requires Node.js 24 or later, and the build verifies that
-`bob` 2.0.5 installs and starts on it.
+`bob` 2.1.0 installs and starts on it.
 
 > The previous `node:18-alpine` base failed on **both** counts.
 
@@ -115,20 +115,26 @@ build time. The Dockerfile performs the same steps it does, with the version and
 its checksum pinned:
 
 ```
-ARG BOB_VERSION=2.0.5
-ARG BOB_SHA256=eff232eb1b69f34f984ddd295e6960470058ca922b1c751879c5a8d06199f566
+ARG BOB_VERSION=2.1.0
+ARG BOB_SHA256=c4cefcb971ab7ba905586d98e7c0d3d343fb200084aeb199bc49743829ad004a
 
-curl -fsSL "${BASE}/bobshell-${BOB_VERSION}.tgz" -o /tmp/bobshell.tgz
+curl -fsSL "https://registry.npmjs.org/@ibm/bob/-/bob-${BOB_VERSION}.tgz" -o /tmp/bobshell.tgz
 echo "${BOB_SHA256}  /tmp/bobshell.tgz" | sha256sum -c -
 npm install -g --registry=https://registry.npmjs.org/ /tmp/bobshell.tgz
 ```
 
-`bobshell` is on **neither** the public npm registry nor IBM Artifactory — it is
-distributed only as a tarball from IBM Cloud Object Storage, which is why it
-cannot simply be a `package.json` dependency.
+Bob Shell is published on the public npm registry as `@ibm/bob` (the earlier
+`bobshell` tarballs on IBM Cloud Object Storage stop at 2.0.7). The Dockerfile
+downloads the tarball and checks its SHA-256 instead of running
+`npm install -g @ibm/bob@x.y.z`, so the pin cannot drift. It stays out of
+`package.json` because it is a global CLI, not an application dependency.
 
-`deploy_ce.sh` checks that host is reachable before building, and warns
+`deploy_ce.sh` checks that the registry is reachable before building, and warns
 (without failing) when a newer version has been published.
+
+Bob Shell 2.0.9 and later update themselves when an interactive `bob` session
+starts. Reviews use `bob run`, which skips that check, so the container keeps
+the pinned version. Nothing in the image turns the updater off.
 
 ### 3.3 Claude Code is installed from npm, pinned
 
@@ -155,7 +161,7 @@ fail there. Amd64 Code Engine is unaffected.
 ### 3.4 Image layout
 
 ```
-/usr/local/lib/node_modules/bobshell/   Bob Shell 2.0.5 + node-pty-linux-x64
+/usr/local/lib/node_modules/@ibm/bob/   Bob Shell 2.1.0 + node-pty-linux-x64
 /usr/local/lib/node_modules/@anthropic-ai/claude-code/   Claude Code 2.1.302 + its linux-x64 binary
 /app/src/                               agent + API server
 /app/dist/client/                       pre-built Carbon React console
@@ -470,7 +476,7 @@ process on one port — Code Engine exposes a single port per app.
   │  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐       │  Grid narrow
   │  │ ✔ Bob     │ │ ✔ Carbon  │ │ ✔ GitHub  │ │ ○ Elastic │       │  4 cols @ lg
   │  │   Shell   │ │   MCP     │ │           │ │  search   │       │
-  │  │ v2.0.5    │ │ auto-     │ │ 4998/5000 │ │ Not       │       │  IconIndicator
+  │  │ v2.1.0    │ │ auto-     │ │ 4998/5000 │ │ Not       │       │  IconIndicator
   │  │ API key   │ │ refresh   │ │ calls     │ │ configured│       │  kind=…
   │  └───────────┘ └───────────┘ └───────────┘ └───────────┘       │
   │                                                                │
@@ -531,7 +537,7 @@ makes no third-party request.
 | `REGISTRY_SECRET`    | `icr-secret`                      |
 
 ```
-  verify Bob download host reachable      ← fails in ms, not minutes
+  verify npm registry reachable (Bob)     ← fails in ms, not minutes
         ▼
   ibmcloud login · ce project select
         ▼
@@ -743,8 +749,8 @@ unused and kept for reference only.
 
 ## 13. Known constraints
 
-- **Bob Shell cannot be a `package.json` dependency.** It is distributed only as
-  a tarball from IBM Cloud Object Storage. Moving versions means updating both
+- **Bob Shell is not a `package.json` dependency.** It is installed globally in
+  the image from the `@ibm/bob` npm tarball. Moving versions means updating both
   `BOB_VERSION` and `BOB_SHA256` in the Dockerfile.
 - **Claude Code is pinned too.** Moving versions means updating
   `CLAUDE_CODE_VERSION` in the Dockerfile. The build checks the version and the

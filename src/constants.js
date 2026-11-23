@@ -37,7 +37,7 @@ const REVIEW_AGENT = process.env.GITHUB_AI_AGENT_CLI || 'bob';
 // Anything but 'pretty' means stream-json, so a typo never selects the legacy path.
 const BOB_OUTPUT_FORMAT =
   process.env.BOB_OUTPUT_FORMAT === 'pretty' ? 'pretty' : 'stream-json';
-// 0 or unset omits the flag; Bob 2.0.5 rejects --max-cost 0.
+// 0 or unset omits the flag; Bob 2.0.5 rejected --max-cost 0 (2.0.9 and later accept it).
 const BOB_MAX_COST = Number(process.env.BOB_MAX_COST) || 0;
 const BOB_MAX_TURNS = Number(process.env.BOB_MAX_TURNS) || 0;
 const BOB_DISABLE_TOOL_GROUPS = (

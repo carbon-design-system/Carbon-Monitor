@@ -258,7 +258,8 @@ The variables most deployments set. Every variable, with its default, is in
 | `CLAUDE_MONTHLY_BUDGET_USD` | No            | unset                  | Monthly budget in USD for scheduled reviews. Unset means not metered                                                                                                      |
 | `CLAUDE_BUDGET_LOW_PCT`     | No            | `10`                   | Scheduled reviews pause below this percentage of the monthly budget                                                                                                       |
 
-**Bob Shell.** Install with the official script,
+**Bob Shell.** The image pins Bob Shell 2.1.0, installed from the `@ibm/bob`
+package on the public npm registry. To run it locally, install with the official script,
 `curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash` (IBM network or
 VPN), then run `bob trust /private/tmp` and `bob trust /path/to/Carbon-Monitor`
 so Bob can use MCP tools in the review bundles.
