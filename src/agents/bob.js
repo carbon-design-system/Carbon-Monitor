@@ -80,8 +80,9 @@ module.exports = {
     return format !== 'pretty';
   },
 
-  // Bob 2.0.5 rejects a cap of 0, so an unset or zero cap omits its flag. Caps do
-  // not depend on --format, so the pretty kill switch keeps a spend cap.
+  // Bob 2.0.5 rejected a cap of 0 (2.0.9 and later accept it), so an unset or
+  // zero cap omits its flag. Caps do not depend on --format, so the pretty kill
+  // switch keeps a spend cap.
   // --trust and --accept-license make the run safe in a fresh container (no
   // trustedFolders.json or licence flag yet) and are no-ops on a trusted Mac.
   // --format stream-json gives NDJSON with exact stats; BOB_OUTPUT_FORMAT=pretty

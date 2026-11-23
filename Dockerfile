@@ -11,7 +11,7 @@
 #
 # NODE VERSION: 24, because Bob Shell's install page requires Node.js 24 or later
 #   (https://bob.ibm.com/docs/shell/getting-started/install-and-setup). The build
-#   verifies that bob 2.0.5 installs and starts on it.
+#   verifies that bob 2.1.0 installs and starts on it.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ---- Dependencies (production only) ----
@@ -33,12 +33,12 @@ FROM node:24-bookworm-slim
 ENV NODE_ENV=production
 
 # Bob Shell version, pinned so an upstream release cannot silently change what
-# ships. Verified against the SHA-256 published alongside the tarball; override
-# both together at build time to move versions:
+# ships. The tarball comes from the public npm registry (@ibm/bob) and is
+# verified against a SHA-256 recorded here; override both together at build time
+# to move versions (`sha256sum` the tarball from the registry):
 #   podman build --build-arg BOB_VERSION=x.y.z --build-arg BOB_SHA256=... .
-ARG BOB_VERSION=2.0.5
-ARG BOB_SHA256=eff232eb1b69f34f984ddd295e6960470058ca922b1c751879c5a8d06199f566
-ARG BOB_DOWNLOAD_BASE=https://s3.us-south.cloud-object-storage.appdomain.cloud/bob-shell
+ARG BOB_VERSION=2.1.0
+ARG BOB_SHA256=c4cefcb971ab7ba905586d98e7c0d3d343fb200084aeb199bc49743829ad004a
 
 # curl for the download and the healthcheck; ca-certificates so TLS to the Carbon
 # MCP host and GitHub verifies; git because review bundles are git workspaces.
@@ -55,7 +55,7 @@ RUN apt-get update \
 # build. The steps below are the same ones it performs, with the version pinned
 # and the checksum enforced.
 RUN set -eux; \
-  curl -fsSL "${BOB_DOWNLOAD_BASE}/bobshell-${BOB_VERSION}.tgz" -o /tmp/bobshell.tgz; \
+  curl -fsSL "https://registry.npmjs.org/@ibm/bob/-/bob-${BOB_VERSION}.tgz" -o /tmp/bobshell.tgz; \
   echo "${BOB_SHA256}  /tmp/bobshell.tgz" | sha256sum -c -; \
   npm install -g --registry=https://registry.npmjs.org/ --no-audit --no-fund /tmp/bobshell.tgz; \
   rm -f /tmp/bobshell.tgz; \
